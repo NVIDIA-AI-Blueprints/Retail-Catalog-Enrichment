@@ -30,6 +30,48 @@ Since this is an early-stage project, specific dependencies will be documented a
 git clone https://gitlab-master.nvidia.com/anmartinez/catalog-enrichment.git
 cd catalog-enrichment
 
+```
+
+### Backend (current)
+
+- Stack: FastAPI + Uvicorn (ASGI), OpenAI client (NVIDIA endpoint), Starlette under the hood
+- Dependencies: `fastapi`, `uvicorn[standard]`, `openai`, `python-multipart`, `python-dotenv`, `langgraph==0.6.7`
+- Python: 3.11+
+
+#### Environment
+- Create `.env` at repo root:
+  - `NVIDIA_API_KEY=...`
+  - `NVIDIA_API_BASE_URL=https://integrate.api.nvidia.com/v1` (default)
+
+#### Run (with uv)
+```bash
+uv pip install -e .
+uvicorn --app-dir src backend.main:app --host 0.0.0.0 --port 8000 --reload
+```
+
+#### API Endpoints
+- GET `/` → plaintext greeting
+- GET `/health` → `{ "status": "ok" }`
+- POST `/vlm/describe`
+  - Request: `multipart/form-data` with field `image` (file)
+  - Response: JSON with fields:
+    - `title`: string
+    - `description`: string
+    - `categories`: array of strings from the allowed set only
+
+Allowed categories: `["clothing", "kitchen", "sports", "toys", "electronics"]` (fallback to `["uncategorized"]` if none apply)
+
+#### VLM Prompt (summary)
+- Instructs the model to generate a persuasive product `title` and `description` and classify into the allowed `categories` list only.
+- Strictly requests output as a single valid JSON object with `title`, `description`, `categories`.
+
+#### Example
+```bash
+curl -X POST \
+  -F "image=@path/to/your_image.jpg;type=image/jpeg" \
+  http://localhost:8000/vlm/describe
+```
+
 **Note:** Build and test commands will be updated as the project's technology stack is finalized.
 
 ## Code Style Guidelines
