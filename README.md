@@ -33,4 +33,27 @@ Backend endpoints:
 - `GET /` → plaintext greeting
 - `GET /health` → JSON health status
 
+### VLM: Describe an image
+
+1) Set your NVIDIA API key in `.env`:
+
+```
+cp .env .env.local  # optional; or edit .env directly
+echo "NVIDIA_API_KEY=YOUR_KEY_HERE" >> .env
+```
+
+2) Start the backend (see above), then call the endpoint:
+
+```
+curl -X POST \
+  -F "image=@path/to/your_image.png;type=image/png" \
+  http://localhost:8000/vlm/describe
+```
+
+Response:
+
+```
+{"description":"...model output..."}
+```
+
 
