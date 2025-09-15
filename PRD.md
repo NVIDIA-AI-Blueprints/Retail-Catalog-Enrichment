@@ -2,35 +2,35 @@
 
 ## Project: Catalog Enrichment System
 
-**Version:** 1.0  
-**Last Updated:** 03-Sept-2025  
-**Owner:** anmartinez
+**Version:** 1.0.0
+**Last Updated:** 15-Sept-2025  
+**Owner:** Antonio Martinez (NVIDIA)
 
 ## Problem Statement
 
-Product catalogs often contain minimal, low-quality information with basic product photos and sparse descriptions. This limits customer engagement, search discoverability, and overall user experience. Manual enrichment of catalog data is time-consuming and doesn't scale.
+Product catalogs often contain minimal, low-quality information with basic product images and sparse descriptions. This limits customer engagement, search discoverability, and overall user experience. Manual enrichment of catalog data is time-consuming, error-prone, and doesn't scale. Human categorization and tagging of products is particularly susceptible to inconsistencies, subjective interpretations, and classification errors that can negatively impact search functionality and user experience.
 
 ## Solution Overview
 
-A GenAI-powered catalog enrichment system that transforms basic product photos into comprehensive, rich catalog entries with enhanced titles, descriptions, categories, tags, variation images (2D/3D), and short video clips.
+A GenAI-powered catalog enrichment system that transforms basic product images into comprehensive, rich catalog entries with enhanced titles, descriptions, categories, tags, variation images (2D/3D), and short video clips.
 
 ## Core User Flow
 
-1. **Input**: User submits one or multiple photos of a product
-2. **Content Analysis**: System uses NVIDIA Nemotron VLM to extract and generate:
+1. **Input**: User submits one or multiple images of a product
+2. **Content Analysis**: System uses NVIDIA Nemotron VLM (https://build.nvidia.com/nvidia/llama-3.1-nemotron-nano-vl-8b-v1) to extract and generate:
    - Enhanced product title
    - Detailed product description
    - Relevant categories
    - Product tags
-3. **Image Generation**: System creates variation images using Stable Diffusion models
-4. **3D Asset Creation**: System generates 3D product assets using Microsoft's TRELLIS model
+3. **Image Generation**: System creates variation images using Stable Diffusion models (https://build.nvidia.com/stabilityai/stable-diffusion-3_5-large)
+4. **3D Asset Creation**: System generates 3D product assets using Microsoft's TRELLIS model (https://build.nvidia.com/microsoft/trellis)
 5. **Video Generation**: System produces 3-5 second product video clips using open-source models
 6. **Output**: Enriched catalog entry with all generated assets
 
 ## Functional Requirements
 
-### FR-1: Photo Input Processing
-- Accept single or multiple product photos (JPEG, PNG formats)
+### FR-1: Image Input Processing
+- Accept single or multiple product images (JPEG, PNG formats)
 - Support common image resolutions and file sizes
 - Validate image quality and content relevance
 
@@ -59,7 +59,12 @@ A GenAI-powered catalog enrichment system that transforms basic product photos i
 - Generate smooth, professional-quality clips
 - Support common video formats (MP4, WebM)
 
-### FR-6: Output Management
+### FR-6: Language Selection
+- Support multiple output languages including English, Spanish, and French
+- Generate product titles, descriptions, categories, and tags in selected language
+- Maintain language consistency across all text outputs
+
+### FR-7: Output Management
 - Organize all generated assets by product
 - Provide structured metadata for each asset
 - Enable batch processing for multiple products
@@ -80,10 +85,9 @@ A GenAI-powered catalog enrichment system that transforms basic product photos i
 - API endpoints for system interaction
 
 ### TR-3: Performance
-- Process single product within 5 minutes
+- Process single product within 1 minute
 - Support concurrent processing of multiple products
 - Maintain >95% model inference success rate
-- Handle image files up to 50MB
 
 ### TR-4: Data Management
 - Secure storage of uploaded images
@@ -95,7 +99,7 @@ A GenAI-powered catalog enrichment system that transforms basic product photos i
 
 ### US-1: Basic Product Enrichment
 **As a** catalog manager  
-**I want to** upload a product photo and receive enriched catalog data  
+**I want to** upload a product image and receive enriched catalog data  
 **So that** I can quickly populate my catalog with detailed product information
 
 ### US-2: Batch Processing
@@ -115,40 +119,8 @@ A GenAI-powered catalog enrichment system that transforms basic product photos i
 
 ## Success Criteria
 
-- **Processing Time**: <5 minutes per product for complete enrichment
+- **Processing Time**: <1 minute per product for complete enrichment
 - **Content Quality**: Generated descriptions and titles achieve >90% relevance rating
 - **Asset Generation**: Successfully generate 2D variations, 3D models, and video clips for >95% of input products
 - **System Reliability**: 99% uptime for processing requests
 - **User Satisfaction**: Positive feedback on generated content quality
-
-## Dependencies
-
-### External Models
-- NVIDIA Nemotron VLM API access
-- Microsoft TRELLIS model availability
-- Stable Diffusion model deployment
-- Open-source video generation model selection
-
-### Infrastructure
-- GPU-enabled cloud compute environment
-- Storage solution for assets and metadata
-- API gateway and processing queue system
-
-## Risks and Mitigations
-
-### Risk 1: Model Performance Variability
-**Mitigation**: Implement quality validation checks and fallback processing
-
-### Risk 2: Processing Cost
-**Mitigation**: Optimize model usage and implement efficient batching strategies
-
-### Risk 3: Generated Content Quality
-**Mitigation**: Establish content validation pipelines and quality metrics
-
----
-
-**Next Steps:**
-1. Technical architecture design
-2. Model integration proof-of-concept
-3. Infrastructure setup and deployment strategy
-4. MVP development and testing

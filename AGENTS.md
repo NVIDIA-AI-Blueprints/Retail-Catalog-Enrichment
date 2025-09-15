@@ -30,19 +30,6 @@ Since this is an early-stage project, specific dependencies will be documented a
 git clone https://gitlab-master.nvidia.com/anmartinez/catalog-enrichment.git
 cd catalog-enrichment
 
-# Install dependencies (to be updated as project evolves)
-# npm install / pip install -r requirements.txt / etc.
-
-# Run tests (to be defined)
-# npm test / pytest / etc.
-
-# Build the project (to be defined)
-# npm run build / make / etc.
-
-# Start development server (to be defined)
-# npm run dev / python app.py / etc.
-```
-
 **Note:** Build and test commands will be updated as the project's technology stack is finalized.
 
 ## Code Style Guidelines

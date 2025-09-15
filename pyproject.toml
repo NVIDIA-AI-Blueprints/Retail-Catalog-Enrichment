@@ -1,0 +1,22 @@
+[build-system]
+requires = ["hatchling>=1.21.1"]
+build-backend = "hatchling.build"
+
+[project]
+name = "catalog-enrichment"
+version = "0.1.0"
+description = "A system for enriching product catalog data with additional metadata, descriptions, and categorization."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "langgraph==0.6.7",
+  "uvicorn[standard]>=0.30,<1.0",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/backend"]
+
+[tool.uv]
+dev-dependencies = []
+
+
