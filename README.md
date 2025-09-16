@@ -1,4 +1,6 @@
-# catalog-enrichment
+# Catalog Enrichment System
+
+A GenAI-powered catalog enrichment system that transforms basic product images into comprehensive, rich catalog entries using NVIDIA's Nemotron VLM for content analysis, Nemotron LLM for intelligent prompt planning, and FLUX models for generating high-quality product variations.
 
 ## Development setup (uv + uvicorn)
 
@@ -32,8 +34,12 @@ uvicorn --app-dir src backend.main:app --host 0.0.0.0 --port 8000 --reload
 Backend endpoints:
 - `GET /` → plaintext greeting
 - `GET /health` → JSON health status
+- `POST /vlm/describe` → analyze product image and generate title, description, categories
+- `POST /image/variation` → full enrichment pipeline with variation image generation
 
-### VLM: Describe an image
+### API Endpoints
+
+#### VLM: Describe an image
 
 1) Set your NVIDIA API key in `.env`:
 
@@ -52,8 +58,51 @@ curl -X POST \
 
 Response:
 
+```json
+{
+  "title": "Enhanced Product Title",
+  "description": "Detailed product description",
+  "categories": ["clothing", "casual"]
+}
 ```
-{"description":"...model output..."}
+
+#### Image Variation Generation
+
+For the full enrichment pipeline including variation image generation:
+
 ```
+curl -X POST \
+  -F "image=@path/to/your_image.png;type=image/png" \
+  http://localhost:8000/image/variation
+```
+
+Response:
+
+```json
+{
+  "title": "Enhanced Product Title",
+  "description": "Detailed product description",
+  "categories": ["clothing", "casual"],
+  "artifact_id": "unique_artifact_id",
+  "image_path": "path/to/generated/variation.jpg",
+  "metadata_path": "path/to/metadata.json",
+  "variation_plan": "AI-generated plan for image variations"
+}
+```
+
+### Architecture
+
+The system follows a multi-stage AI pipeline:
+
+1. **VLM Analysis**: NVIDIA Nemotron VLM analyzes the input product image
+2. **Prompt Planning**: NVIDIA Nemotron LLM creates optimized prompts for image generation
+3. **Image Generation**: FLUX models generate high-quality product variations
+4. **Asset Management**: Generated assets are organized and persisted with metadata
+
+This architecture leverages NVIDIA's advanced AI models to ensure high-quality, consistent results for catalog enrichment.
+
+For detailed architecture diagrams and system documentation, see:
+- [`docs/architecture.md`](docs/architecture.md) - Comprehensive architecture with Mermaid diagrams
+- [`docs/architecture-simple.txt`](docs/architecture-simple.txt) - Simple ASCII overview
 
 
