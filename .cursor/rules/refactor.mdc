@@ -1,0 +1,26 @@
+---
+alwaysApply: false
+---
+Refactor the following Python code with the following goals:
+
+1. Remove unnecessary code:
+   - Delete unused variables, imports, functions, and classes.
+   - Eliminate dead code paths (unreachable branches, always-true/false conditions).
+
+2. Remove unnecessary comments:
+   - Strip comments that only restate what the code does.
+   - Keep only comments that add real insight (e.g., non-obvious behavior or intent).
+
+3. Reduce code size while preserving functionality:
+   - Inline trivial variables and expressions when it improves clarity.
+   - Use Python built-ins and idioms (list/dict comprehensions, any/all, etc.) to reduce verbosity.
+   - Replace verbose conditionals with shorter equivalents (ternary expressions, short-circuiting).
+   - Collapse nested if/else blocks when possible.
+   - Eliminate redundant return statements.
+   - Prefer f-strings for formatting.
+   - Combine duplicate logic into concise helpers or inline where shorter.
+
+4. General rules:
+   - Ensure the refactored code is fully functional and equivalent.
+   - Follow PEP8, but prioritize brevity and clarity over formality.
+   - The output must be the most compact and idiomatic version possible.
