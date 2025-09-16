@@ -1,0 +1,55 @@
+import yaml
+from pathlib import Path
+from typing import Dict, Any, Optional
+import logging
+
+logger = logging.getLogger("catalog_enrichment.config")
+
+
+class Config:
+    def __init__(self, config_path: Optional[str] = None):
+        self.config_path = Path(config_path) if config_path else Path(__file__).parent.parent.parent / "shared" / "config" / "config.yaml"
+        self._config_data = self._load_config()
+        
+    def _load_config(self) -> Dict[str, Any]:
+        try:
+            if not self.config_path.exists():
+                raise FileNotFoundError(f"Configuration file not found: {self.config_path}")
+            with open(self.config_path, 'r', encoding='utf-8') as f:
+                config_data = yaml.safe_load(f)
+            logger.info(f"Configuration loaded from {self.config_path}")
+            return config_data or {}
+        except Exception as e:
+            logger.error(f"Failed to load configuration from {self.config_path}: {e}")
+            raise
+    def _get_section_config(self, section: str, required_fields: list) -> Dict[str, str]:
+        config = self._config_data.get(section, {})
+        if not config:
+            raise ValueError(f"{section.upper()} configuration section not found in config file")
+        
+        result = {}
+        for field in required_fields:
+            value = config.get(field)
+            if not value:
+                raise ValueError(f"{section.upper()} {field} not configured")
+            result[field] = value
+        return result
+        
+    def get_vlm_config(self) -> Dict[str, str]:
+        return self._get_section_config('vlm', ['url', 'model'])
+        
+    def get_llm_config(self) -> Dict[str, str]:
+        return self._get_section_config('llm', ['url', 'model'])
+        
+    def get_flux_config(self) -> Dict[str, str]:
+        return self._get_section_config('flux', ['url'])
+
+
+_config_instance: Optional[Config] = None
+
+
+def get_config() -> Config:
+    global _config_instance
+    if _config_instance is None:
+        _config_instance = Config()
+    return _config_instance

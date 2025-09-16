@@ -124,3 +124,22 @@ A GenAI-powered catalog enrichment system that transforms basic product images i
 - **Asset Generation**: Successfully generate 2D variations, 3D models, and video clips for >95% of input products
 - **System Reliability**: 99% uptime for processing requests
 - **User Satisfaction**: Positive feedback on generated content quality
+
+## Implementation TODOs
+
+- [x] ~~FR-1: Image Input Processing
+- [x] ~~FR-2: VLM Content Extraction~~
+- [ ] FR-3: 2D Image Variation Generation
+- [ ] FR-4: 3D Asset Generation
+- [ ] FR-5: Video Clip Generation
+- [ ] FR-6: Language Selection
+- [ ] FR-7: Output Management
+
+- [ ] TR-1: Model Integration
+  - [x] ~~NVIDIA Nemotron VLM API integration~~
+  - [ ] Stable Diffusion model deployment
+  - [ ] Microsoft TRELLIS model integration
+  - [ ] Open-source video generation model setup
+- [ ] TR-2: Infrastructure
+- [ ] TR-3: Performance
+- [ ] TR-4: Data Management

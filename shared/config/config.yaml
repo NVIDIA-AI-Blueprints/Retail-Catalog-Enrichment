@@ -1,0 +1,15 @@
+# Configuration file for catalog-enrichment backend
+
+# VLM (Vision Language Model) Configuration
+vlm:
+  url: "https://integrate.api.nvidia.com/v1"
+  model: "nvidia/llama-3.1-nemotron-nano-vl-8b-v1"
+
+# LLM (Large Language Model) Configuration  
+llm:
+  url: "https://integrate.api.nvidia.com/v1"
+  model: "nvidia/nvidia-nemotron-nano-9b-v2"
+
+# Flux (Image Generation) Configuration
+flux:
+  url: "placeholder"
