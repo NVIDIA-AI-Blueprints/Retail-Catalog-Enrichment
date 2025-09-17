@@ -9,9 +9,10 @@ This document provides guidelines and instructions for AI assistants working on 
 **Purpose:** A system for enriching product catalog data with additional metadata, descriptions, and categorization.
 
 ### Current Status
-- ⚠️ **Early Development Phase** - Project is in initial setup stage
-- Core architecture and technology stack are being established
-- Documentation and development practices are being defined
+- ✅ **Multi-Language Support** - Locale-based product descriptions (FR-6 completed)
+- ✅ **VLM Content Extraction** - Enhanced with regional localization (FR-2 completed)
+- ✅ **2D Image Variation Generation** - Working with prompt planning (FR-3 completed)
+- ⚠️ **In Development** - 3D Asset Generation and Video Generation in progress
 
 ### Key Goals
 - Enhance product catalog data with AI-powered enrichment
@@ -53,22 +54,41 @@ uvicorn --app-dir src backend.main:app --host 0.0.0.0 --port 8000 --reload
 - GET `/` → plaintext greeting
 - GET `/health` → `{ "status": "ok" }`
 - POST `/vlm/describe`
-  - Request: `multipart/form-data` with field `image` (file)
+  - Request: `multipart/form-data` with fields:
+    - `image` (file): Product image
+    - `locale` (string, optional): Regional locale code (default: "en-US")
   - Response: JSON with fields:
-    - `title`: string
-    - `description`: string
+    - `title`: string (localized)
+    - `description`: string (localized)
     - `categories`: array of strings from the allowed set only
+    - `locale`: string (echoed back)
 
-Allowed categories: `["clothing", "kitchen", "sports", "toys", "electronics"]` (fallback to `["uncategorized"]` if none apply)
+Allowed categories: `["clothing", "kitchen", "sports", "toys", "electronics", "furniture", "office"]` (fallback to `["uncategorized"]` if none apply)
+
+Supported locales: `en-US`, `en-GB`, `en-AU`, `en-CA`, `es-ES`, `es-MX`, `es-AR`, `es-CO`, `fr-FR`, `fr-CA`
 
 #### VLM Prompt (summary)
-- Instructs the model to generate a persuasive product `title` and `description` and classify into the allowed `categories` list only.
+- Instructs the model to generate a persuasive product `title` and `description` in the specified regional locale and classify into the allowed `categories` list only.
+- Includes regional context and terminology guidance (e.g., "ordenador" vs "computadora" for Spanish regions).
 - Strictly requests output as a single valid JSON object with `title`, `description`, `categories`.
 
-#### Example
+#### Examples
 ```bash
+# Default (American English)
 curl -X POST \
   -F "image=@path/to/your_image.jpg;type=image/jpeg" \
+  http://localhost:8000/vlm/describe
+
+# Spain Spanish
+curl -X POST \
+  -F "image=@path/to/your_image.jpg;type=image/jpeg" \
+  -F "locale=es-ES" \
+  http://localhost:8000/vlm/describe
+
+# British English
+curl -X POST \
+  -F "image=@path/to/your_image.jpg;type=image/jpeg" \
+  -F "locale=en-GB" \
   http://localhost:8000/vlm/describe
 ```
 

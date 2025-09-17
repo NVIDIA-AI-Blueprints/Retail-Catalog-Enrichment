@@ -19,10 +19,23 @@ load_dotenv()
 
 logger = logging.getLogger("catalog_enrichment.graph")
 
+LOCALE_CONFIG = {
+    "en-US": {"language": "English", "region": "United States", "country": "United States", "context": "American English with US terminology (e.g., 'cell phone', 'sweater')"},
+    "en-GB": {"language": "English", "region": "United Kingdom", "country": "United Kingdom", "context": "British English with UK terminology (e.g., 'mobile phone', 'jumper')"},
+    "en-AU": {"language": "English", "region": "Australia", "country": "Australia", "context": "Australian English with local terminology"},
+    "en-CA": {"language": "English", "region": "Canada", "country": "Canada", "context": "Canadian English"},
+    "es-ES": {"language": "Spanish", "region": "Spain", "country": "Spain", "context": "Peninsular Spanish with Spain-specific terminology (e.g., 'ordenador' for computer)"},
+    "es-MX": {"language": "Spanish", "region": "Mexico", "country": "Mexico", "context": "Mexican Spanish with Latin American terminology (e.g., 'computadora' for computer)"},
+    "es-AR": {"language": "Spanish", "region": "Argentina", "country": "Argentina", "context": "Argentinian Spanish with local expressions"},
+    "es-CO": {"language": "Spanish", "region": "Colombia", "country": "Colombia", "context": "Colombian Spanish"},
+    "fr-FR": {"language": "French", "region": "France", "country": "France", "context": "Metropolitan French"},
+    "fr-CA": {"language": "French", "region": "Canada", "country": "Canada", "context": "Quebec French with Canadian terminology"}
+}
 
 class VLMState(TypedDict, total=False):
     image_bytes: bytes
     content_type: str
+    locale: str
     title: str
     description: str
     categories: List[str]
@@ -34,34 +47,44 @@ class VLMState(TypedDict, total=False):
     variation_plan: Dict[str, Any]
     flux_prompt: str
 
-
-def _call_vlm(image_bytes: bytes, content_type: str) -> Dict[str, Any]:
-    logger.info("Calling VLM: bytes=%d, content_type=%s", len(image_bytes or b""), content_type)
+def _call_vlm(image_bytes: bytes, content_type: str, locale: str = "en-US") -> Dict[str, Any]:
+    logger.info("Calling VLM: bytes=%d, content_type=%s, locale=%s", len(image_bytes or b""), content_type, locale)
     
     api_key = os.getenv("NVIDIA_API_KEY")
     if not api_key:
         raise RuntimeError("NVIDIA_API_KEY is not set")
 
+    info = LOCALE_CONFIG.get(locale, {"language": "English", "region": "United States", "country": "United States", "context": "American English"})
+    
     vlm_config = get_config().get_vlm_config()
     client = OpenAI(base_url=vlm_config['url'], api_key=api_key)
 
-    completion = client.chat.completions.create(
-        model=vlm_config['model'],
-        messages=[{"role": "user", "content": [
-            {"type": "image_url", "image_url": {"url": f"data:{content_type};base64,{base64.b64encode(image_bytes).decode()}"}},
-            {"type": "text", "text": """You are an image analysis assistant for a retail e-commerce site. Be descriptive and persuasive to help promote the product in the image. Create a compelling title and a concise, informative description.
+    prompt_text = f"""You are an image analysis assistant for a retail e-commerce site. Be descriptive and persuasive to help promote the product in the image.
+
+Create a compelling title and description in {info['language']} as spoken in {info['region']}. {info['context']}.
 
 Classify the product into one or more categories from this fixed allowed set only (do not invent new categories):
 ["clothing", "kitchen", "sports", "toys", "electronics", "furniture", "office"]
 If none apply, use ["uncategorized"].
 
+IMPORTANT: 
+- Generate the title and description using regional {info['language']} terminology appropriate for {info['region']}
+- Keep the categories in English as specified above
+- Use local cultural context and preferred terminology
+
 Return ONLY valid JSON with the following structure:
-{
-  "title": "<short, clear product name>",
-  "description": "<brief but informative product description>",
-  "categories": ["<one or more from the allowed set>"]
-}
-No extra text or commentary; only return the JSON object."""}
+{{
+  "title": "<short, clear product name in regional {info['language']}>",
+  "description": "<brief but informative product description in regional {info['language']}>",
+  "categories": ["<one or more from the allowed English set>"]
+}}
+No extra text or commentary; only return the JSON object."""
+
+    completion = client.chat.completions.create(
+        model=vlm_config['model'],
+        messages=[{"role": "user", "content": [
+            {"type": "image_url", "image_url": {"url": f"data:{content_type};base64,{base64.b64encode(image_bytes).decode()}"}},
+            {"type": "text", "text": prompt_text}
         ]}],
         temperature=0.9, top_p=0.9, max_tokens=1024, stream=True
     )
@@ -75,26 +98,31 @@ No extra text or commentary; only return the JSON object."""}
     except Exception:
         return {"title": "", "description": text, "categories": ["uncategorized"]}
 
-
-def _call_planner_llm(title: str, description: str, categories: List[str]) -> Dict[str, Any]:
-    logger.info("Calling planner LLM: title_len=%d desc_len=%d cats=%s", len(title or ""), len(description or ""), categories)
+def _call_planner_llm(title: str, description: str, categories: List[str], locale: str = "en-US") -> Dict[str, Any]:
+    logger.info("Calling planner LLM: title_len=%d desc_len=%d cats=%s locale=%s", len(title or ""), len(description or ""), categories, locale)
 
     api_key = os.getenv("NVIDIA_API_KEY")
     if not api_key:
         raise RuntimeError("NVIDIA_API_KEY is not set")
 
+    country = LOCALE_CONFIG.get(locale, {"country": "United States"})["country"]
+    
     llm_config = get_config().get_llm_config()
     client = OpenAI(base_url=llm_config['url'], api_key=api_key)
 
     completion = client.chat.completions.create(
         model=llm_config['model'],
         messages=[
-            {"role": "system", "content": "/no_think You are a product image variation planner. Output ONLY valid JSON - no markdown formatting, no code blocks, no backticks. "
-             "Preserve the subject identity. Change ONLY background, camera angle, lighting, and mood according to the title and description. Be creative and contextual - make backgrounds that tell a story about how/where this product would be used!"
+            {"role": "system", "content": "/no_think You are a product image variation planner with cultural awareness. Output ONLY valid JSON - no markdown formatting, no code blocks, no backticks. "
+             "Preserve the subject identity. Change ONLY background, camera angle, lighting, and mood according to the title, description, and target locale. "
+             "Create backgrounds that reflect the cultural aesthetic and lifestyle of the target region!"
              "Adhere to the JSON schema with fields: preserve_subject, background_style, camera_angle, lighting, color_palette, negatives, cfg_scale, steps, variants."},
             {"role": "user", "content": f"""TITLE: {title}
 DESCRIPTION: {description}
 CATEGORIES: {categories}
+TARGET LOCALE: {locale}
+
+Create a background style that authentically reflects how this product would be used in {country}. Use your knowledge of local architecture, interior design, lifestyle, and cultural preferences for that country.
 
 Produce ONLY a JSON object with no markdown formatting or code blocks. Example form:
 {{"preserve_subject": "white ceramic mug with handle", 
@@ -105,7 +133,7 @@ Produce ONLY a JSON object with no markdown formatting or code blocks. Example f
 "negatives": ["do not alter the mug", "no text, no logos, no duplicates", "no changes to color, shape, handle"], 
 "cfg_scale": 3.5, "steps": 30, "variants": 1}}
 
-CRITICAL: Return the raw JSON object only - no ```json``` or ``` blocks. Keep the subject unchanged. Do not add extra keys or commentary. Use integers for steps/variants; use a float for cfg_scale between 2.5 and 4.5."""}
+CRITICAL: Return the raw JSON object only - no ```json``` or ``` blocks. Keep the subject unchanged. Do not add extra keys or commentary. Use integers for steps/variants; use a float for cfg_scale between 2.5 and 4.5. Make the background culturally appropriate for {country}."""}
         ],
         temperature=0.6, top_p=1, max_tokens=1024, stream=True
     )
@@ -113,7 +141,6 @@ CRITICAL: Return the raw JSON object only - no ```json``` or ``` blocks. Keep th
     text = "".join(chunk.choices[0].delta.content for chunk in completion if chunk.choices[0].delta and chunk.choices[0].delta.content).strip()
     logger.info("Planner LLM response received: %s", text)
     
-    # Extract JSON from markdown code blocks if present
     json_text = text
     if "```json" in text:
         try:
@@ -125,7 +152,6 @@ CRITICAL: Return the raw JSON object only - no ```json``` or ``` blocks. Keep th
         except Exception as e:
             logger.warning("Failed to extract JSON from markdown: %s", e)
     elif "```" in text:
-        # Handle generic code blocks
         try:
             start = text.find("```") + len("```")
             end = text.find("```", start)
@@ -152,7 +178,6 @@ CRITICAL: Return the raw JSON object only - no ```json``` or ``` blocks. Keep th
         "negatives": ["do not alter the subject", "no text, no logos, no duplicates"],
         "cfg_scale": 3.2, "steps": 30, "variants": 1
     }
-
 
 def _render_flux_prompt(plan: Dict[str, Any]) -> str:
     preserve = plan.get("preserve_subject", "the product")
@@ -220,18 +245,17 @@ def _extract_base64_image_from_flux_response(response_body: Dict[str, Any]) -> O
                         return val
     return None
 
-
 def planner_node(state: VLMState) -> VLMState:
     logger.info("Planner node start")
     try:
-        plan = _call_planner_llm(state.get("title", "").strip(), state.get("description", "").strip(), state.get("categories", []))
+        locale = state.get("locale", "en-US")
+        plan = _call_planner_llm(state.get("title", "").strip(), state.get("description", "").strip(), state.get("categories", []), locale)
         prompt = _render_flux_prompt(plan)
-        logger.info("Planner node success: prompt_len=%d", len(prompt))
+        logger.info("Planner node success: prompt_len=%d locale=%s", len(prompt), locale)
         return {**state, "variation_plan": plan, "flux_prompt": prompt}
     except Exception as exc:
         logger.exception("Planner node exception: %s", exc)
         return {"error": str(exc), **state}
-
 
 def flux_node(state: VLMState) -> VLMState:
     logger.info("FLUX node start")
@@ -259,7 +283,6 @@ def flux_node(state: VLMState) -> VLMState:
         logger.exception("FLUX node exception: %s", exc)
         return {"error": str(exc), **state}
 
-
 def persist_node(state: VLMState) -> VLMState:
     logger.info("Persist node start")
     image_b64 = state.get("generated_image_b64")
@@ -280,7 +303,8 @@ def persist_node(state: VLMState) -> VLMState:
         with open(metadata_path, "w", encoding="utf-8") as f:
             json.dump({
                 "id": artifact_id, "title": state.get("title", ""), "description": state.get("description", ""),
-                "categories": state.get("categories", []), "created_at": datetime.now(timezone.utc).isoformat(),
+                "categories": state.get("categories", []), "locale": state.get("locale", "en-US"),
+                "created_at": datetime.now(timezone.utc).isoformat(),
                 "image_path": image_path, "source_content_type": state.get("content_type")
             }, f, ensure_ascii=False, indent=2)
 
@@ -290,24 +314,23 @@ def persist_node(state: VLMState) -> VLMState:
         logger.exception("Persist node exception: %s", exc)
         return {"error": str(exc), **state}
 
-
 def vlm_node(state: VLMState) -> VLMState:
     logger.info("VLM node start")
     image_bytes = state.get("image_bytes")
     content_type = state.get("content_type", "image/png")
+    locale = state.get("locale", "en-US")
 
     if not image_bytes:
         return {"error": "image_bytes missing or empty", **state}
     if not isinstance(content_type, str) or not content_type.startswith("image/"):
         return {"error": "content_type must be an image/* MIME type", **state}
 
-    result = _call_vlm(image_bytes, content_type)
-    logger.info("VLM node outputs: title_len=%d desc_len=%d categories=%s",
-                len(result.get("title", "")), len(result.get("description", "")), result.get("categories", []))
+    result = _call_vlm(image_bytes, content_type, locale)
+    logger.info("VLM node outputs: title_len=%d desc_len=%d categories=%s locale=%s",
+                len(result.get("title", "")), len(result.get("description", "")), result.get("categories", []), locale)
     
     return {**state, "title": result.get("title", ""), "description": result.get("description", ""), 
             "categories": result.get("categories", ["uncategorized"])}
-
 
 def create_compiled_graph():
     graph = StateGraph(VLMState)
