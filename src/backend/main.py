@@ -2,17 +2,14 @@ from contextlib import asynccontextmanager
 import logging
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, UploadFile, File
+from fastapi import FastAPI, UploadFile, File, Form
 from fastapi.responses import JSONResponse, PlainTextResponse
 from backend.graph import create_compiled_graph
 
 load_dotenv()
 
-
 logger = logging.getLogger("catalog_enrichment.api")
-
 compiled_graph = None
-
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -28,7 +25,6 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 
-
 @app.get("/")
 async def homepage() -> PlainTextResponse:
     logger.info("GET /")
@@ -38,7 +34,6 @@ async def homepage() -> PlainTextResponse:
 async def health() -> JSONResponse:
     logger.info("GET /health")
     return JSONResponse({"status": "ok"})
-
 
 async def _validate_image(image: UploadFile, endpoint: str):
     logger.info(f"POST {endpoint} filename={getattr(image, 'filename', None)} content_type={getattr(image, 'content_type', None)}")
@@ -55,10 +50,18 @@ async def _validate_image(image: UploadFile, endpoint: str):
     
     return (image_bytes, content_type), None
 
-
 @app.post("/vlm/describe")
-async def vlm_describe(image: UploadFile = File(...)) -> JSONResponse:
+async def vlm_describe(image: UploadFile = File(...), locale: str = Form("en-US")) -> JSONResponse:
     try:
+        valid_locales = {
+            "en-US", "en-GB", "en-AU", "en-CA",
+            "es-ES", "es-MX", "es-AR", "es-CO",
+            "fr-FR", "fr-CA"
+        }
+        if locale not in valid_locales:
+            logger.error(f"/vlm/describe error: invalid locale={locale}, valid options: {valid_locales}")
+            return JSONResponse({"detail": f"Invalid locale. Supported locales: {sorted(valid_locales)}"}, status_code=400)
+
         validation_result, error_response = await _validate_image(image, "/vlm/describe")
         if error_response:
             return error_response
@@ -67,39 +70,8 @@ async def vlm_describe(image: UploadFile = File(...)) -> JSONResponse:
         if compiled_graph is None:
             return JSONResponse({"detail": "Graph is not initialized"}, status_code=500)
 
-        logger.info("Invoking graph: VLM -> Planner -> FLUX -> Persist")
-        result = compiled_graph.invoke({"image_bytes": image_bytes, "content_type": content_type})
-        logger.info("Graph invocation complete")
-
-        if result.get("error"):
-            return JSONResponse({"detail": result.get("error")}, status_code=400)
-
-        payload = {
-            "title": result.get("title", ""),
-            "description": result.get("description", ""),
-            "categories": result.get("categories", ["uncategorized"])
-        }
-        logger.info("/vlm/describe success: title_len=%d desc_len=%d cats=%s",
-                   len(payload["title"]), len(payload["description"]), payload["categories"])
-        return JSONResponse(payload)
-
-    except Exception as exc:
-        logger.exception("/vlm/describe exception: %s", exc)
-        return JSONResponse({"detail": str(exc)}, status_code=500)
-
-@app.post("/image/variation")
-async def image_variation(image: UploadFile = File(...)) -> JSONResponse:
-    try:
-        validation_result, error_response = await _validate_image(image, "/image/variation")
-        if error_response:
-            return error_response
-        image_bytes, content_type = validation_result
-
-        if compiled_graph is None:
-            return JSONResponse({"detail": "Graph is not initialized"}, status_code=500)
-
-        logger.info("Invoking graph: VLM -> Planner -> FLUX -> Persist")
-        result = compiled_graph.invoke({"image_bytes": image_bytes, "content_type": content_type})
+        logger.info("Invoking graph: VLM -> Planner -> FLUX -> Persist with locale=%s", locale)
+        result = compiled_graph.invoke({"image_bytes": image_bytes, "content_type": content_type, "locale": locale})
         logger.info("Graph invocation complete")
 
         if result.get("error"):
@@ -109,15 +81,12 @@ async def image_variation(image: UploadFile = File(...)) -> JSONResponse:
             "title": result.get("title", ""),
             "description": result.get("description", ""),
             "categories": result.get("categories", ["uncategorized"]),
-            "artifact_id": result.get("artifact_id"),
-            "image_path": result.get("image_path"),
-            "metadata_path": result.get("metadata_path"),
-            "variation_plan": result.get("variation_plan")
+            "locale": locale
         }
-        logger.info("/image/variation success: artifact_id=%s", payload.get("artifact_id"))
+        logger.info("/vlm/describe success: title_len=%d desc_len=%d cats=%s locale=%s",
+                   len(payload["title"]), len(payload["description"]), payload["categories"], locale)
         return JSONResponse(payload)
 
     except Exception as exc:
-        logger.exception("/image/variation exception: %s", exc)
+        logger.exception("/vlm/describe exception: %s", exc)
         return JSONResponse({"detail": str(exc)}, status_code=500)
-
