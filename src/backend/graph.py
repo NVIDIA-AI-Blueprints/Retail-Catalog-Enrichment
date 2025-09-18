@@ -59,23 +59,28 @@ def _call_vlm(image_bytes: bytes, content_type: str, locale: str = "en-US") -> D
     vlm_config = get_config().get_vlm_config()
     client = OpenAI(base_url=vlm_config['url'], api_key=api_key)
 
-    prompt_text = f"""You are an image analysis assistant for a retail e-commerce site. Be descriptive and persuasive to help promote the product in the image.
+    prompt_text = f"""You are a product catalog copywriter for an e-commerce platform. Create compelling catalog content for the physical product shown in the image.
 
-Create a compelling title and description in {info['language']} as spoken in {info['region']}. {info['context']}.
+Focus on the actual product visible in the image - describe the item itself, its materials, design, and features. Do not focus on contents, intended use scenarios, or lifestyle experiences.
 
-Classify the product into one or more categories from this fixed allowed set only (do not invent new categories):
+Create an engaging product title and description in {info['language']} as spoken in {info['region']}. {info['context']}.
+
+Classify the product into one or more categories from this fixed allowed set only:
 ["clothing", "kitchen", "sports", "toys", "electronics", "furniture", "office"]
 If none apply, use ["uncategorized"].
 
-IMPORTANT: 
-- Generate the title and description using regional {info['language']} terminology appropriate for {info['region']}
-- Keep the categories in English as specified above
-- Use local cultural context and preferred terminology
+IMPORTANT GUIDELINES:
+- Write compelling catalog copy that sells the physical product itself
+- Highlight the product's materials, design, construction, and notable features
+- Use persuasive but accurate language focused on the tangible item
+- Avoid analytical observations like "appears to be" or "seems to be"
+- Generate product-focused titles and descriptions using regional {info['language']} terminology
+- Keep categories in English as specified above
 
 Return ONLY valid JSON with the following structure:
 {{
-  "title": "<short, clear product name in regional {info['language']}>",
-  "description": "<brief but informative product description in regional {info['language']}>",
+  "title": "<compelling product name describing the physical item in regional {info['language']}>",
+  "description": "<persuasive catalog description highlighting the product's materials, design, and features in regional {info['language']}>",
   "categories": ["<one or more from the allowed English set>"]
 }}
 No extra text or commentary; only return the JSON object."""
@@ -187,9 +192,9 @@ def _render_flux_prompt(plan: Dict[str, Any]) -> str:
     negatives = plan.get("negatives", [])
     neg_text = "; ".join(negatives) if isinstance(negatives, list) else str(negatives)
     
-    return f"Keep {preserve} unchanged. Replace only the background with {background}. " \
+    return f"Keep {preserve} unchanged. Replace only the background with {background}. Make it hyperrealistic, ideal for an e-commerce product image. You may include people in the backround with blurring or occlusion. " \
            f"Use {lighting} lighting and {camera} camera angle. " \
-           f"Maintain subject color, size, orientation, and material. " \
+           f"Maintain subject color, orientation, and material. Scale the product to natural, proportional size for the environment. " \
            f"{('Avoid: ' + neg_text) if neg_text else ''}".strip()
 
 
