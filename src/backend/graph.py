@@ -39,6 +39,7 @@ class VLMState(TypedDict, total=False):
     title: str
     description: str
     categories: List[str]
+    tags: List[str]
     error: Optional[str]
     generated_image_b64: str
     image_path: str
@@ -59,7 +60,7 @@ def _call_vlm(image_bytes: bytes, content_type: str, locale: str = "en-US") -> D
     vlm_config = get_config().get_vlm_config()
     client = OpenAI(base_url=vlm_config['url'], api_key=api_key)
 
-    prompt_text = f"""You are a product catalog copywriter for an e-commerce platform. Create compelling catalog content for the physical product shown in the image.
+    prompt_text = f"""You are a product catalog copywriter for an e-commerce platform. Create compelling catalog content for the physical product shown in the image. Be verbose and detailed.
 
 Focus on the actual product visible in the image - describe the item itself, its materials, design, and features. Do not focus on contents, intended use scenarios, or lifestyle experiences.
 
@@ -69,19 +70,23 @@ Classify the product into one or more categories from this fixed allowed set onl
 ["clothing", "kitchen", "sports", "toys", "electronics", "furniture", "office"]
 If none apply, use ["uncategorized"].
 
+Generate exactly 10 useful product tags that describe the item's characteristics, materials, style, features, or type. These should be short descriptive phrases (2-4 words each) that would help customers find this product. Use English for the tags.
+
 IMPORTANT GUIDELINES:
 - Write compelling catalog copy that sells the physical product itself
 - Highlight the product's materials, design, construction, and notable features
 - Use persuasive but accurate language focused on the tangible item
 - Avoid analytical observations like "appears to be" or "seems to be"
 - Generate product-focused titles and descriptions using regional {info['language']} terminology
-- Keep categories in English as specified above
+- Keep categories and tags in English as specified above
+- Make tags specific and useful for search/filtering
 
 Return ONLY valid JSON with the following structure:
 {{
   "title": "<compelling product name describing the physical item in regional {info['language']}>",
   "description": "<persuasive catalog description highlighting the product's materials, design, and features in regional {info['language']}>",
-  "categories": ["<one or more from the allowed English set>"]
+  "categories": ["<one or more from the allowed English set>"],
+  "tags": ["<exactly 10 descriptive English tags>"]
 }}
 No extra text or commentary; only return the JSON object."""
 
@@ -99,9 +104,9 @@ No extra text or commentary; only return the JSON object."""
 
     try:
         parsed = json.loads(text)
-        return parsed if isinstance(parsed, dict) else {"title": "", "description": text, "categories": ["uncategorized"]}
+        return parsed if isinstance(parsed, dict) else {"title": "", "description": text, "categories": ["uncategorized"], "tags": []}
     except Exception:
-        return {"title": "", "description": text, "categories": ["uncategorized"]}
+        return {"title": "", "description": text, "categories": ["uncategorized"], "tags": []}
 
 def _call_planner_llm(title: str, description: str, categories: List[str], locale: str = "en-US") -> Dict[str, Any]:
     logger.info("Calling planner LLM: title_len=%d desc_len=%d cats=%s locale=%s", len(title or ""), len(description or ""), categories, locale)
@@ -308,7 +313,7 @@ def persist_node(state: VLMState) -> VLMState:
         with open(metadata_path, "w", encoding="utf-8") as f:
             json.dump({
                 "id": artifact_id, "title": state.get("title", ""), "description": state.get("description", ""),
-                "categories": state.get("categories", []), "locale": state.get("locale", "en-US"),
+                "categories": state.get("categories", []), "tags": state.get("tags", []), "locale": state.get("locale", "en-US"),
                 "created_at": datetime.now(timezone.utc).isoformat(),
                 "image_path": image_path, "source_content_type": state.get("content_type")
             }, f, ensure_ascii=False, indent=2)
@@ -331,11 +336,11 @@ def vlm_node(state: VLMState) -> VLMState:
         return {"error": "content_type must be an image/* MIME type", **state}
 
     result = _call_vlm(image_bytes, content_type, locale)
-    logger.info("VLM node outputs: title_len=%d desc_len=%d categories=%s locale=%s",
-                len(result.get("title", "")), len(result.get("description", "")), result.get("categories", []), locale)
+    logger.info("VLM node outputs: title_len=%d desc_len=%d categories=%s tags_count=%d locale=%s",
+                len(result.get("title", "")), len(result.get("description", "")), result.get("categories", []), len(result.get("tags", [])), locale)
     
     return {**state, "title": result.get("title", ""), "description": result.get("description", ""), 
-            "categories": result.get("categories", ["uncategorized"])}
+            "categories": result.get("categories", ["uncategorized"]), "tags": result.get("tags", [])}
 
 def create_compiled_graph():
     graph = StateGraph(VLMState)
