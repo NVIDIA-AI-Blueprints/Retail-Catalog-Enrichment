@@ -81,10 +81,11 @@ async def vlm_describe(image: UploadFile = File(...), locale: str = Form("en-US"
             "title": result.get("title", ""),
             "description": result.get("description", ""),
             "categories": result.get("categories", ["uncategorized"]),
+            "colors": result.get("colors", []),
             "locale": locale
         }
-        logger.info("/vlm/describe success: title_len=%d desc_len=%d cats=%s locale=%s",
-                   len(payload["title"]), len(payload["description"]), payload["categories"], locale)
+        logger.info("/vlm/describe success: title_len=%d desc_len=%d cats=%s colors=%s locale=%s",
+                   len(payload["title"]), len(payload["description"]), payload["categories"], payload["colors"], locale)
         return JSONResponse(payload)
 
     except Exception as exc:

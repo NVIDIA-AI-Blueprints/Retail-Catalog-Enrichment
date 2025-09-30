@@ -40,6 +40,10 @@ class VLMState(TypedDict, total=False):
     description: str
     categories: List[str]
     tags: List[str]
+<<<<<<< HEAD
+    colors: List[str]
+=======
+>>>>>>> c4924ee95919efb74910850a9950dd64cd15612c
     error: Optional[str]
     generated_image_b64: str
     image_path: str
@@ -67,11 +71,16 @@ Focus on the actual product visible in the image - describe the item itself, its
 Create an engaging product title and description in {info['language']} as spoken in {info['region']}. {info['context']}.
 
 Classify the product into one or more categories from this fixed allowed set only:
-["clothing", "kitchen", "sports", "toys", "electronics", "furniture", "office"]
+["clothing", "kitchen", "sports", "toys", "electronics", "furniture", "office", "shoes"]
 If none apply, use ["uncategorized"].
 
 Generate exactly 10 useful product tags that describe the item's characteristics, materials, style, features, or type. These should be short descriptive phrases (2-4 words each) that would help customers find this product. Use English for the tags.
 
+<<<<<<< HEAD
+Extract up to 3 primary colors visible in the product. Choose the most prominent and distinctive colors that would help customers identify or search for the product. Use simple, standard color names in English (e.g., "red", "blue", "black", "white", "brown", "grey", "green", "yellow", "orange", "purple", "pink", "navy", "beige", "cream", "silver", "gold"). If fewer than 3 distinct colors are clearly visible, provide only the colors you can confidently identify.
+
+=======
+>>>>>>> c4924ee95919efb74910850a9950dd64cd15612c
 IMPORTANT GUIDELINES:
 - Write compelling catalog copy that sells the physical product itself
 - Highlight the product's materials, design, construction, and notable features
@@ -86,7 +95,12 @@ Return ONLY valid JSON with the following structure:
   "title": "<compelling product name describing the physical item in regional {info['language']}>",
   "description": "<persuasive catalog description highlighting the product's materials, design, and features in regional {info['language']}>",
   "categories": ["<one or more from the allowed English set>"],
+<<<<<<< HEAD
+  "tags": ["<exactly 10 descriptive English tags>"],
+  "colors": ["<up to 3 primary colors in simple English color names>"]
+=======
   "tags": ["<exactly 10 descriptive English tags>"]
+>>>>>>> c4924ee95919efb74910850a9950dd64cd15612c
 }}
 No extra text or commentary; only return the JSON object."""
 
@@ -104,9 +118,15 @@ No extra text or commentary; only return the JSON object."""
 
     try:
         parsed = json.loads(text)
+<<<<<<< HEAD
+        return parsed if isinstance(parsed, dict) else {"title": "", "description": text, "categories": ["uncategorized"], "tags": [], "colors": []}
+    except Exception:
+        return {"title": "", "description": text, "categories": ["uncategorized"], "tags": [], "colors": []}
+=======
         return parsed if isinstance(parsed, dict) else {"title": "", "description": text, "categories": ["uncategorized"], "tags": []}
     except Exception:
         return {"title": "", "description": text, "categories": ["uncategorized"], "tags": []}
+>>>>>>> c4924ee95919efb74910850a9950dd64cd15612c
 
 def _call_planner_llm(title: str, description: str, categories: List[str], locale: str = "en-US") -> Dict[str, Any]:
     logger.info("Calling planner LLM: title_len=%d desc_len=%d cats=%s locale=%s", len(title or ""), len(description or ""), categories, locale)
@@ -313,7 +333,11 @@ def persist_node(state: VLMState) -> VLMState:
         with open(metadata_path, "w", encoding="utf-8") as f:
             json.dump({
                 "id": artifact_id, "title": state.get("title", ""), "description": state.get("description", ""),
+<<<<<<< HEAD
+                "categories": state.get("categories", []), "tags": state.get("tags", []), "colors": state.get("colors", []), "locale": state.get("locale", "en-US"),
+=======
                 "categories": state.get("categories", []), "tags": state.get("tags", []), "locale": state.get("locale", "en-US"),
+>>>>>>> c4924ee95919efb74910850a9950dd64cd15612c
                 "created_at": datetime.now(timezone.utc).isoformat(),
                 "image_path": image_path, "source_content_type": state.get("content_type")
             }, f, ensure_ascii=False, indent=2)
@@ -336,11 +360,19 @@ def vlm_node(state: VLMState) -> VLMState:
         return {"error": "content_type must be an image/* MIME type", **state}
 
     result = _call_vlm(image_bytes, content_type, locale)
+<<<<<<< HEAD
+    logger.info("VLM node outputs: title_len=%d desc_len=%d categories=%s tags_count=%d colors_count=%d locale=%s",
+                len(result.get("title", "")), len(result.get("description", "")), result.get("categories", []), len(result.get("tags", [])), len(result.get("colors", [])), locale)
+    
+    return {**state, "title": result.get("title", ""), "description": result.get("description", ""), 
+            "categories": result.get("categories", ["uncategorized"]), "tags": result.get("tags", []), "colors": result.get("colors", [])}
+=======
     logger.info("VLM node outputs: title_len=%d desc_len=%d categories=%s tags_count=%d locale=%s",
                 len(result.get("title", "")), len(result.get("description", "")), result.get("categories", []), len(result.get("tags", [])), locale)
     
     return {**state, "title": result.get("title", ""), "description": result.get("description", ""), 
             "categories": result.get("categories", ["uncategorized"]), "tags": result.get("tags", [])}
+>>>>>>> c4924ee95919efb74910850a9950dd64cd15612c
 
 def create_compiled_graph():
     graph = StateGraph(VLMState)

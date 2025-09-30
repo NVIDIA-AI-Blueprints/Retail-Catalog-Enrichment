@@ -61,6 +61,7 @@ uvicorn --app-dir src backend.main:app --host 0.0.0.0 --port 8000 --reload
     - `title`: string (localized)
     - `description`: string (localized)
     - `categories`: array of strings from the allowed set only
+    - `colors`: array of up to 3 primary color names (simple English color names)
     - `locale`: string (echoed back)
 
 Allowed categories: `["clothing", "kitchen", "sports", "toys", "electronics", "furniture", "office"]` (fallback to `["uncategorized"]` if none apply)
@@ -69,8 +70,9 @@ Supported locales: `en-US`, `en-GB`, `en-AU`, `en-CA`, `es-ES`, `es-MX`, `es-AR`
 
 #### VLM Prompt (summary)
 - Instructs the model to generate a persuasive product `title` and `description` in the specified regional locale and classify into the allowed `categories` list only.
+- Extracts up to 3 primary `colors` from the product using simple English color names (e.g., "red", "blue", "black", "white", "grey", etc.).
 - Includes regional context and terminology guidance (e.g., "ordenador" vs "computadora" for Spanish regions).
-- Strictly requests output as a single valid JSON object with `title`, `description`, `categories`.
+- Strictly requests output as a single valid JSON object with `title`, `description`, `categories`, `colors`.
 
 #### Examples
 ```bash
