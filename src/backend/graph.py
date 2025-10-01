@@ -32,10 +32,23 @@ LOCALE_CONFIG = {
     "fr-CA": {"language": "French", "region": "Canada", "country": "Canada", "context": "Quebec French with Canadian terminology"}
 }
 
+# Allowed product categories for classification
+PRODUCT_CATEGORIES = [
+    "clothing",
+    "kitchen", 
+    "accessories",
+    "toys",
+    "electronics",
+    "furniture",
+    "office",
+    "shoes"
+]
+
 class VLMState(TypedDict, total=False):
     image_bytes: bytes
     content_type: str
     locale: str
+    product_data: Optional[Dict[str, Any]]
     title: str
     description: str
     categories: List[str]
@@ -48,6 +61,115 @@ class VLMState(TypedDict, total=False):
     artifact_id: str
     variation_plan: Dict[str, Any]
     flux_prompt: str
+    enhanced_product: Dict[str, Any]
+
+def _call_nemotron_merge(vlm_output: Dict[str, Any], product_data: Dict[str, Any], locale: str = "en-US") -> Dict[str, Any]:
+    """Intelligently merge VLM visual analysis with existing product data using Nemotron LLM."""
+    logger.info("Calling Nemotron merge: vlm_keys=%s, product_keys=%s, locale=%s", 
+                list(vlm_output.keys()), list(product_data.keys()), locale)
+    
+    if not (api_key := os.getenv("NVIDIA_API_KEY")):
+        raise RuntimeError("NVIDIA_API_KEY is not set")
+
+    info = LOCALE_CONFIG.get(locale, {"language": "English", "region": "United States", "country": "United States", "context": "American English"})
+    llm_config = get_config().get_llm_config()
+    client = OpenAI(base_url=llm_config['url'], api_key=api_key)
+
+    vlm_json = json.dumps(vlm_output, indent=2, ensure_ascii=False)
+    product_json = json.dumps(product_data, indent=2, ensure_ascii=False)
+
+    prompt = f"""You are a product data merging specialist for an e-commerce platform. Your task is to intelligently merge visual analysis from a VLM with existing product data.
+
+VISUAL ANALYSIS (from Vision Model - direct observation of the product image):
+{vlm_json}
+
+EXISTING PRODUCT DATA (may contain errors or be incomplete):
+{product_json}
+
+ALLOWED CATEGORIES (must use one or more from this list):
+{json.dumps(PRODUCT_CATEGORIES)}
+
+MERGING STRATEGY:
+
+1. **Trust Priority**:
+   - TRUST visual analysis for: colors, materials, design details, visual attributes
+   - PRESERVE existing data for: price, SKU, specifications, dimensions (unless visually contradicted)
+   - RESOLVE conflicts by prioritizing visual evidence when it contradicts existing data
+
+2. **Title** (in {info['language']} for {info['region']}):
+   - Intelligently merge both titles by:
+     * Preserving brand terms, material descriptors, and unique identifiers from existing title
+     * Incorporating visual details and attributes from VLM's title
+     * Creating a natural, cohesive result that's richer than either source alone
+   - If existing title is generic/poor and VLM title is comprehensive, prefer VLM
+   - If existing title has valuable brand/material terms, integrate them with VLM insights
+   - Apply regional terminology: {info['context']}
+
+3. **Description** (in {info['language']} for {info['region']}):
+   - Weave both sources into a unified, flowing narrative
+   - Preserve brand voice and marketing language from existing description
+   - Enrich with VLM's visual observations (materials, design details, features)
+   - Avoid simple concatenation - integrate insights naturally
+   - Use regional language and terminology
+
+4. **Categories** (MUST be an array):
+   - Validate existing categories against VLM observation
+   - Use VLM's categories if existing is incorrect or ["uncategorized"]
+   - MUST use categories from the allowed list above
+   - Always return as an array: "categories": ["category1", "category2"]
+   - Keep in English
+
+5. **Attributes**:
+   - Merge both dictionaries, with VLM's visual observations taking priority for conflicts
+   - Example: existing "color": "Black" + VLM observes "Matte Black" → use "Matte Black"
+   - Add new attributes from VLM if observed
+
+6. **Tags**:
+   - Combine tags from both sources, remove duplicates
+   - Keep in English
+
+7. **Specs & Price**:
+   - Keep existing specs and price unchanged
+   - Only add if VLM can visually verify (rare)
+
+8. **Colors**:
+   - Use VLM's color analysis (most accurate from visual observation)
+
+OUTPUT FORMAT:
+Return the merged data using the EXISTING PRODUCT DATA schema/structure. Preserve all original fields and add VLM insights where appropriate.
+
+Return ONLY valid JSON with no markdown formatting or commentary."""
+
+    completion = client.chat.completions.create(
+        model=llm_config['model'],
+        messages=[{"role": "system", "content": "/no_think"}, {"role": "user", "content": prompt}],
+        temperature=0.5, top_p=0.9, max_tokens=2048, stream=True
+    )
+
+    text = "".join(chunk.choices[0].delta.content for chunk in completion if chunk.choices[0].delta and chunk.choices[0].delta.content)
+    logger.info("Nemotron merge response received: %d chars", len(text))
+
+    json_text = text.strip()
+    for marker in ("```json", "```"):
+        if marker in json_text:
+            try:
+                start = json_text.find(marker) + len(marker)
+                end = json_text.find("```", start)
+                if end > start:
+                    json_text = json_text[start:end].strip()
+                    break
+            except Exception as e:
+                logger.warning(f"Failed to extract JSON from {marker}: {e}")
+
+    try:
+        parsed = json.loads(json_text)
+        if isinstance(parsed, dict):
+            logger.info("Nemotron merge successful: merged_keys=%s", list(parsed.keys()))
+            return parsed
+    except Exception as e:
+        logger.warning(f"Nemotron merge JSON parse error: {e}, using VLM output")
+    
+    return vlm_output
 
 def _call_vlm(image_bytes: bytes, content_type: str, locale: str = "en-US") -> Dict[str, Any]:
     logger.info("Calling VLM: bytes=%d, content_type=%s, locale=%s", len(image_bytes or b""), content_type, locale)
@@ -61,6 +183,8 @@ def _call_vlm(image_bytes: bytes, content_type: str, locale: str = "en-US") -> D
     vlm_config = get_config().get_vlm_config()
     client = OpenAI(base_url=vlm_config['url'], api_key=api_key)
 
+    categories_str = json.dumps(PRODUCT_CATEGORIES)
+    
     prompt_text = f"""You are a product catalog copywriter for an e-commerce platform. Create compelling catalog content for the physical product shown in the image. Be verbose and detailed.
 
 Focus on the actual product visible in the image - describe the item itself, its materials, design, and features. Do not focus on contents, intended use scenarios, or lifestyle experiences.
@@ -68,7 +192,7 @@ Focus on the actual product visible in the image - describe the item itself, its
 Create an engaging product title and description in {info['language']} as spoken in {info['region']}. {info['context']}.
 
 Classify the product into one or more categories from this fixed allowed set only:
-["clothing", "kitchen", "sports", "toys", "electronics", "furniture", "office", "shoes"]
+{categories_str}
 If none apply, use ["uncategorized"].
 
 Generate exactly 10 useful product tags that describe the item's characteristics, materials, style, features, or type. These should be short descriptive phrases (2-4 words each) that would help customers find this product. Use English for the tags.
@@ -299,8 +423,7 @@ def flux_node(state: VLMState) -> VLMState:
 
 def persist_node(state: VLMState) -> VLMState:
     logger.info("Persist node start")
-    image_b64 = state.get("generated_image_b64")
-    if not image_b64:
+    if not (image_b64 := state.get("generated_image_b64")):
         return {"error": "generated_image_b64 missing", **state}
 
     try:
@@ -314,13 +437,30 @@ def persist_node(state: VLMState) -> VLMState:
         with open(image_path, "wb") as f:
             f.write(base64.b64decode(image_b64))
 
+        base_meta = {
+            "id": artifact_id,
+            "locale": state.get("locale", "en-US"),
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "image_path": image_path,
+            "source_content_type": state.get("content_type")
+        }
+        
+        if enhanced := state.get("enhanced_product"):
+            logger.info("Persist node: saving enhanced_product with keys=%s", list(enhanced.keys()))
+            metadata = {**enhanced, **base_meta}
+        else:
+            logger.info("Persist node: saving VLM-only data")
+            metadata = {
+                **base_meta,
+                "title": state.get("title", ""),
+                "description": state.get("description", ""),
+                "categories": state.get("categories", []),
+                "tags": state.get("tags", []),
+                "colors": state.get("colors", [])
+            }
+
         with open(metadata_path, "w", encoding="utf-8") as f:
-            json.dump({
-                "id": artifact_id, "title": state.get("title", ""), "description": state.get("description", ""),
-                "categories": state.get("categories", []), "tags": state.get("tags", []), "colors": state.get("colors", []), "locale": state.get("locale", "en-US"),
-                "created_at": datetime.now(timezone.utc).isoformat(),
-                "image_path": image_path, "source_content_type": state.get("content_type")
-            }, f, ensure_ascii=False, indent=2)
+            json.dump(metadata, f, ensure_ascii=False, indent=2)
 
         logger.info("Persist node success: image_path=%s metadata_path=%s", image_path, metadata_path)
         return {**state, "artifact_id": artifact_id, "image_path": image_path, "metadata_path": metadata_path}
@@ -333,18 +473,42 @@ def vlm_node(state: VLMState) -> VLMState:
     image_bytes = state.get("image_bytes")
     content_type = state.get("content_type", "image/png")
     locale = state.get("locale", "en-US")
+    product_data = state.get("product_data")
 
     if not image_bytes:
         return {"error": "image_bytes missing or empty", **state}
     if not isinstance(content_type, str) or not content_type.startswith("image/"):
         return {"error": "content_type must be an image/* MIME type", **state}
 
-    result = _call_vlm(image_bytes, content_type, locale)
-    logger.info("VLM node outputs: title_len=%d desc_len=%d categories=%s tags_count=%d colors_count=%d locale=%s",
-                len(result.get("title", "")), len(result.get("description", "")), result.get("categories", []), len(result.get("tags", [])), len(result.get("colors", [])), locale)
+    vlm_result = _call_vlm(image_bytes, content_type, locale)
+    logger.info("VLM analysis: title_len=%d desc_len=%d categories=%s", 
+                len(vlm_result.get("title", "")), len(vlm_result.get("description", "")), vlm_result.get("categories", []))
     
-    return {**state, "title": result.get("title", ""), "description": result.get("description", ""), 
-            "categories": result.get("categories", ["uncategorized"]), "tags": result.get("tags", []), "colors": result.get("colors", [])}
+    if product_data:
+        merged = _call_nemotron_merge(vlm_result, product_data, locale)
+        logger.info("Nemotron merge: keys=%s", list(merged.keys()))
+        
+        categories = (merged.get("categories") if merged.get("categories") and isinstance(merged.get("categories"), list) 
+                     else vlm_result.get("categories", ["uncategorized"]))
+        
+        return {
+            **state, 
+            "enhanced_product": merged,
+            "title": merged.get("title", vlm_result.get("title", "")),
+            "description": merged.get("description", vlm_result.get("description", "")),
+            "categories": categories,
+            "tags": merged.get("tags", vlm_result.get("tags", [])),
+            "colors": vlm_result.get("colors", [])
+        }
+    
+    return {
+        **state, 
+        "title": vlm_result.get("title", ""), 
+        "description": vlm_result.get("description", ""), 
+        "categories": vlm_result.get("categories", ["uncategorized"]), 
+        "tags": vlm_result.get("tags", []), 
+        "colors": vlm_result.get("colors", [])
+    }
 
 def create_compiled_graph():
     graph = StateGraph(VLMState)

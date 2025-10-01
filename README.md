@@ -42,12 +42,12 @@ uvicorn --app-dir src backend.main:app --host 0.0.0.0 --port 8000 --reload
 Backend endpoints:
 - `GET /` → plaintext greeting
 - `GET /health` → JSON health status
-- `POST /vlm/describe` → analyze product image and generate localized title, description, categories
+- `POST /vlm/describe` → augment existing product data with VLM-enhanced content (title, description, attributes, etc.)
 - `POST /image/variation` → full enrichment pipeline with variation image generation
 
 ### API Endpoints
 
-#### VLM: Describe an image with Multi-Language & Regional Support
+#### VLM: Augment Product Data with Multi-Language & Regional Support
 
 1) Set your NVIDIA API key in `.env`:
 
@@ -58,29 +58,52 @@ echo "NVIDIA_API_KEY=YOUR_KEY_HERE" >> .env
 
 2) Start the backend (see above), then call the endpoint:
 
-##### Basic Usage (defaults to en-US):
-```
+##### Image Only (Generation Mode):
+```bash
 curl -X POST \
-  -F "image=@path/to/your_image.png;type=image/png" \
+  -F "image=@bag.jpg;type=image/jpeg" \
+  -F "locale=en-US" \
   http://localhost:8000/vlm/describe
 ```
 
-##### With Regional Localization:
-```
+##### With Product Data (Augmentation Mode):
+```bash
 curl -X POST \
-  -F "image=@path/to/your_image.png;type=image/png" \
+  -F "image=@bag.jpg;type=image/jpeg" \
+  -F 'product_data={"title":"Classic Black Patent purse","description":"Elegant bag","price":15.99,"categories":["accessories","bag"],"tags":["bag","purse"]}' \
+  -F "locale=en-US" \
+  http://localhost:8000/vlm/describe
+```
+
+##### With Regional Localization (Spain Spanish):
+```bash
+curl -X POST \
+  -F "image=@bag.jpg;type=image/jpeg" \
+  -F 'product_data={"categories":["accessories","bag"],"title":"Black Purse","description":"Elegant bag","price":49.9,"tags":["bag"]}' \
   -F "locale=es-ES" \
   http://localhost:8000/vlm/describe
 ```
 
-Response:
+**Input Product Data Schema (optional):**
+```json
+{
+  "title": "string",
+  "description": "string",
+  "price": "number",
+  "categories": ["string"],
+  "tags": ["string"]
+}
+```
+
+**Response Schema:**
 
 ```json
 {
-  "title": "Silla Ergonómica de Oficina",
-  "description": "Silla de oficina cómoda con respaldo alto y soporte lumbar ajustable, perfecta para largas jornadas de trabajo.",
-  "categories": ["furniture", "office"],
-  "locale": "es-ES"
+  "title": "Glamorous Black Evening Handbag with Gold Accents",
+  "description": "This exquisite handbag exudes sophistication and elegance. Crafted from high-quality, glossy leather, it boasts a sleek, rectangular shape with a slight taper, ensuring a chic silhouette that complements any outfit. The long, slender handles are designed for effortless elegance, while the gold-toned hardware, including buckles and zipper accents, adds a touch of opulence.",
+  "categories": ["accessories"],
+  "tags": ["black leather", "gold accents", "evening bag", "rectangular shape", "long handles", "sleek design", "sophisticated", "glamorous"],
+  "colors": ["black", "gold"]
 }
 ```
 
