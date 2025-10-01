@@ -1,0 +1,59 @@
+@import "tailwindcss/theme.css";
+@import "tailwindcss/preflight.css";
+@import "tailwindcss/utilities.css";
+@import "@kui/foundations-react-external/base.css";
+
+@plugin "@kui/foundations" {
+  /**
+   * Defines the root element where base styles are applied.
+   */
+  root: ":root, :host";
+
+  /**
+   * Disables the generation of component utilities since we're using @kui/react
+   */
+  disable-component-utilities: true;
+
+  /**
+   * Set dark theme as the default theme
+   */
+  default-themes: "nv-dark --default, nv-light, nv-density-standard --default";
+
+  /**
+   * Controls the logging level of the plugin.
+   */
+  log-level: "info";
+}
+
+/* Custom NVIDIA Green Border */
+.nvidia-green-border {
+  border: 2px solid #76b900 !important;
+}
+
+/* Custom NVIDIA Green Button */
+.nvidia-green-button {
+  background-color: #76b900 !important;
+  border-color: #76b900 !important;
+}
+
+.nvidia-green-button:hover:not(:disabled) {
+  background-color: #6aa200 !important;
+  border-color: #6aa200 !important;
+}
+
+.nvidia-green-button:active:not(:disabled) {
+  background-color: #5e8f00 !important;
+  border-color: #5e8f00 !important;
+}
+
+.nvidia-green-button:disabled {
+  opacity: 0.5 !important;
+  cursor: not-allowed !important;
+}
+
+
+
+
+
+
+
