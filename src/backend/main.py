@@ -1,5 +1,6 @@
-from contextlib import asynccontextmanager
+import json
 import logging
+from contextlib import asynccontextmanager
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, UploadFile, File, Form
@@ -10,18 +11,17 @@ load_dotenv()
 
 logger = logging.getLogger("catalog_enrichment.api")
 compiled_graph = None
+VALID_LOCALES = {"en-US", "en-GB", "en-AU", "en-CA", "es-ES", "es-MX", "es-AR", "es-CO", "fr-FR", "fr-CA"}
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global compiled_graph
     if not logging.getLogger().handlers:
         logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s - %(message)s")
-
     logger.info("App startup: compiling graph (FLUX-only)")
     compiled_graph = create_compiled_graph()
     logger.info("App startup complete")
     yield
-
 
 app = FastAPI(lifespan=lifespan)
 
@@ -43,51 +43,68 @@ async def _validate_image(image: UploadFile, endpoint: str):
         logger.error(f"{endpoint} error: empty upload")
         return None, JSONResponse({"detail": "Uploaded file is empty"}, status_code=400)
     
-    content_type = (image.content_type or "image/png") if hasattr(image, "content_type") else "image/png"
+    content_type = getattr(image, "content_type", None) or "image/png"
     if not content_type.startswith("image/"):
-        logger.error(f"{endpoint} error: non-image content_type=%s", content_type)
+        logger.error(f"{endpoint} error: non-image content_type={content_type}")
         return None, JSONResponse({"detail": "File must be an image"}, status_code=400)
     
     return (image_bytes, content_type), None
 
 @app.post("/vlm/describe")
-async def vlm_describe(image: UploadFile = File(...), locale: str = Form("en-US")) -> JSONResponse:
+async def vlm_describe(
+    image: UploadFile = File(...), 
+    locale: str = Form("en-US"),
+    product_data: str = Form(None)
+) -> JSONResponse:
     try:
-        valid_locales = {
-            "en-US", "en-GB", "en-AU", "en-CA",
-            "es-ES", "es-MX", "es-AR", "es-CO",
-            "fr-FR", "fr-CA"
-        }
-        if locale not in valid_locales:
-            logger.error(f"/vlm/describe error: invalid locale={locale}, valid options: {valid_locales}")
-            return JSONResponse({"detail": f"Invalid locale. Supported locales: {sorted(valid_locales)}"}, status_code=400)
+        if locale not in VALID_LOCALES:
+            logger.error(f"/vlm/describe error: invalid locale={locale}, valid options: {VALID_LOCALES}")
+            return JSONResponse({"detail": f"Invalid locale. Supported locales: {sorted(VALID_LOCALES)}"}, status_code=400)
+
+        product_json = None
+        if product_data:
+            try:
+                product_json = json.loads(product_data)
+                logger.info(f"Parsed product_data: {product_json}")
+            except Exception as e:
+                logger.error(f"/vlm/describe error: invalid JSON in product_data: {e}")
+                return JSONResponse({"detail": f"Invalid JSON in product_data: {e}"}, status_code=400)
 
         validation_result, error_response = await _validate_image(image, "/vlm/describe")
         if error_response:
             return error_response
         image_bytes, content_type = validation_result
 
-        if compiled_graph is None:
+        if not compiled_graph:
             return JSONResponse({"detail": "Graph is not initialized"}, status_code=500)
 
-        logger.info("Invoking graph: VLM -> Planner -> FLUX -> Persist with locale=%s", locale)
-        result = compiled_graph.invoke({"image_bytes": image_bytes, "content_type": content_type, "locale": locale})
+        logger.info(f"Invoking graph: VLM -> Planner -> FLUX -> Persist with locale={locale} mode={'augmentation' if product_json else 'generation'}")
+        result = compiled_graph.invoke({
+            "image_bytes": image_bytes, 
+            "content_type": content_type, 
+            "locale": locale,
+            "product_data": product_json
+        })
         logger.info("Graph invocation complete")
 
         if result.get("error"):
-            return JSONResponse({"detail": result.get("error")}, status_code=400)
+            return JSONResponse({"detail": result["error"]}, status_code=400)
 
-        payload = {
+        payload = result.get("enhanced_product", {}) if product_json else {
             "title": result.get("title", ""),
             "description": result.get("description", ""),
             "categories": result.get("categories", ["uncategorized"]),
-            "colors": result.get("colors", []),
-            "locale": locale
+            "colors": result.get("colors", [])
         }
-        logger.info("/vlm/describe success: title_len=%d desc_len=%d cats=%s colors=%s locale=%s",
-                   len(payload["title"]), len(payload["description"]), payload["categories"], payload["colors"], locale)
+        payload["locale"] = locale
+        
+        if product_json:
+            logger.info(f"/vlm/describe success (augmentation): keys={list(payload.keys())} locale={locale}")
+        else:
+            logger.info(f"/vlm/describe success (generation): title_len={len(payload['title'])} desc_len={len(payload['description'])} cats={payload['categories']} colors={payload['colors']} locale={locale}")
+        
         return JSONResponse(payload)
 
     except Exception as exc:
-        logger.exception("/vlm/describe exception: %s", exc)
+        logger.exception(f"/vlm/describe exception: {exc}")
         return JSONResponse({"detail": str(exc)}, status_code=500)

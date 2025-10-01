@@ -10,7 +10,7 @@ This document provides guidelines and instructions for AI assistants working on 
 
 ### Current Status
 - ✅ **Multi-Language Support** - Locale-based product descriptions (FR-6 completed)
-- ✅ **VLM Content Extraction** - Enhanced with regional localization (FR-2 completed)
+- ✅ **VLM Content Augmentation** - Enhances existing product data with visual insights (FR-2 completed)
 - ✅ **2D Image Variation Generation** - Working with prompt planning (FR-3 completed)
 - ⚠️ **In Development** - 3D Asset Generation and Video Generation in progress
 
@@ -47,6 +47,8 @@ cd catalog-enrichment
 #### Run (with uv)
 ```bash
 uv pip install -e .
+uv venv .venv
+source .venv/bin/activate
 uvicorn --app-dir src backend.main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
@@ -56,40 +58,76 @@ uvicorn --app-dir src backend.main:app --host 0.0.0.0 --port 8000 --reload
 - POST `/vlm/describe`
   - Request: `multipart/form-data` with fields:
     - `image` (file): Product image
+    - `product_data` (JSON string): Existing product data to augment
     - `locale` (string, optional): Regional locale code (default: "en-US")
-  - Response: JSON with fields:
-    - `title`: string (localized)
-    - `description`: string (localized)
-    - `categories`: array of strings from the allowed set only
-    - `colors`: array of up to 3 primary color names (simple English color names)
-    - `locale`: string (echoed back)
+  - Response: Enhanced product JSON with:
+    - `title`: string (enriched and localized)
+    - `description`: string (expanded and localized)
+    - `categories`: array (validated/improved, e.g. ["accessories", "bag"])
+    - `tags`: array (expanded with relevant terms)
+    - `colors`: array (extracted color palette, e.g. ["black", "gold"])
 
-Allowed categories: `["clothing", "kitchen", "sports", "toys", "electronics", "furniture", "office"]` (fallback to `["uncategorized"]` if none apply)
+
+Input Product Data Schema (optional):
+```json
+{
+  "title": "string",
+  "description": "string",
+  "price": "number",
+  "categories": ["string"],
+  "tags": ["string"]
+}
+```
+
+Example Response:
+```json
+{
+  "title": "Glamorous Black Evening Handbag with Gold Accents",
+  "description": "This exquisite handbag exudes sophistication and elegance...",
+  "categories": ["accessories"],
+  "tags": ["black leather", "gold accents", "evening bag", "rectangular shape"],
+  "colors": ["black", "gold"]
+}
+```
 
 Supported locales: `en-US`, `en-GB`, `en-AU`, `en-CA`, `es-ES`, `es-MX`, `es-AR`, `es-CO`, `fr-FR`, `fr-CA`
 
 #### VLM Prompt (summary)
-- Instructs the model to generate a persuasive product `title` and `description` in the specified regional locale and classify into the allowed `categories` list only.
-- Extracts up to 3 primary `colors` from the product using simple English color names (e.g., "red", "blue", "black", "white", "grey", etc.).
-- Includes regional context and terminology guidance (e.g., "ordenador" vs "computadora" for Spanish regions).
-- Strictly requests output as a single valid JSON object with `title`, `description`, `categories`, `colors`.
+- Instructs the model to augment existing product data by analyzing the product image
+- Enriches the `title` with more descriptive and persuasive language in the specified regional locale
+- Expands the `description` with richer, more detailed content using regional terminology
+- Enhances `attributes` with visual insights (e.g., "Black" → "Matte Black with Silver Hardware")
+- Validates and improves `categories` array based on visual analysis
+- Expands `tags` with additional relevant terms
+- Includes regional context and terminology guidance (e.g., "ordenador" vs "computadora" for Spanish regions)
+- Preserves existing structured data (price, specs, etc.) while enhancing descriptive fields
 
 #### Examples
 ```bash
-# Default (American English)
+# Image only (generation mode) - Default American English
 curl -X POST \
-  -F "image=@path/to/your_image.jpg;type=image/jpeg" \
+  -F "image=@bag.jpg;type=image/jpeg" \
+  -F "locale=en-US" \
   http://localhost:8000/vlm/describe
 
-# Spain Spanish
+# With product data (augmentation mode) - American English
 curl -X POST \
-  -F "image=@path/to/your_image.jpg;type=image/jpeg" \
+  -F "image=@bag.jpg;type=image/jpeg" \
+  -F 'product_data={"title":"Classic Black Patent purse","description":"Elegant bag","price":15.99,"categories":["accessories","bag"],"tags":["bag","purse"]}' \
+  -F "locale=en-US" \
+  http://localhost:8000/vlm/describe
+
+# Spain Spanish with product data
+curl -X POST \
+  -F "image=@bag.jpg;type=image/jpeg" \
+  -F 'product_data={"categories":["accessories"],"title":"Black Purse","description":"Elegant bag"}' \
   -F "locale=es-ES" \
   http://localhost:8000/vlm/describe
 
-# British English
+# British English with full product data
 curl -X POST \
-  -F "image=@path/to/your_image.jpg;type=image/jpeg" \
+  -F "image=@chair.jpg;type=image/jpeg" \
+  -F 'product_data={"categories":["furniture"],"title":"Office Chair","description":"Comfortable chair","price":199.99}' \
   -F "locale=en-GB" \
   http://localhost:8000/vlm/describe
 ```

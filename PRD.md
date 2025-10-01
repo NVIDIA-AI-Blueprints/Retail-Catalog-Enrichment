@@ -16,12 +16,14 @@ A GenAI-powered catalog enrichment system that transforms basic product images i
 
 ## Core User Flow
 
-1. **Input**: User submits one or multiple images of a product with optional locale specification
-2. **Content Analysis**: System uses NVIDIA Nemotron VLM to extract and generate:
-   - Enhanced product title (localized to target region)
-   - Detailed product description (using regional terminology)
-   - Relevant categories
-   - Product tags
+1. **Input**: User submits product image along with existing product JSON data and optional locale specification
+2. **Content Augmentation**: System uses NVIDIA Nemotron VLM to enhance existing product data by:
+   - Enriching product title with more descriptive details (localized to target region)
+   - Expanding product description with richer, more verbose content (using regional terminology)
+   - Improving and refining attributes (e.g., expanding "Black" to "Matte Black with Silver Hardware")
+   - Enhancing categories and subcategories based on visual analysis
+   - Generating more comprehensive and accurate tags
+   - Validating and correcting product specifications against visual evidence
 3. **Cultural Prompt Planning**: System uses NVIDIA Nemotron LLM to create culturally-aware prompts for image generation based on:
    - Product analysis
    - Target locale/country cultural context
@@ -38,12 +40,16 @@ A GenAI-powered catalog enrichment system that transforms basic product images i
 - Support common image resolutions and file sizes
 - Validate image quality and content relevance
 
-### FR-2: VLM Content Extraction
+### FR-2: VLM Content Augmentation
 - Integrate with NVIDIA Nemotron VLM
-- Extract product features from uploaded images
-- Generate enhanced titles and descriptions
-- Classify products into relevant categories
-- Generate descriptive tags
+- Accept existing product JSON data alongside product images
+- Analyze visual product features and compare with existing data
+- Augment and enrich existing titles with more descriptive, compelling content
+- Expand existing descriptions with richer, more detailed information
+- Enhance product attributes with visual insights (colors, materials, style details)
+- Refine and improve categories, subcategories, and tags
+- Validate specifications against visual evidence
+- Preserve structured data format including specs, attributes, and metadata
 
 ### FR-3: 2D Image Variation Generation
 - Use NVIDIA Nemotron LLM to plan and generate optimized prompts for image variations
@@ -101,13 +107,13 @@ A GenAI-powered catalog enrichment system that transforms basic product images i
 
 ### US-1: Basic Product Enrichment
 **As a** catalog manager  
-**I want to** upload a product image and receive enriched catalog data  
-**So that** I can quickly populate my catalog with detailed product information
+**I want to** upload a product image along with existing product data and receive AI-enhanced catalog data  
+**So that** I can augment and improve my existing catalog entries with richer, more accurate information
 
-### US-1a: Localized Product Enrichment
+### US-1a: Localized Product Augmentation
 **As a** international catalog manager  
-**I want to** upload a product image with a target locale and receive culturally-appropriate enriched catalog data  
-**So that** I can create region-specific product listings that resonate with local customers
+**I want to** upload a product image with existing product data and a target locale to receive culturally-appropriate enhanced catalog data  
+**So that** I can improve my existing product listings with region-specific, culturally-relevant content that resonates with local customers
 
 ### US-2: Batch Processing
 **As a** catalog manager  
