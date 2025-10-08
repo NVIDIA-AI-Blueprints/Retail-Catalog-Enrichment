@@ -5,8 +5,6 @@ import {
   Text, 
   Card, 
   Stack, 
-  Grid,
-  GridItem,
   Button,
   Flex,
   FormField,
@@ -17,63 +15,78 @@ import {
 import Image from 'next/image';
 import { useState, useRef } from 'react';
 
+interface ProductFields {
+  title: string;
+  description: string;
+  color: string;
+  categories: string;
+  tags: string;
+  price: string;
+}
+
+interface AugmentedData {
+  title: string;
+  description: string;
+  colors: string[];
+  tags: string[];
+  categories?: string[];
+}
+
 function Home() {
   const [uploadedImage, setUploadedImage] = useState<string | null>(null);
+  const [uploadedFile, setUploadedFile] = useState<File | null>(null);
   const [isUploading, setIsUploading] = useState(false);
+  const [isGenerating, setIsGenerating] = useState(false);
   const [imageMetadata, setImageMetadata] = useState<{
     name: string;
     size: string;
     dimensions?: string;
   } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [fields, setFields] = useState<ProductFields>({
+    title: '',
+    description: '',
+    color: '',
+    categories: '',
+    tags: '',
+    price: ''
+  });
+  const [augmentedData, setAugmentedData] = useState<AugmentedData | null>(null);
+  const [generatedImageUrl, setGeneratedImageUrl] = useState<string | null>(null);
 
-  const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (file) {
-      handleFileUpload(file);
-    }
-  };
-
-  const formatFileSize = (bytes: number): string => {
-    if (bytes < 1024) return bytes + ' bytes';
-    else if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
-    else return (bytes / 1048576).toFixed(1) + ' MB';
-  };
+  const formatFileSize = (bytes: number): string => 
+    bytes < 1024 ? `${bytes} bytes` : 
+    bytes < 1048576 ? `${(bytes / 1024).toFixed(1)} KB` : 
+    `${(bytes / 1048576).toFixed(1)} MB`;
 
   const handleFileUpload = async (file: File) => {
-    // Validate file type
-    const validTypes = ['image/png', 'image/jpeg', 'image/jpg'];
-    if (!validTypes.includes(file.type)) {
+    if (!['image/png', 'image/jpeg', 'image/jpg'].includes(file.type)) {
       alert('Please upload a PNG, JPG, or JPEG file');
       return;
     }
-
-    // Validate file size (max 10MB)
     if (file.size > 10 * 1024 * 1024) {
       alert('File size must be less than 10MB');
       return;
     }
 
     setIsUploading(true);
+    setUploadedFile(file);
 
-    // Simulate upload delay
-    setTimeout(() => {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const img = new window.Image();
-        img.onload = () => {
-          setImageMetadata({
-            name: file.name,
-            size: formatFileSize(file.size),
-            dimensions: `${img.width} × ${img.height}`
-          });
-        };
-        img.src = e.target?.result as string;
-        setUploadedImage(e.target?.result as string);
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new window.Image();
+      img.onload = () => {
+        setImageMetadata({
+          name: file.name,
+          size: formatFileSize(file.size),
+          dimensions: `${img.width} × ${img.height}`
+        });
         setIsUploading(false);
       };
-      reader.readAsDataURL(file);
-    }, 1500);
+      img.src = e.target?.result as string;
+      setUploadedImage(e.target?.result as string);
+    };
+    reader.readAsDataURL(file);
   };
 
   const handleDragOver = (e: React.DragEvent) => {
@@ -84,28 +97,72 @@ function Home() {
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    
     const file = e.dataTransfer.files[0];
-    if (file) {
-      handleFileUpload(file);
-    }
-  };
-
-  const handleUploadClick = () => {
-    fileInputRef.current?.click();
+    if (file) handleFileUpload(file);
   };
 
   const handleRemoveImage = () => {
     setUploadedImage(null);
+    setUploadedFile(null);
     setImageMetadata(null);
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
+    setAugmentedData(null);
+    setGeneratedImageUrl(null);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  const handleGenerate = async () => {
+    if (!uploadedFile) return;
+
+    setIsGenerating(true);
+    
+    try {
+      const formData = new FormData();
+      formData.append('image', uploadedFile);
+      formData.append('locale', 'en-US');
+
+      const hasFields = Object.values(fields).some(val => val.trim() !== '');
+      if (hasFields) {
+        const productData: any = {};
+        if (fields.title) productData.title = fields.title;
+        if (fields.description) productData.description = fields.description;
+        if (fields.categories) productData.categories = fields.categories.split(',').map(c => c.trim());
+        if (fields.tags) productData.tags = fields.tags.split(',').map(t => t.trim());
+        if (fields.price) productData.price = parseFloat(fields.price);
+        formData.append('product_data', JSON.stringify(productData));
+      }
+
+      const response = await fetch('http://localhost:8000/vlm/describe', {
+        method: 'POST',
+        body: formData
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.detail || 'Failed to generate enriched data');
+      }
+
+      const data = await response.json();
+      setAugmentedData({
+        title: data.title || '',
+        description: data.description || '',
+        colors: data.colors || [],
+        tags: data.tags || [],
+        categories: data.categories || []
+      });
+
+      if (data.generated_image_b64) {
+        setGeneratedImageUrl(`data:image/png;base64,${data.generated_image_b64}`);
+      }
+    } catch (error) {
+      console.error('Generation error:', error);
+      alert(error instanceof Error ? error.message : 'Failed to generate enriched data');
+    } finally {
+      setIsGenerating(false);
     }
   };
 
   return (
     <div className="min-h-screen bg-surface-base">
-      {/* App Bar */}
       <AppBar
         slotLeft={
           <Flex gap="4" align="center">
@@ -121,13 +178,27 @@ function Home() {
         }
       />
 
-      {/* Main Content */}
       <main className="pt-16 bg-surface-base min-h-screen">
         <div className="max-w-7xl mx-auto px-8" style={{ paddingTop: '48px', paddingBottom: '48px' }}>
           <Stack gap="8">
-            {/* Main Content Grid */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '32px', padding: '0 16px', marginTop: '24px' }}>
-              {/* Left Side - Photo Upload */}
+            <div style={{ padding: '0 16px' }}>
+              <Button 
+                kind="primary" 
+                size="large" 
+                className="nvidia-green-button"
+                disabled={!uploadedImage || isGenerating}
+                onClick={handleGenerate}
+              >
+                {isGenerating ? (
+                  <Flex gap="2" align="center">
+                    <Spinner size="small" />
+                    <span>Generating...</span>
+                  </Flex>
+                ) : uploadedImage ? 'Generate Enriched Data' : 'Upload Image to Start'}
+              </Button>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '32px', padding: '0 16px' }}>
               <Card>
                 <Stack gap="6">
                   <Flex justify="between" align="center">
@@ -140,16 +211,17 @@ function Home() {
                     )}
                   </Flex>
                   
-                  {/* Hidden File Input */}
                   <input
                     ref={fileInputRef}
                     type="file"
                     accept="image/png,image/jpeg,image/jpg"
-                    onChange={handleFileSelect}
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) handleFileUpload(file);
+                    }}
                     className="hidden"
                   />
                   
-                  {/* Image Upload Area */}
                   {isUploading ? (
                     <div className="border-2 border-dashed border-base rounded-lg p-16 text-center bg-surface-sunken">
                       <Stack gap="4" align="center">
@@ -193,24 +265,15 @@ function Home() {
                             alignItems: 'center'
                           }}
                         >
-                          <Button 
-                            kind="secondary" 
-                            size="small"
-                            onClick={handleUploadClick}
-                          >
+                          <Button kind="secondary" size="small" onClick={() => fileInputRef.current?.click()}>
                             Change
                           </Button>
-                          <Button 
-                            kind="secondary" 
-                            size="small"
-                            onClick={handleRemoveImage}
-                          >
+                          <Button kind="secondary" size="small" onClick={handleRemoveImage}>
                             Remove
                           </Button>
                         </div>
                       </div>
                       
-                      {/* Image Metadata */}
                       {imageMetadata && (
                         <div className="bg-surface-sunken rounded-lg p-4 border border-base">
                           <Stack gap="2">
@@ -235,7 +298,7 @@ function Home() {
                   ) : (
                     <div 
                       className="border-2 border-dashed border-base rounded-lg p-16 text-center bg-surface-sunken hover:bg-surface-raised transition-colors cursor-pointer"
-                      onClick={handleUploadClick}
+                      onClick={() => fileInputRef.current?.click()}
                       onDragOver={handleDragOver}
                       onDrop={handleDrop}
                     >
@@ -259,99 +322,283 @@ function Home() {
                 </Stack>
               </Card>
 
-              {/* Right Side - Fields */}
               <Card>
                 <Stack gap="6">
                   <Text kind="title/md" className="text-primary">Fields</Text>
                   
-                  <Stack gap="4">
-                    {/* Title Field */}
-                    <FormField
-                      slotLabel="Title"
-                    >
-                      {(args) => (
-                        <TextInput 
-                          {...args}
-                          placeholder="Enter product title"
-                          size="medium"
-                        />
-                      )}
-                    </FormField>
+                  {isGenerating ? (
+                    <div className="flex items-center justify-center py-16">
+                      <Stack gap="4" align="center">
+                        <Spinner size="large" description="Analyzing image and generating enriched data..." />
+                      </Stack>
+                    </div>
+                  ) : (
+                    <Stack gap="4">
+                      <div>
+                        <FormField slotLabel="Title">
+                          {(args: any) => (
+                            <TextInput 
+                              {...args}
+                              placeholder="Enter product title"
+                              size="medium"
+                              value={fields.title}
+                              onChange={(e: any) => setFields(prev => ({ ...prev, title: e.target.value }))}
+                              disabled={isGenerating}
+                            />
+                          )}
+                        </FormField>
+                        {augmentedData && (
+                          <div className="mt-2 p-3 rounded-lg border border-base bg-surface-sunken">
+                            <Stack gap="2">
+                              <Text kind="body/semibold/md" className="nvidia-green-text">Augmented:</Text>
+                              <Text kind="body/regular/md" className="text-primary">{augmentedData.title}</Text>
+                            </Stack>
+                          </div>
+                        )}
+                      </div>
 
-                    {/* Description Field */}
-                    <FormField
-                      slotLabel="Description"
-                    >
-                      {(args) => (
-                        <TextArea 
-                          {...args}
-                          placeholder="Enter product description"
-                          size="medium"
-                          resizeable="manual"
-                          attributes={{
-                            TextAreaElement: {
-                              rows: 3
-                            }
-                          }}
-                        />
-                      )}
-                    </FormField>
+                      <div>
+                        <FormField slotLabel="Description">
+                          {(args: any) => (
+                            <TextArea 
+                              {...args}
+                              placeholder="Enter product description"
+                              size="medium"
+                              resizeable="manual"
+                              value={fields.description}
+                              onChange={(e: any) => setFields(prev => ({ ...prev, description: e.target.value }))}
+                              disabled={isGenerating}
+                              attributes={{
+                                TextAreaElement: {
+                                  rows: 3
+                                }
+                              }}
+                            />
+                          )}
+                        </FormField>
+                        {augmentedData && (
+                          <div className="mt-2 p-3 rounded-lg border border-base bg-surface-sunken">
+                            <Stack gap="2">
+                              <Text kind="body/semibold/md" className="nvidia-green-text">Augmented:</Text>
+                              <Text kind="body/regular/md" className="text-primary">{augmentedData.description}</Text>
+                            </Stack>
+                          </div>
+                        )}
+                      </div>
 
-                    {/* Color Field */}
-                    <FormField
-                      slotLabel="Color"
-                    >
-                      {(args) => (
-                        <TextInput 
-                          {...args}
-                          placeholder="e.g., Black, Red, Blue"
-                          size="medium"
-                        />
-                      )}
-                    </FormField>
+                      <div>
+                        <FormField slotLabel="Colors">
+                          {(args: any) => (
+                            <TextInput 
+                              {...args}
+                              placeholder="e.g., Black, Red, Blue"
+                              size="medium"
+                              value={fields.color}
+                              onChange={(e: any) => setFields(prev => ({ ...prev, color: e.target.value }))}
+                              disabled={isGenerating}
+                            />
+                          )}
+                        </FormField>
+                        {augmentedData && augmentedData.colors.length > 0 && (
+                          <div className="mt-2 p-3 rounded-lg border border-base bg-surface-sunken">
+                            <Stack gap="2">
+                              <Text kind="body/semibold/md" className="nvidia-green-text">Augmented:</Text>
+                              <Text kind="body/regular/md" className="text-primary">{augmentedData.colors.join(', ')}</Text>
+                            </Stack>
+                          </div>
+                        )}
+                      </div>
 
-                    {/* Tags Field */}
-                    <FormField
-                      slotLabel="Tags"
-                    >
-                      {(args) => (
-                        <TextInput 
-                          {...args}
-                          placeholder="e.g., fashion, accessories, luxury"
-                          size="medium"
-                        />
-                      )}
-                    </FormField>
+                      <div>
+                        <FormField slotLabel="Categories">
+                          {(args: any) => (
+                            <TextInput 
+                              {...args}
+                              placeholder="e.g., furniture, electronics, clothing"
+                              size="medium"
+                              value={fields.categories}
+                              onChange={(e: any) => setFields(prev => ({ ...prev, categories: e.target.value }))}
+                              disabled={isGenerating}
+                            />
+                          )}
+                        </FormField>
+                        {augmentedData && augmentedData.categories && augmentedData.categories.length > 0 && (
+                          <div className="mt-2 p-3 rounded-lg border border-base bg-surface-sunken">
+                            <Stack gap="2">
+                              <Text kind="body/semibold/md" className="nvidia-green-text">Augmented:</Text>
+                              <Text kind="body/regular/md" className="text-primary">{augmentedData.categories.join(', ')}</Text>
+                            </Stack>
+                          </div>
+                        )}
+                      </div>
 
-                    {/* Price Field */}
-                    <FormField
-                      slotLabel="Price"
-                    >
-                      {(args) => (
-                        <TextInput 
-                          {...args}
-                          type="number"
-                          placeholder="0.00"
-                          size="medium"
-                        />
-                      )}
-                    </FormField>
-                  </Stack>
+                      <div>
+                        <FormField slotLabel="Tags">
+                          {(args: any) => (
+                            <TextInput 
+                              {...args}
+                              placeholder="e.g., fashion, accessories, luxury"
+                              size="medium"
+                              value={fields.tags}
+                              onChange={(e: any) => setFields(prev => ({ ...prev, tags: e.target.value }))}
+                              disabled={isGenerating}
+                            />
+                          )}
+                        </FormField>
+                        {augmentedData && augmentedData.tags.length > 0 && (
+                          <div className="mt-2 p-3 rounded-lg border border-base bg-surface-sunken">
+                            <Stack gap="2">
+                              <Text kind="body/semibold/md" className="nvidia-green-text">Augmented:</Text>
+                              <Text kind="body/regular/md" className="text-primary">{augmentedData.tags.join(', ')}</Text>
+                            </Stack>
+                          </div>
+                        )}
+                      </div>
+
+                      <FormField slotLabel="Price">
+                        {(args: any) => (
+                          <TextInput 
+                            {...args}
+                            type="number"
+                            placeholder="0.00"
+                            size="medium"
+                            value={fields.price}
+                            onChange={(e: any) => setFields(prev => ({ ...prev, price: e.target.value }))}
+                            disabled={isGenerating}
+                          />
+                        )}
+                      </FormField>
+                    </Stack>
+                  )}
                 </Stack>
               </Card>
             </div>
 
-            {/* Generate Button */}
             <div style={{ padding: '0 16px' }}>
-              <Stack gap="4" align="center">
-                <Button 
-                  kind="primary" 
-                  size="large" 
-                  className="min-w-[200px] nvidia-green-button"
-                  disabled={!uploadedImage}
-                >
-                  {uploadedImage ? 'Generate Enriched Data' : 'Upload Image to Start'}
-                </Button>
+              <Stack gap="6">
+                <Text kind="title/lg" className="text-primary">Generated Image Variations</Text>
+                
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '24px' }}>
+                  <Card>
+                    <Stack gap="4">
+                      {generatedImageUrl ? (
+                        <div 
+                          className="rounded-lg overflow-hidden"
+                          style={{ 
+                            minHeight: '300px',
+                            backgroundColor: 'var(--color-gray-1000)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center'
+                          }}
+                        >
+                          <img 
+                            src={generatedImageUrl} 
+                            alt="Generated variation" 
+                            style={{ 
+                              maxWidth: '100%', 
+                              maxHeight: '300px',
+                              width: 'auto',
+                              height: 'auto',
+                              objectFit: 'contain',
+                              display: 'block'
+                            }}
+                          />
+                        </div>
+                      ) : (
+                        <div 
+                          className="bg-surface-sunken rounded-lg border-2 border-dashed border-base"
+                          style={{ 
+                            minHeight: '300px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center'
+                          }}
+                        >
+                          {isGenerating ? (
+                            <Stack gap="3" align="center">
+                              <Spinner size="large" description="Generating image..." />
+                            </Stack>
+                          ) : (
+                            <Stack gap="3" align="center">
+                              <div className="w-16 h-16 bg-surface-raised rounded-lg flex items-center justify-center border border-base">
+                                <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="var(--text-color-subtle)">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                </svg>
+                              </div>
+                              <Text kind="body/regular/sm" className="text-subtle">Variation 1</Text>
+                            </Stack>
+                          )}
+                        </div>
+                      )}
+                      <Button 
+                        kind="secondary" 
+                        size="medium" 
+                        disabled={!generatedImageUrl}
+                        onClick={() => {
+                          const link = document.createElement('a');
+                          link.href = generatedImageUrl!;
+                          link.download = 'generated-variation-1.png';
+                          link.click();
+                        }}
+                      >
+                        Download
+                      </Button>
+                    </Stack>
+                  </Card>
+
+                  <Card>
+                    <Stack gap="4">
+                      <div 
+                        className="bg-surface-sunken rounded-lg border-2 border-dashed border-base"
+                        style={{ 
+                          minHeight: '300px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center'
+                        }}
+                      >
+                        <Stack gap="3" align="center">
+                          <div className="w-16 h-16 bg-surface-raised rounded-lg flex items-center justify-center border border-base">
+                            <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="var(--text-color-subtle)">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                            </svg>
+                          </div>
+                          <Text kind="body/regular/sm" className="text-subtle">Variation 2</Text>
+                        </Stack>
+                      </div>
+                      <Button kind="secondary" size="medium" disabled>
+                        Download
+                      </Button>
+                    </Stack>
+                  </Card>
+
+                  <Card>
+                    <Stack gap="4">
+                      <div 
+                        className="bg-surface-sunken rounded-lg border-2 border-dashed border-base"
+                        style={{ 
+                          minHeight: '300px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center'
+                        }}
+                      >
+                        <Stack gap="3" align="center">
+                          <div className="w-16 h-16 bg-surface-raised rounded-lg flex items-center justify-center border border-base">
+                            <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="var(--text-color-subtle)">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                            </svg>
+                          </div>
+                          <Text kind="body/regular/sm" className="text-subtle">Variation 3</Text>
+                        </Stack>
+                      </div>
+                      <Button kind="secondary" size="medium" disabled>
+                        Download
+                      </Button>
+                    </Stack>
+                  </Card>
+                </div>
               </Stack>
             </div>
           </Stack>
@@ -362,9 +609,3 @@ function Home() {
 }
 
 export default Home;
-
-
-
-
-
-

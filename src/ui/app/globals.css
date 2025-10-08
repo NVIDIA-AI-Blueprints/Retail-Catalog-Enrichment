@@ -51,6 +51,11 @@
   cursor: not-allowed !important;
 }
 
+/* Custom NVIDIA Green Text */
+.nvidia-green-text {
+  color: #76b900 !important;
+}
+
 
 
 

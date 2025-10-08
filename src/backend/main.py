@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, UploadFile, File, Form
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, PlainTextResponse
 from backend.graph import create_compiled_graph
 
@@ -24,6 +25,15 @@ async def lifespan(app: FastAPI):
     yield
 
 app = FastAPI(lifespan=lifespan)
+
+# Add CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3001"],  # Frontend origins
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 @app.get("/")
 async def homepage() -> PlainTextResponse:
@@ -94,14 +104,20 @@ async def vlm_describe(
             "title": result.get("title", ""),
             "description": result.get("description", ""),
             "categories": result.get("categories", ["uncategorized"]),
-            "colors": result.get("colors", [])
+            "colors": result.get("colors", []),
+            "tags": result.get("tags", [])
         }
         payload["locale"] = locale
+        
+        # Include generated image if available
+        if result.get("generated_image_b64"):
+            payload["generated_image_b64"] = result.get("generated_image_b64")
+            logger.info(f"Including generated image in response: b64_len={len(result.get('generated_image_b64', ''))}")
         
         if product_json:
             logger.info(f"/vlm/describe success (augmentation): keys={list(payload.keys())} locale={locale}")
         else:
-            logger.info(f"/vlm/describe success (generation): title_len={len(payload['title'])} desc_len={len(payload['description'])} cats={payload['categories']} colors={payload['colors']} locale={locale}")
+            logger.info(f"/vlm/describe success (generation): title_len={len(payload['title'])} desc_len={len(payload['description'])} cats={payload['categories']} colors={payload['colors']} tags={payload['tags']} locale={locale}")
         
         return JSONResponse(payload)
 
