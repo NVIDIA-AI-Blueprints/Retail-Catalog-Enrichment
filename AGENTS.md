@@ -53,19 +53,51 @@ uvicorn --app-dir src backend.main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
 #### API Endpoints
+
+**Health & Info:**
 - GET `/` → plaintext greeting
 - GET `/health` → `{ "status": "ok" }`
-- POST `/vlm/describe`
+
+**VLM Analysis (Fast - ~2-5 seconds):**
+- POST `/vlm/analyze`
   - Request: `multipart/form-data` with fields:
     - `image` (file): Product image
-    - `product_data` (JSON string): Existing product data to augment
+    - `product_data` (JSON string, optional): Existing product data to augment
     - `locale` (string, optional): Regional locale code (default: "en-US")
-  - Response: Enhanced product JSON with:
+  - Response: Product fields JSON with:
     - `title`: string (enriched and localized)
     - `description`: string (expanded and localized)
     - `categories`: array (validated/improved, e.g. ["accessories", "bag"])
     - `tags`: array (expanded with relevant terms)
     - `colors`: array (extracted color palette, e.g. ["black", "gold"])
+    - `enhanced_product`: object (if product_data was provided)
+
+**Image Generation (Slow - ~30-60 seconds):**
+- POST `/generate/variation`
+  - Request: `multipart/form-data` with fields:
+    - `image` (file): Product image
+    - `title` (string): Product title from VLM analysis
+    - `description` (string): Product description from VLM analysis
+    - `categories` (JSON string): Categories array from VLM analysis
+    - `tags` (JSON string, optional): Tags array from VLM analysis
+    - `colors` (JSON string, optional): Colors array from VLM analysis
+    - `locale` (string, optional): Regional locale code (default: "en-US")
+    - `enhanced_product` (JSON string, optional): Enhanced product data
+  - Response: Generated image JSON with:
+    - `generated_image_b64`: string (base64-encoded PNG)
+    - `artifact_id`: string (unique identifier)
+    - `image_path`: string (disk location of saved image)
+    - `metadata_path`: string (disk location of saved metadata)
+
+**Legacy (Complete Pipeline - ~35-65 seconds):**
+- POST `/vlm/describe`
+  - Request: `multipart/form-data` with fields:
+    - `image` (file): Product image
+    - `product_data` (JSON string, optional): Existing product data to augment
+    - `locale` (string, optional): Regional locale code (default: "en-US")
+  - Response: Complete JSON with fields + generated image
+    - All fields from `/vlm/analyze`
+    - `generated_image_b64`: string (base64-encoded PNG)
 
 
 Input Product Data Schema (optional):
@@ -103,32 +135,57 @@ Supported locales: `en-US`, `en-GB`, `en-AU`, `en-CA`, `es-ES`, `es-MX`, `es-AR`
 - Preserves existing structured data (price, specs, etc.) while enhancing descriptive fields
 
 #### Examples
+
+**Fast VLM Analysis (returns fields in ~2-5 seconds):**
 ```bash
-# Image only (generation mode) - Default American English
+# Analyze image only - Default American English
 curl -X POST \
   -F "image=@bag.jpg;type=image/jpeg" \
   -F "locale=en-US" \
-  http://localhost:8000/vlm/describe
+  http://localhost:8000/vlm/analyze
 
 # With product data (augmentation mode) - American English
 curl -X POST \
   -F "image=@bag.jpg;type=image/jpeg" \
   -F 'product_data={"title":"Classic Black Patent purse","description":"Elegant bag","price":15.99,"categories":["accessories","bag"],"tags":["bag","purse"]}' \
   -F "locale=en-US" \
-  http://localhost:8000/vlm/describe
+  http://localhost:8000/vlm/analyze
 
 # Spain Spanish with product data
 curl -X POST \
   -F "image=@bag.jpg;type=image/jpeg" \
   -F 'product_data={"categories":["accessories"],"title":"Black Purse","description":"Elegant bag"}' \
   -F "locale=es-ES" \
+  http://localhost:8000/vlm/analyze
+```
+
+**Image Generation (returns generated image in ~30-60 seconds):**
+```bash
+# Generate variation using VLM results
+curl -X POST \
+  -F "image=@bag.jpg;type=image/jpeg" \
+  -F "locale=en-US" \
+  -F "title=Glamorous Black Evening Handbag with Gold Accents" \
+  -F "description=This exquisite handbag exudes sophistication..." \
+  -F 'categories=["accessories"]' \
+  -F 'tags=["black leather","gold accents","evening bag"]' \
+  -F 'colors=["black","gold"]' \
+  http://localhost:8000/generate/variation
+```
+
+**Complete Pipeline (legacy endpoint - returns everything in ~35-65 seconds):**
+```bash
+# Image only (generation mode)
+curl -X POST \
+  -F "image=@bag.jpg;type=image/jpeg" \
+  -F "locale=en-US" \
   http://localhost:8000/vlm/describe
 
-# British English with full product data
+# With product data (augmentation mode)
 curl -X POST \
-  -F "image=@chair.jpg;type=image/jpeg" \
-  -F 'product_data={"categories":["furniture"],"title":"Office Chair","description":"Comfortable chair","price":199.99}' \
-  -F "locale=en-GB" \
+  -F "image=@bag.jpg;type=image/jpeg" \
+  -F 'product_data={"title":"Classic Black Patent purse","description":"Elegant bag"}' \
+  -F "locale=en-US" \
   http://localhost:8000/vlm/describe
 ```
 
