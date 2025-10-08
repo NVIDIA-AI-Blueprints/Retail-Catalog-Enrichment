@@ -1,18 +1,38 @@
 import json
 import logging
 from contextlib import asynccontextmanager
+from typing import List
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, PlainTextResponse
-from backend.graph import create_compiled_graph
+from langgraph.graph import StateGraph
+
+from backend.vlm import run_vlm_analysis, vlm_node, VLMState
+from backend.image import generate_image_variation, planner_node, flux_node, persist_node
 
 load_dotenv()
 
 logger = logging.getLogger("catalog_enrichment.api")
 compiled_graph = None
 VALID_LOCALES = {"en-US", "en-GB", "en-AU", "en-CA", "es-ES", "es-MX", "es-AR", "es-CO", "fr-FR", "fr-CA"}
+
+
+def create_compiled_graph():
+    """Create the complete pipeline graph (VLM -> Planner -> FLUX -> Persist)."""
+    graph = StateGraph(VLMState)
+    graph.add_node("vlm", vlm_node)
+    graph.add_node("planner", planner_node)
+    graph.add_node("flux", flux_node)
+    graph.add_node("persist", persist_node)
+    graph.set_entry_point("vlm")
+    graph.add_edge("vlm", "planner")
+    graph.add_edge("planner", "flux")
+    graph.add_edge("flux", "persist")
+    graph.set_finish_point("persist")
+    logger.info("Graph compiled (VLM -> Planner -> FLUX -> Persist): nodes=%s", ["vlm", "planner", "flux", "persist"])
+    return graph.compile()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -44,6 +64,126 @@ async def homepage() -> PlainTextResponse:
 async def health() -> JSONResponse:
     logger.info("GET /health")
     return JSONResponse({"status": "ok"})
+
+@app.post("/vlm/analyze")
+async def vlm_analyze(
+    image: UploadFile = File(...),
+    locale: str = Form("en-US"),
+    product_data: str = Form(None)
+) -> JSONResponse:
+    """
+    Fast endpoint: Analyze image and extract product fields using VLM.
+    
+    This endpoint runs ONLY the VLM analysis (no image generation).
+    Returns fields quickly (~2-5 seconds).
+    """
+    try:
+        if locale not in VALID_LOCALES:
+            logger.error(f"/vlm/analyze error: invalid locale={locale}")
+            return JSONResponse({"detail": f"Invalid locale. Supported locales: {sorted(VALID_LOCALES)}"}, status_code=400)
+        
+        product_json = None
+        if product_data:
+            try:
+                product_json = json.loads(product_data)
+                logger.info(f"Parsed product_data: {product_json}")
+            except Exception as e:
+                logger.error(f"/vlm/analyze error: invalid JSON in product_data: {e}")
+                return JSONResponse({"detail": f"Invalid JSON in product_data: {e}"}, status_code=400)
+        
+        validation_result, error_response = await _validate_image(image, "/vlm/analyze")
+        if error_response:
+            return error_response
+        image_bytes, content_type = validation_result
+        
+        logger.info(f"Running VLM analysis: locale={locale} mode={'augmentation' if product_json else 'generation'}")
+        result = run_vlm_analysis(image_bytes, content_type, locale, product_json)
+        
+        payload = {
+            "title": result.get("title", ""),
+            "description": result.get("description", ""),
+            "categories": result.get("categories", ["uncategorized"]),
+            "tags": result.get("tags", []),
+            "colors": result.get("colors", []),
+            "locale": locale
+        }
+        
+        if result.get("enhanced_product"):
+            payload["enhanced_product"] = result["enhanced_product"]
+        
+        logger.info(f"/vlm/analyze success: title_len={len(payload['title'])} desc_len={len(payload['description'])} locale={locale}")
+        return JSONResponse(payload)
+        
+    except Exception as exc:
+        logger.exception(f"/vlm/analyze exception: {exc}")
+        return JSONResponse({"detail": str(exc)}, status_code=500)
+
+
+@app.post("/generate/variation")
+async def generate_variation(
+    image: UploadFile = File(...),
+    locale: str = Form("en-US"),
+    title: str = Form(...),
+    description: str = Form(...),
+    categories: str = Form(...),  # JSON array as string
+    tags: str = Form("[]"),  # JSON array as string
+    colors: str = Form("[]"),  # JSON array as string
+    enhanced_product: str = Form(None)  # Optional JSON object as string
+) -> JSONResponse:
+    """
+    Slow endpoint: Generate image variation given VLM analysis results.
+    
+    Takes pre-computed fields from /vlm/analyze and generates a new image variation.
+    Returns generated image (~30-60 seconds).
+    """
+    try:
+        if locale not in VALID_LOCALES:
+            logger.error(f"/generate/variation error: invalid locale={locale}")
+            return JSONResponse({"detail": f"Invalid locale. Supported locales: {sorted(VALID_LOCALES)}"}, status_code=400)
+        
+        # Parse JSON fields
+        try:
+            categories_list = json.loads(categories)
+            tags_list = json.loads(tags)
+            colors_list = json.loads(colors)
+            enhanced_product_dict = json.loads(enhanced_product) if enhanced_product else None
+        except Exception as e:
+            logger.error(f"/generate/variation error: invalid JSON in fields: {e}")
+            return JSONResponse({"detail": f"Invalid JSON in fields: {e}"}, status_code=400)
+        
+        validation_result, error_response = await _validate_image(image, "/generate/variation")
+        if error_response:
+            return error_response
+        image_bytes, content_type = validation_result
+        
+        logger.info(f"Generating image variation: title_len={len(title)} locale={locale}")
+        result = await generate_image_variation(
+            image_bytes=image_bytes,
+            content_type=content_type,
+            title=title,
+            description=description,
+            categories=categories_list,
+            tags=tags_list,
+            colors=colors_list,
+            locale=locale,
+            enhanced_product=enhanced_product_dict
+        )
+        
+        payload = {
+            "generated_image_b64": result["generated_image_b64"],
+            "artifact_id": result["artifact_id"],
+            "image_path": result["image_path"],
+            "metadata_path": result["metadata_path"],
+            "locale": locale
+        }
+        
+        logger.info(f"/generate/variation success: artifact_id={result['artifact_id']} image_b64_len={len(result['generated_image_b64'])}")
+        return JSONResponse(payload)
+        
+    except Exception as exc:
+        logger.exception(f"/generate/variation exception: {exc}")
+        return JSONResponse({"detail": str(exc)}, status_code=500)
+
 
 async def _validate_image(image: UploadFile, endpoint: str):
     logger.info(f"POST {endpoint} filename={getattr(image, 'filename', None)} content_type={getattr(image, 'content_type', None)}")

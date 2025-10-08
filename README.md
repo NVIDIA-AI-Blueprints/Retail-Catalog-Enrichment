@@ -42,49 +42,65 @@ uvicorn --app-dir src backend.main:app --host 0.0.0.0 --port 8000 --reload
 Backend endpoints:
 - `GET /` → plaintext greeting
 - `GET /health` → JSON health status
-- `POST /vlm/describe` → augment existing product data with VLM-enhanced content (title, description, attributes, etc.)
-- `POST /image/variation` → full enrichment pipeline with variation image generation
+- `POST /vlm/analyze` → **Fast VLM analysis** (~2-5 seconds) - extract product fields without image generation
+- `POST /generate/variation` → **Image generation with FLUX** (~30-60 seconds) - generate product variation using VLM results
+- `POST /vlm/describe` → **Legacy complete pipeline** (~35-65 seconds) - VLM analysis + image generation in one call
 
 ### API Endpoints
 
-#### VLM: Augment Product Data with Multi-Language & Regional Support
+#### Recommended Workflow: Split Pipeline for Better Performance
 
-1) Set your NVIDIA API key in `.env`:
+For optimal performance and flexibility, use the two-endpoint approach:
 
-```
-cp .env .env.local  # optional; or edit .env directly
+**1) Fast VLM Analysis (POST `/vlm/analyze`)** - Get product fields quickly (~2-5 seconds)
+**2) Image Generation (POST `/generate/variation`)** - Generate variations on demand (~30-60 seconds)
+
+This allows you to:
+- Display product information immediately to users
+- Generate images in the background or on-demand
+- Cache VLM results and generate multiple variations
+- Better error handling for each step
+
+---
+
+#### 1️⃣ Fast VLM Analysis: `/vlm/analyze`
+
+Extract product fields using NVIDIA Nemotron VLM (no image generation).
+
+**Setup:** Set your NVIDIA API key in `.env`:
+```bash
 echo "NVIDIA_API_KEY=YOUR_KEY_HERE" >> .env
 ```
 
-2) Start the backend (see above), then call the endpoint:
+**Usage Examples:**
 
 ##### Image Only (Generation Mode):
 ```bash
 curl -X POST \
   -F "image=@bag.jpg;type=image/jpeg" \
   -F "locale=en-US" \
-  http://localhost:8000/vlm/describe
+  http://localhost:8000/vlm/analyze
 ```
 
-##### With Product Data (Augmentation Mode):
+##### With Existing Product Data (Augmentation Mode):
 ```bash
 curl -X POST \
   -F "image=@bag.jpg;type=image/jpeg" \
-  -F 'product_data={"title":"Classic Black Patent purse","description":"Elegant bag","price":15.99,"categories":["accessories","bag"],"tags":["bag","purse"]}' \
+  -F 'product_data={"title":"Classic Black Patent purse","description":"Elegant bag","price":15.99,"categories":["accessories"],"tags":["bag","purse"]}' \
   -F "locale=en-US" \
-  http://localhost:8000/vlm/describe
+  http://localhost:8000/vlm/analyze
 ```
 
-##### With Regional Localization (Spain Spanish):
+##### Regional Localization (Spain Spanish):
 ```bash
 curl -X POST \
   -F "image=@bag.jpg;type=image/jpeg" \
-  -F 'product_data={"categories":["accessories","bag"],"title":"Black Purse","description":"Elegant bag","price":49.9,"tags":["bag"]}' \
+  -F 'product_data={"title":"Black Purse","description":"Elegant bag"}' \
   -F "locale=es-ES" \
-  http://localhost:8000/vlm/describe
+  http://localhost:8000/vlm/analyze
 ```
 
-**Input Product Data Schema (optional):**
+**Input Schema (optional `product_data`):**
 ```json
 {
   "title": "string",
@@ -96,16 +112,113 @@ curl -X POST \
 ```
 
 **Response Schema:**
-
 ```json
 {
   "title": "Glamorous Black Evening Handbag with Gold Accents",
-  "description": "This exquisite handbag exudes sophistication and elegance. Crafted from high-quality, glossy leather, it boasts a sleek, rectangular shape with a slight taper, ensuring a chic silhouette that complements any outfit. The long, slender handles are designed for effortless elegance, while the gold-toned hardware, including buckles and zipper accents, adds a touch of opulence.",
+  "description": "This exquisite handbag exudes sophistication and elegance. Crafted from high-quality, glossy leather...",
   "categories": ["accessories"],
-  "tags": ["black leather", "gold accents", "evening bag", "rectangular shape", "long handles", "sleek design", "sophisticated", "glamorous"],
-  "colors": ["black", "gold"]
+  "tags": ["black leather", "gold accents", "evening bag", "rectangular shape"],
+  "colors": ["black", "gold"],
+  "locale": "en-US"
 }
 ```
+
+---
+
+#### 2️⃣ Image Generation: `/generate/variation`
+
+Generate culturally-appropriate product variations using FLUX models based on VLM analysis results.
+
+**Usage Example:**
+```bash
+# First, run VLM analysis (above) to get the fields, then:
+curl -X POST \
+  -F "image=@bag.jpg;type=image/jpeg" \
+  -F "locale=en-US" \
+  -F "title=Glamorous Black Evening Handbag with Gold Accents" \
+  -F "description=This exquisite handbag exudes sophistication..." \
+  -F 'categories=["accessories"]' \
+  -F 'tags=["black leather","gold accents","evening bag"]' \
+  -F 'colors=["black","gold"]' \
+  http://localhost:8000/generate/variation
+```
+
+**Response Schema:**
+```json
+{
+  "generated_image_b64": "iVBORw0KGgoAAAANS...",
+  "artifact_id": "a4511bbed05242078f9e3f7ead3b2247",
+  "image_path": "data/outputs/a4511bbed05242078f9e3f7ead3b2247.png",
+  "metadata_path": "data/outputs/a4511bbed05242078f9e3f7ead3b2247.json",
+  "locale": "en-US"
+}
+```
+
+---
+
+#### 3️⃣ Legacy Complete Pipeline: `/vlm/describe`
+
+Complete enrichment pipeline (VLM analysis + image generation in one call).
+
+**Note:** This endpoint is kept for backward compatibility but is slower (~35-65 seconds). Consider using the split approach above for better UX.
+
+**Usage Example:**
+```bash
+curl -X POST \
+  -F "image=@bag.jpg;type=image/jpeg" \
+  -F "locale=en-US" \
+  http://localhost:8000/vlm/describe
+```
+
+**Response Schema:**
+```json
+{
+  "title": "Glamorous Black Evening Handbag with Gold Accents",
+  "description": "This exquisite handbag exudes sophistication...",
+  "categories": ["accessories"],
+  "tags": ["black leather", "gold accents", "evening bag"],
+  "colors": ["black", "gold"],
+  "generated_image_b64": "iVBORw0KGgoAAAANS...",
+  "locale": "en-US"
+}
+```
+
+---
+
+### Web UI
+
+A Next.js-based web interface is available for interactive catalog enrichment.
+
+**Setup:**
+```bash
+cd src/ui
+pnpm install
+pnpm dev
+```
+
+The UI will be available at `http://localhost:3000`
+
+**Features:**
+- **Drag & Drop Image Upload**: Upload product images for analysis
+- **Locale Selector**: Choose from 10 supported regional locales using a dropdown menu
+- **Reset Button**: One-click reset to clear all data and start fresh
+- **Real-time VLM Analysis**: Get enriched product fields in ~2-5 seconds
+- **Parallel Image Generation**: Generate 3 product variations simultaneously
+- **Live Progress Indicators**: Visual feedback during analysis and generation
+- **Product Field Augmentation**: View original and AI-augmented product data side-by-side
+
+**Locale Support:**
+The UI includes a dropdown selector with all supported locales:
+- **English**: US, UK, Australia, Canada
+- **Spanish**: Spain, Mexico, Argentina, Colombia
+- **French**: France, Canada
+
+The selected locale affects:
+- Language and terminology in product descriptions
+- Cultural context for generated image backgrounds
+- Regional preferences (e.g., "ordenador" vs "computadora" for Spanish regions)
+
+---
 
 ##### Supported Locales:
 

@@ -10,7 +10,8 @@ import {
   FormField,
   TextInput,
   TextArea,
-  Spinner
+  Spinner,
+  Select
 } from '@/kui-foundations-react-external';
 import Image from 'next/image';
 import { useState, useRef } from 'react';
@@ -32,17 +33,32 @@ interface AugmentedData {
   categories?: string[];
 }
 
+const SUPPORTED_LOCALES = [
+  { value: 'en-US', children: 'English (US)' },
+  { value: 'en-GB', children: 'English (UK)' },
+  { value: 'en-AU', children: 'English (Australia)' },
+  { value: 'en-CA', children: 'English (Canada)' },
+  { value: 'es-ES', children: 'Spanish (Spain)' },
+  { value: 'es-MX', children: 'Spanish (Mexico)' },
+  { value: 'es-AR', children: 'Spanish (Argentina)' },
+  { value: 'es-CO', children: 'Spanish (Colombia)' },
+  { value: 'fr-FR', children: 'French (France)' },
+  { value: 'fr-CA', children: 'French (Canada)' }
+];
+
 function Home() {
   const [uploadedImage, setUploadedImage] = useState<string | null>(null);
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
   const [isUploading, setIsUploading] = useState(false);
-  const [isGenerating, setIsGenerating] = useState(false);
+  const [isAnalyzingFields, setIsAnalyzingFields] = useState(false);
+  const [isGeneratingImage, setIsGeneratingImage] = useState(false);
   const [imageMetadata, setImageMetadata] = useState<{
     name: string;
     size: string;
     dimensions?: string;
   } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [locale, setLocale] = useState<string>('en-US');
   const [fields, setFields] = useState<ProductFields>({
     title: '',
     description: '',
@@ -52,7 +68,7 @@ function Home() {
     price: ''
   });
   const [augmentedData, setAugmentedData] = useState<AugmentedData | null>(null);
-  const [generatedImageUrl, setGeneratedImageUrl] = useState<string | null>(null);
+  const [generatedImages, setGeneratedImages] = useState<(string | null)[]>([null, null, null]);
 
   const formatFileSize = (bytes: number): string => 
     bytes < 1024 ? `${bytes} bytes` : 
@@ -106,58 +122,138 @@ function Home() {
     setUploadedFile(null);
     setImageMetadata(null);
     setAugmentedData(null);
-    setGeneratedImageUrl(null);
+    setGeneratedImages([null, null, null]);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  const handleReset = () => {
+    // Reset all state to initial values
+    setUploadedImage(null);
+    setUploadedFile(null);
+    setImageMetadata(null);
+    setAugmentedData(null);
+    setGeneratedImages([null, null, null]);
+    setLocale('en-US');
+    setFields({
+      title: '',
+      description: '',
+      color: '',
+      categories: '',
+      tags: '',
+      price: ''
+    });
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
   const handleGenerate = async () => {
     if (!uploadedFile) return;
 
-    setIsGenerating(true);
+    setAugmentedData(null);
+    setGeneratedImages([null, null, null]);
     
     try {
-      const formData = new FormData();
-      formData.append('image', uploadedFile);
-      formData.append('locale', 'en-US');
-
+      // Prepare product data if fields are filled
       const hasFields = Object.values(fields).some(val => val.trim() !== '');
-      if (hasFields) {
-        const productData: any = {};
-        if (fields.title) productData.title = fields.title;
-        if (fields.description) productData.description = fields.description;
-        if (fields.categories) productData.categories = fields.categories.split(',').map(c => c.trim());
-        if (fields.tags) productData.tags = fields.tags.split(',').map(t => t.trim());
-        if (fields.price) productData.price = parseFloat(fields.price);
-        formData.append('product_data', JSON.stringify(productData));
+      const productData = hasFields ? (() => {
+        const data: any = {};
+        if (fields.title) data.title = fields.title;
+        if (fields.description) data.description = fields.description;
+        if (fields.categories) data.categories = fields.categories.split(',').map(c => c.trim());
+        if (fields.tags) data.tags = fields.tags.split(',').map(t => t.trim());
+        if (fields.price) data.price = parseFloat(fields.price);
+        return data;
+      })() : null;
+
+      // Step 1: Call VLM analysis (FAST - returns in ~2-5 seconds)
+      setIsAnalyzingFields(true);
+      const analyzeFormData = new FormData();
+      analyzeFormData.append('image', uploadedFile);
+      analyzeFormData.append('locale', locale);
+      if (productData) {
+        analyzeFormData.append('product_data', JSON.stringify(productData));
       }
 
-      const response = await fetch('http://localhost:8000/vlm/describe', {
+      const analyzeResponse = await fetch('http://localhost:8000/vlm/analyze', {
         method: 'POST',
-        body: formData
+        body: analyzeFormData
       });
 
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.detail || 'Failed to generate enriched data');
+      if (!analyzeResponse.ok) {
+        const error = await analyzeResponse.json();
+        throw new Error(error.detail || 'Failed to analyze image');
       }
 
-      const data = await response.json();
+      const analyzeData = await analyzeResponse.json();
+      
+      // Display fields immediately after VLM analysis
       setAugmentedData({
-        title: data.title || '',
-        description: data.description || '',
-        colors: data.colors || [],
-        tags: data.tags || [],
-        categories: data.categories || []
+        title: analyzeData.title || '',
+        description: analyzeData.description || '',
+        colors: analyzeData.colors || [],
+        tags: analyzeData.tags || [],
+        categories: analyzeData.categories || []
+      });
+      setIsAnalyzingFields(false);
+
+      // Step 2: Generate 3 image variations in parallel (SLOW - takes ~30-60 seconds each)
+      setIsGeneratingImage(true);
+      
+      // Create a function to generate a single variation
+      const generateVariation = async (index: number) => {
+        const variationFormData = new FormData();
+        variationFormData.append('image', uploadedFile);
+        variationFormData.append('locale', locale);
+        variationFormData.append('title', analyzeData.title || '');
+        variationFormData.append('description', analyzeData.description || '');
+        variationFormData.append('categories', JSON.stringify(analyzeData.categories || []));
+        variationFormData.append('tags', JSON.stringify(analyzeData.tags || []));
+        variationFormData.append('colors', JSON.stringify(analyzeData.colors || []));
+        if (analyzeData.enhanced_product) {
+          variationFormData.append('enhanced_product', JSON.stringify(analyzeData.enhanced_product));
+        }
+
+        const variationResponse = await fetch('http://localhost:8000/generate/variation', {
+          method: 'POST',
+          body: variationFormData
+        });
+
+        if (!variationResponse.ok) {
+          const error = await variationResponse.json();
+          throw new Error(error.detail || `Failed to generate variation ${index + 1}`);
+        }
+
+        const variationData = await variationResponse.json();
+        return variationData.generated_image_b64 
+          ? `data:image/png;base64,${variationData.generated_image_b64}`
+          : null;
+      };
+
+      // Generate all 3 variations in parallel
+      const variationPromises = [0, 1, 2].map(async (index) => {
+        try {
+          const imageUrl = await generateVariation(index);
+          // Update the specific image slot as soon as it completes
+          setGeneratedImages(prev => {
+            const newImages = [...prev];
+            newImages[index] = imageUrl;
+            return newImages;
+          });
+          return imageUrl;
+        } catch (error) {
+          console.error(`Error generating variation ${index + 1}:`, error);
+          return null;
+        }
       });
 
-      if (data.generated_image_b64) {
-        setGeneratedImageUrl(`data:image/png;base64,${data.generated_image_b64}`);
-      }
+      // Wait for all 3 to complete
+      await Promise.all(variationPromises);
+
     } catch (error) {
       console.error('Generation error:', error);
       alert(error instanceof Error ? error.message : 'Failed to generate enriched data');
     } finally {
-      setIsGenerating(false);
+      setIsAnalyzingFields(false);
+      setIsGeneratingImage(false);
     }
   };
 
@@ -182,20 +278,52 @@ function Home() {
         <div className="max-w-7xl mx-auto px-8" style={{ paddingTop: '48px', paddingBottom: '48px' }}>
           <Stack gap="8">
             <div style={{ padding: '0 16px' }}>
-              <Button 
-                kind="primary" 
-                size="large" 
-                className="nvidia-green-button"
-                disabled={!uploadedImage || isGenerating}
-                onClick={handleGenerate}
-              >
-                {isGenerating ? (
-                  <Flex gap="2" align="center">
-                    <Spinner size="small" />
-                    <span>Generating...</span>
-                  </Flex>
-                ) : uploadedImage ? 'Generate Enriched Data' : 'Upload Image to Start'}
-              </Button>
+              <Flex gap="4" align="center">
+                <Button 
+                  kind="primary" 
+                  size="large" 
+                  className="nvidia-green-button"
+                  disabled={!uploadedImage || isAnalyzingFields || isGeneratingImage}
+                  onClick={handleGenerate}
+                >
+                  {isAnalyzingFields ? (
+                    <Flex gap="2" align="center">
+                      <Spinner size="small" />
+                      <span>Analyzing...</span>
+                    </Flex>
+                  ) : isGeneratingImage ? (
+                    <Flex gap="2" align="center">
+                      <Spinner size="small" />
+                      <span>Generating Image...</span>
+                    </Flex>
+                  ) : uploadedImage ? 'Generate Enriched Data' : 'Upload Image to Start'}
+                </Button>
+                
+                <div style={{ width: '240px' }}>
+                  <FormField slotLabel="Locale">
+                    {(args: any) => (
+                      <Select
+                        {...args}
+                        items={SUPPORTED_LOCALES}
+                        value={locale}
+                        onValueChange={(value: string) => setLocale(value)}
+                        placeholder="Select locale"
+                        size="large"
+                        disabled={isAnalyzingFields || isGeneratingImage}
+                      />
+                    )}
+                  </FormField>
+                </div>
+
+                <Button 
+                  kind="secondary" 
+                  size="large"
+                  disabled={isAnalyzingFields || isGeneratingImage}
+                  onClick={handleReset}
+                >
+                  Reset
+                </Button>
+              </Flex>
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '32px', padding: '0 16px' }}>
@@ -326,10 +454,10 @@ function Home() {
                 <Stack gap="6">
                   <Text kind="title/md" className="text-primary">Fields</Text>
                   
-                  {isGenerating ? (
+                  {isAnalyzingFields ? (
                     <div className="flex items-center justify-center py-16">
                       <Stack gap="4" align="center">
-                        <Spinner size="large" description="Analyzing image and generating enriched data..." />
+                        <Spinner size="large" description="Analyzing image with VLM..." />
                       </Stack>
                     </div>
                   ) : (
@@ -343,7 +471,7 @@ function Home() {
                               size="medium"
                               value={fields.title}
                               onChange={(e: any) => setFields(prev => ({ ...prev, title: e.target.value }))}
-                              disabled={isGenerating}
+                              disabled={isAnalyzingFields || isGeneratingImage}
                             />
                           )}
                         </FormField>
@@ -367,7 +495,7 @@ function Home() {
                               resizeable="manual"
                               value={fields.description}
                               onChange={(e: any) => setFields(prev => ({ ...prev, description: e.target.value }))}
-                              disabled={isGenerating}
+                              disabled={isAnalyzingFields || isGeneratingImage}
                               attributes={{
                                 TextAreaElement: {
                                   rows: 3
@@ -395,7 +523,7 @@ function Home() {
                               size="medium"
                               value={fields.color}
                               onChange={(e: any) => setFields(prev => ({ ...prev, color: e.target.value }))}
-                              disabled={isGenerating}
+                              disabled={isAnalyzingFields || isGeneratingImage}
                             />
                           )}
                         </FormField>
@@ -418,7 +546,7 @@ function Home() {
                               size="medium"
                               value={fields.categories}
                               onChange={(e: any) => setFields(prev => ({ ...prev, categories: e.target.value }))}
-                              disabled={isGenerating}
+                              disabled={isAnalyzingFields || isGeneratingImage}
                             />
                           )}
                         </FormField>
@@ -441,7 +569,7 @@ function Home() {
                               size="medium"
                               value={fields.tags}
                               onChange={(e: any) => setFields(prev => ({ ...prev, tags: e.target.value }))}
-                              disabled={isGenerating}
+                              disabled={isAnalyzingFields || isGeneratingImage}
                             />
                           )}
                         </FormField>
@@ -464,7 +592,7 @@ function Home() {
                             size="medium"
                             value={fields.price}
                             onChange={(e: any) => setFields(prev => ({ ...prev, price: e.target.value }))}
-                            disabled={isGenerating}
+                            disabled={isAnalyzingFields || isGeneratingImage}
                           />
                         )}
                       </FormField>
@@ -476,128 +604,80 @@ function Home() {
 
             <div style={{ padding: '0 16px' }}>
               <Stack gap="6">
-                <Text kind="title/lg" className="text-primary">Generated Image Variations</Text>
+                <Text kind="title/lg" style={{ color: 'white' }}>Generated Image Variations</Text>
                 
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '24px' }}>
-                  <Card>
-                    <Stack gap="4">
-                      {generatedImageUrl ? (
-                        <div 
-                          className="rounded-lg overflow-hidden"
-                          style={{ 
-                            minHeight: '300px',
-                            backgroundColor: 'var(--color-gray-1000)',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center'
-                          }}
-                        >
-                          <img 
-                            src={generatedImageUrl} 
-                            alt="Generated variation" 
+                  {[0, 1, 2].map((index) => (
+                    <Card key={index}>
+                      <Stack gap="4">
+                        {generatedImages[index] ? (
+                          <div 
+                            className="rounded-lg overflow-hidden"
                             style={{ 
-                              maxWidth: '100%', 
-                              maxHeight: '300px',
-                              width: 'auto',
-                              height: 'auto',
-                              objectFit: 'contain',
-                              display: 'block'
+                              minHeight: '300px',
+                              backgroundColor: 'var(--color-gray-1000)',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center'
                             }}
-                          />
-                        </div>
-                      ) : (
-                        <div 
-                          className="bg-surface-sunken rounded-lg border-2 border-dashed border-base"
-                          style={{ 
-                            minHeight: '300px',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center'
+                          >
+                            <img 
+                              src={generatedImages[index]!} 
+                              alt={`Generated variation ${index + 1}`}
+                              style={{ 
+                                maxWidth: '100%', 
+                                maxHeight: '300px',
+                                width: 'auto',
+                                height: 'auto',
+                                objectFit: 'contain',
+                                display: 'block'
+                              }}
+                            />
+                          </div>
+                        ) : (
+                          <div 
+                            className="bg-surface-sunken rounded-lg border-2 border-dashed border-base"
+                            style={{ 
+                              minHeight: '300px',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center'
+                            }}
+                          >
+                            {isGeneratingImage ? (
+                              <Stack gap="3" align="center">
+                                <Spinner size="large" description={`Generating variation ${index + 1}...`} />
+                              </Stack>
+                            ) : (
+                              <Stack gap="3" align="center">
+                                <div className="w-16 h-16 bg-surface-raised rounded-lg flex items-center justify-center border border-base">
+                                  <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="var(--text-color-subtle)">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                  </svg>
+                                </div>
+                                <Text kind="body/regular/sm" className="text-subtle">Variation {index + 1}</Text>
+                              </Stack>
+                            )}
+                          </div>
+                        )}
+                        <Button 
+                          kind="secondary" 
+                          size="medium" 
+                          disabled={!generatedImages[index]}
+                          onClick={() => {
+                            if (generatedImages[index]) {
+                              const link = document.createElement('a');
+                              link.href = generatedImages[index]!;
+                              link.download = `generated-variation-${index + 1}.png`;
+                              link.click();
+                            }
                           }}
                         >
-                          {isGenerating ? (
-                            <Stack gap="3" align="center">
-                              <Spinner size="large" description="Generating image..." />
-                            </Stack>
-                          ) : (
-                            <Stack gap="3" align="center">
-                              <div className="w-16 h-16 bg-surface-raised rounded-lg flex items-center justify-center border border-base">
-                                <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="var(--text-color-subtle)">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                                </svg>
-                              </div>
-                              <Text kind="body/regular/sm" className="text-subtle">Variation 1</Text>
-                            </Stack>
-                          )}
-                        </div>
-                      )}
-                      <Button 
-                        kind="secondary" 
-                        size="medium" 
-                        disabled={!generatedImageUrl}
-                        onClick={() => {
-                          const link = document.createElement('a');
-                          link.href = generatedImageUrl!;
-                          link.download = 'generated-variation-1.png';
-                          link.click();
-                        }}
-                      >
-                        Download
-                      </Button>
-                    </Stack>
-                  </Card>
-
-                  <Card>
-                    <Stack gap="4">
-                      <div 
-                        className="bg-surface-sunken rounded-lg border-2 border-dashed border-base"
-                        style={{ 
-                          minHeight: '300px',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center'
-                        }}
-                      >
-                        <Stack gap="3" align="center">
-                          <div className="w-16 h-16 bg-surface-raised rounded-lg flex items-center justify-center border border-base">
-                            <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="var(--text-color-subtle)">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                            </svg>
-                          </div>
-                          <Text kind="body/regular/sm" className="text-subtle">Variation 2</Text>
-                        </Stack>
-                      </div>
-                      <Button kind="secondary" size="medium" disabled>
-                        Download
-                      </Button>
-                    </Stack>
-                  </Card>
-
-                  <Card>
-                    <Stack gap="4">
-                      <div 
-                        className="bg-surface-sunken rounded-lg border-2 border-dashed border-base"
-                        style={{ 
-                          minHeight: '300px',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center'
-                        }}
-                      >
-                        <Stack gap="3" align="center">
-                          <div className="w-16 h-16 bg-surface-raised rounded-lg flex items-center justify-center border border-base">
-                            <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="var(--text-color-subtle)">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                            </svg>
-                          </div>
-                          <Text kind="body/regular/sm" className="text-subtle">Variation 3</Text>
-                        </Stack>
-                      </div>
-                      <Button kind="secondary" size="medium" disabled>
-                        Download
-                      </Button>
-                    </Stack>
-                  </Card>
+                          Download
+                        </Button>
+                      </Stack>
+                    </Card>
+                  ))}
                 </div>
               </Stack>
             </div>
