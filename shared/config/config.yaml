@@ -9,4 +9,4 @@ llm:
   model: "nvidia/nvidia-nemotron-nano-9b-v2"
 
 flux:
-  url: "placeholder"
+  url: "http://localhost:8005/v1/infer"
