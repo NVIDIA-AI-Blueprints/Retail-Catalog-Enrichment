@@ -2,36 +2,46 @@
 
 ## Project: Catalog Enrichment System
 
-**Version:** 1.0.0
-**Last Updated:** 15-Sept-2025  
+**Version:** 1.1.0
+**Last Updated:** 08-Oct-2025  
 **Owner:** Antonio Martinez (NVIDIA)
 
 ## Problem Statement
 
 Product catalogs often contain minimal, low-quality information with basic product images and sparse descriptions. This limits customer engagement, search discoverability, and overall user experience. Manual enrichment of catalog data is time-consuming, error-prone, and doesn't scale. Human categorization and tagging of products is particularly susceptible to inconsistencies, subjective interpretations, and classification errors that can negatively impact search functionality and user experience.
 
+Additionally, product catalogs quickly become outdated as market trends, customer preferences, and styling conventions evolve. Catalog managers lack visibility into how customers are actually using products in real-world contexts, what terminology resonates with target audiences, and what trends are emerging on social media platforms. This disconnect between catalog content and market reality leads to missed opportunities for engagement and conversion.
+
 ## Solution Overview
 
-A GenAI-powered catalog enrichment system that transforms basic product images into comprehensive, rich catalog entries with enhanced titles, descriptions, categories, tags, variation images (2D/3D), and short video clips.
+A GenAI-powered catalog enrichment system that transforms basic product images into comprehensive, rich catalog entries with enhanced titles, descriptions, categories, tags, variation images (2D/3D), and short video clips. The system leverages social media content analysis to incorporate trending styles, real-world usage patterns, and customer sentiment into product enrichment, ensuring catalog data stays current with market trends.
 
 ## Core User Flow
 
 1. **Input**: User submits product image along with existing product JSON data and optional locale specification
-2. **Content Augmentation**: System uses NVIDIA Nemotron VLM to enhance existing product data by:
+2. **Social Media Analysis** (Optional): System retrieves and analyzes social media content for similar products to extract:
+   - Trending styles and terminology
+   - Real-world usage scenarios and contexts
+   - Customer sentiment and common feedback
+   - Popular color combinations and styling preferences
+   - Complementary products and accessories
+3. **Content Augmentation**: System uses NVIDIA Nemotron VLM to enhance existing product data by:
    - Enriching product title with more descriptive details (localized to target region)
    - Expanding product description with richer, more verbose content (using regional terminology)
    - Improving and refining attributes (e.g., expanding "Black" to "Matte Black with Silver Hardware")
    - Enhancing categories and subcategories based on visual analysis
    - Generating more comprehensive and accurate tags
    - Validating and correcting product specifications against visual evidence
-3. **Cultural Prompt Planning**: System uses NVIDIA Nemotron LLM to create culturally-aware prompts for image generation based on:
+   - Incorporating trending terminology and insights from social media analysis (when available)
+4. **Cultural Prompt Planning**: System uses NVIDIA Nemotron LLM to create culturally-aware prompts for image generation based on:
    - Product analysis
    - Target locale/country cultural context
    - Regional aesthetic preferences
-4. **Localized Image Generation**: System creates variation images using FLUX models with culturally-appropriate backgrounds
-5. **3D Asset Creation**: System generates 3D product assets using Microsoft's TRELLIS model
-6. **Video Generation**: System produces 3-5 second product video clips using open-source models
-7. **Output**: Culturally-enriched catalog entry with all generated assets optimized for target market
+   - Social media trend insights (when available)
+5. **Localized Image Generation**: System creates variation images using FLUX models with culturally-appropriate backgrounds
+6. **3D Asset Creation**: System generates 3D product assets using Microsoft's TRELLIS model
+7. **Video Generation**: System produces 3-5 second product video clips using open-source models
+8. **Output**: Culturally-enriched catalog entry with all generated assets optimized for target market, enhanced with social media insights
 
 ## Functional Requirements
 
@@ -77,6 +87,22 @@ A GenAI-powered catalog enrichment system that transforms basic product images i
 - Generate culturally-appropriate product backgrounds reflecting regional aesthetics and lifestyle contexts
 - Adapt image generation prompts to include cultural elements specific to target country/region
 
+### FR-7: Social Media Content Integration
+- Extract trending styles, real-world usage patterns, and customer reviews from social media platforms for similar products
+- Analyze visual and video content from social media sources (TikTok, YouTube, Instagram, etc.)
+- Identify product usage contexts, styling trends, and customer sentiment from user-generated content
+- Integrate social media insights into catalog enrichment to enhance product descriptions and tags with trending terminology
+- Support both API-based and MCP-based integration patterns for social media data retrieval
+- Extract key visual elements from social media content:
+  - Popular color combinations and styling preferences
+  - Real-world product usage scenarios and contexts
+  - Complementary products frequently shown together
+  - Seasonal trends and emerging fashion/lifestyle patterns
+- Aggregate customer sentiment and common feedback themes from social media reviews and comments
+- Identify trending hashtags, keywords, and product descriptors relevant to similar products
+- Maintain compliance with platform terms of service and data privacy regulations
+- Support both real-time monitoring and periodic batch analysis modes
+
 ## Technical Requirements
 
 ### TR-1: Model Integration
@@ -102,6 +128,19 @@ A GenAI-powered catalog enrichment system that transforms basic product images i
 - Organized asset storage structure
 - Metadata tracking and versioning
 - Cleanup policies for temporary files
+
+### TR-5: Social Media Integration
+- API integration with social media platforms (TikTok, YouTube, Instagram, Pinterest)
+- Support for MCP (Model Context Protocol) based data retrieval
+- Web scraping infrastructure for platforms without API access
+- Rate limiting and quota management for API calls
+- Content deduplication and similarity detection across social media sources
+- Video analysis pipeline for extracting frames and analyzing video content
+- Natural language processing for sentiment analysis and review extraction
+- Trend detection algorithms for identifying emerging patterns
+- Data caching and refresh strategies for social media content
+- Privacy compliance framework (GDPR, CCPA) for user-generated content
+- Content filtering to exclude inappropriate or irrelevant material
 
 ## User Stories
 
@@ -135,6 +174,26 @@ A GenAI-powered catalog enrichment system that transforms basic product images i
 **I want to** display 3D product models  
 **So that** customers can interact with products before purchase
 
+### US-5: Trend-Informed Product Enrichment
+**As a** catalog manager  
+**I want to** enrich my product descriptions with trending styles and terminology from social media  
+**So that** my catalog stays current with market trends and uses language that resonates with customers
+
+### US-5a: Social Media Sentiment Analysis
+**As a** product manager  
+**I want to** understand customer sentiment and common feedback about similar products from social media reviews  
+**So that** I can improve product descriptions by addressing common questions and highlighting popular features
+
+### US-5b: Real-World Usage Context
+**As a** marketing team member  
+**I want to** see how customers are actually using and styling similar products in real-world scenarios from social media  
+**So that** I can create more authentic and relatable marketing content and product imagery
+
+### US-5c: Competitive Intelligence
+**As a** merchandising manager  
+**I want to** identify trending color combinations, styling preferences, and complementary products from social media analysis  
+**So that** I can optimize product assortments and create effective cross-selling opportunities
+
 ## Success Criteria
 
 - **Processing Time**: <1 minute per product for complete enrichment
@@ -144,6 +203,9 @@ A GenAI-powered catalog enrichment system that transforms basic product images i
 - **Localization Coverage**: Support 10 regional locales across English, Spanish, and French
 - **System Reliability**: 99% uptime for processing requests
 - **User Satisfaction**: Positive feedback on generated content quality and cultural authenticity
+- **Social Media Integration Accuracy**: Extracted trends and sentiment achieve >85% relevance to target product category
+- **Trend Freshness**: Social media insights refreshed within 24-48 hours of platform posting
+- **Content Diversity**: Aggregate insights from minimum of 50+ relevant social media posts per product category
 
 ## Implementation TODOs
 
@@ -153,6 +215,7 @@ A GenAI-powered catalog enrichment system that transforms basic product images i
 - [ ] FR-4: 3D Asset Generation
 - [ ] FR-5: Video Clip Generation
 - [x] ~~FR-6: Multi-Language & Cultural Localization~~ *(Complete with 10 regional locales and cultural image generation)*
+- [ ] FR-7: Social Media Content Integration
 
 - [ ] TR-1: Model Integration
   - [x] ~~NVIDIA Nemotron VLM API integration~~
@@ -163,3 +226,10 @@ A GenAI-powered catalog enrichment system that transforms basic product images i
 - [ ] TR-2: Infrastructure
 - [ ] TR-3: Performance
 - [ ] TR-4: Data Management
+- [ ] TR-5: Social Media Integration
+  - [ ] API integration setup (TikTok, YouTube, Instagram, Pinterest)
+  - [ ] MCP-based integration implementation
+  - [ ] Video content analysis pipeline
+  - [ ] Sentiment analysis and NLP processing
+  - [ ] Trend detection algorithms
+  - [ ] Privacy compliance framework
