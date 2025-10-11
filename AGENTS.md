@@ -89,6 +89,21 @@ uvicorn --app-dir src backend.main:app --host 0.0.0.0 --port 8000 --reload
     - `image_path`: string (disk location of saved image)
     - `metadata_path`: string (disk location of saved metadata)
 
+**3D Asset Generation (Slow - ~30-120 seconds):**
+- POST `/generate/3d`
+  - Request: `multipart/form-data` with fields:
+    - `image` (file): Product image (JPEG, PNG)
+    - `slat_cfg_scale` (float, optional): SLAT configuration scale (default: 5.0)
+    - `ss_cfg_scale` (float, optional): SS configuration scale (default: 10.0)
+    - `slat_sampling_steps` (int, optional): SLAT sampling steps (default: 50)
+    - `ss_sampling_steps` (int, optional): SS sampling steps (default: 50)
+    - `seed` (int, optional): Random seed for reproducibility (default: 0)
+    - `return_json` (bool, optional): Return JSON with base64 GLB or binary GLB (default: false)
+  - Response: Binary GLB file (model/gltf-binary) or JSON with:
+    - `glb_base64`: string (base64-encoded GLB file)
+    - `artifact_id`: string (unique identifier)
+    - `metadata`: object (generation parameters and file size)
+
 **Legacy (Complete Pipeline - ~35-65 seconds):**
 - POST `/vlm/describe`
   - Request: `multipart/form-data` with fields:
@@ -171,6 +186,32 @@ curl -X POST \
   -F 'tags=["black leather","gold accents","evening bag"]' \
   -F 'colors=["black","gold"]' \
   http://localhost:8000/generate/variation
+```
+
+**3D Asset Generation (returns GLB file in ~30-120 seconds):**
+```bash
+# Generate 3D GLB asset with default parameters (returns binary GLB)
+curl -X POST \
+  -F "image=@bag.jpg;type=image/jpeg" \
+  http://localhost:8000/generate/3d \
+  --output product.glb
+
+# Generate with custom parameters
+curl -X POST \
+  -F "image=@bag.jpg;type=image/jpeg" \
+  -F "slat_cfg_scale=5.0" \
+  -F "ss_cfg_scale=10.0" \
+  -F "slat_sampling_steps=50" \
+  -F "ss_sampling_steps=50" \
+  -F "seed=42" \
+  http://localhost:8000/generate/3d \
+  --output product.glb
+
+# Return JSON with base64-encoded GLB (useful for web clients)
+curl -X POST \
+  -F "image=@bag.jpg;type=image/jpeg" \
+  -F "return_json=true" \
+  http://localhost:8000/generate/3d
 ```
 
 **Complete Pipeline (legacy endpoint - returns everything in ~35-65 seconds):**

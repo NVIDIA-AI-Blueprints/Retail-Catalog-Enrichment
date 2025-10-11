@@ -212,7 +212,7 @@ A GenAI-powered catalog enrichment system that transforms basic product images i
 - [x] ~~FR-1: Image Input Processing~~
 - [x] ~~FR-2: VLM Content Extraction~~
 - [x] ~~FR-3: 2D Image Variation Generation~~
-- [ ] FR-4: 3D Asset Generation
+- [x] ~~FR-4: 3D Asset Generation~~ *(Backend endpoint complete, UI integration pending)*
 - [ ] FR-5: Video Clip Generation
 - [x] ~~FR-6: Multi-Language & Cultural Localization~~ *(Complete with 10 regional locales and cultural image generation)*
 - [ ] FR-7: Social Media Content Integration
@@ -221,7 +221,7 @@ A GenAI-powered catalog enrichment system that transforms basic product images i
   - [x] ~~NVIDIA Nemotron VLM API integration~~
   - [x] ~~NVIDIA Nemotron LLM integration for prompt planning~~
   - [x] ~~FLUX model deployment~~
-  - [ ] Microsoft TRELLIS model integration
+  - [x] ~~Microsoft TRELLIS model integration~~ *(Backend API integration complete)*
   - [ ] Open-source video generation model setup
 - [ ] TR-2: Infrastructure
 - [ ] TR-3: Performance

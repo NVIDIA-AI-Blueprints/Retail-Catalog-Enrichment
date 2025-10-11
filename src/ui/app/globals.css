@@ -56,6 +56,23 @@
   color: #76b900 !important;
 }
 
+/* 3D Model Viewer Background */
+.model-viewer-container {
+  background: radial-gradient(circle at center, #2a2a2a 0%, #0c0c0c 100%);
+  position: relative;
+}
+
+.model-viewer-container::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: 
+    radial-gradient(ellipse at 30% 30%, rgba(118, 185, 0, 0.15) 0%, transparent 50%),
+    radial-gradient(ellipse at 70% 70%, rgba(118, 185, 0, 0.08) 0%, transparent 50%);
+  pointer-events: none;
+  z-index: 1;
+}
+
 
 
 
