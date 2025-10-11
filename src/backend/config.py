@@ -43,6 +43,9 @@ class Config:
         
     def get_flux_config(self) -> Dict[str, str]:
         return self._get_section_config('flux', ['url'])
+        
+    def get_trellis_config(self) -> Dict[str, str]:
+        return self._get_section_config('trellis', ['url'])
 
 
 _config_instance: Optional[Config] = None

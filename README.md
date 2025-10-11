@@ -1,6 +1,6 @@
 # Catalog Enrichment System
 
-A GenAI-powered catalog enrichment system that transforms basic product images into comprehensive, rich catalog entries using NVIDIA's Nemotron VLM for content analysis, Nemotron LLM for intelligent prompt planning, and FLUX models for generating high-quality product variations.
+A GenAI-powered catalog enrichment system that transforms basic product images into comprehensive, rich catalog entries using NVIDIA's Nemotron VLM for content analysis, Nemotron LLM for intelligent prompt planning, FLUX models for generating high-quality product variations, and Microsoft's TRELLIS model for 3D asset generation.
 
 ## 🌍 Key Features
 
@@ -9,6 +9,7 @@ A GenAI-powered catalog enrichment system that transforms basic product images i
 - **Intelligent Prompt Planning**: Context-aware image variation planning based on regional aesthetics
 - **Multi-Language Support**: Generate product titles and descriptions in **10 regional locales**
 - **Cultural Image Generation**: Create culturally-appropriate product backgrounds (Spanish courtyards, Mexican family spaces, British formal settings)
+- **3D Asset Generation**: Transform 2D product images into interactive 3D GLB models using Microsoft TRELLIS
 
 ## Development setup (uv + uvicorn)
 
@@ -44,22 +45,25 @@ Backend endpoints:
 - `GET /health` → JSON health status
 - `POST /vlm/analyze` → **Fast VLM analysis** (~2-5 seconds) - extract product fields without image generation
 - `POST /generate/variation` → **Image generation with FLUX** (~30-60 seconds) - generate product variation using VLM results
+- `POST /generate/3d` → **3D asset generation with TRELLIS** (~30-120 seconds) - generate 3D GLB models from 2D images
 - `POST /vlm/describe` → **Legacy complete pipeline** (~35-65 seconds) - VLM analysis + image generation in one call
 
 ### API Endpoints
 
-#### Recommended Workflow: Split Pipeline for Better Performance
+#### Recommended Workflow: Modular Pipeline for Better Performance
 
-For optimal performance and flexibility, use the two-endpoint approach:
+For optimal performance and flexibility, use the modular approach:
 
 **1) Fast VLM Analysis (POST `/vlm/analyze`)** - Get product fields quickly (~2-5 seconds)
-**2) Image Generation (POST `/generate/variation`)** - Generate variations on demand (~30-60 seconds)
+**2) Image Generation (POST `/generate/variation`)** - Generate 2D variations on demand (~30-60 seconds)
+**3) 3D Asset Generation (POST `/generate/3d`)** - Generate 3D models on demand (~30-120 seconds)
 
 This allows you to:
 - Display product information immediately to users
-- Generate images in the background or on-demand
+- Generate images and 3D assets in the background or on-demand
 - Cache VLM results and generate multiple variations
 - Better error handling for each step
+- Parallel generation of multiple asset types
 
 ---
 
@@ -156,7 +160,77 @@ curl -X POST \
 
 ---
 
-#### 3️⃣ Legacy Complete Pipeline: `/vlm/describe`
+#### 3️⃣ 3D Asset Generation: `/generate/3d`
+
+Generate interactive 3D GLB models from 2D product images using Microsoft's TRELLIS model.
+
+**Setup:** Configure TRELLIS endpoint in `shared/config/config.yaml`:
+```yaml
+trellis:
+  url: "http://localhost:8006/v1/infer"
+```
+
+**Usage Examples:**
+
+##### Basic Usage (Binary GLB Response):
+```bash
+curl -X POST \
+  -F "image=@bag.jpg;type=image/jpeg" \
+  http://localhost:8000/generate/3d \
+  --output product.glb
+```
+
+##### With Custom Parameters:
+```bash
+curl -X POST \
+  -F "image=@bag.jpg;type=image/jpeg" \
+  -F "slat_cfg_scale=5.0" \
+  -F "ss_cfg_scale=10.0" \
+  -F "slat_sampling_steps=50" \
+  -F "ss_sampling_steps=50" \
+  -F "seed=42" \
+  http://localhost:8000/generate/3d \
+  --output product.glb
+```
+
+##### JSON Response (for Web Clients):
+```bash
+curl -X POST \
+  -F "image=@bag.jpg;type=image/jpeg" \
+  -F "return_json=true" \
+  http://localhost:8000/generate/3d
+```
+
+**Request Parameters:**
+- `image` (required): Product image file (JPEG, PNG)
+- `slat_cfg_scale` (optional, default: 5.0): SLAT configuration scale
+- `ss_cfg_scale` (optional, default: 10.0): SS configuration scale
+- `slat_sampling_steps` (optional, default: 50): SLAT sampling steps
+- `ss_sampling_steps` (optional, default: 50): SS sampling steps
+- `seed` (optional, default: 0): Random seed for reproducibility
+- `return_json` (optional, default: false): Return JSON with base64 GLB instead of binary
+
+**Response (Binary Mode):**
+- Binary GLB file (model/gltf-binary) ready for download
+
+**Response (JSON Mode):**
+```json
+{
+  "glb_base64": "Z2xURgIAAAA...",
+  "artifact_id": "trellis_42",
+  "metadata": {
+    "slat_cfg_scale": 5.0,
+    "ss_cfg_scale": 10.0,
+    "slat_sampling_steps": 50,
+    "ss_sampling_steps": 50,
+    "seed": 42,
+    "size_bytes": 1234567
+  }
+}
+```
+---
+
+#### 4️⃣ Legacy Complete Pipeline: `/vlm/describe`
 
 Complete enrichment pipeline (VLM analysis + image generation in one call).
 

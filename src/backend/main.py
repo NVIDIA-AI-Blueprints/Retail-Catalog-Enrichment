@@ -1,3 +1,4 @@
+import base64
 import json
 import logging
 from contextlib import asynccontextmanager
@@ -6,11 +7,12 @@ from typing import List
 from dotenv import load_dotenv
 from fastapi import FastAPI, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, PlainTextResponse
+from fastapi.responses import JSONResponse, PlainTextResponse, Response
 from langgraph.graph import StateGraph
 
 from backend.vlm import run_vlm_analysis, vlm_node, VLMState
 from backend.image import generate_image_variation, planner_node, flux_node, persist_node
+from backend.trellis import generate_3d_asset
 
 load_dotenv()
 
@@ -199,6 +201,88 @@ async def _validate_image(image: UploadFile, endpoint: str):
         return None, JSONResponse({"detail": "File must be an image"}, status_code=400)
     
     return (image_bytes, content_type), None
+
+
+@app.post("/generate/3d")
+async def generate_3d(
+    image: UploadFile = File(...),
+    slat_cfg_scale: float = Form(5.0),
+    ss_cfg_scale: float = Form(10.0),
+    slat_sampling_steps: int = Form(50),
+    ss_sampling_steps: int = Form(50),
+    seed: int = Form(0),
+    return_json: bool = Form(False)
+) -> Response:
+    """
+    Generate a 3D GLB asset from a 2D product image using TRELLIS model.
+    
+    This endpoint accepts a product image and returns a 3D GLB file that can be rendered in the UI.
+    Processing time: ~30-120 seconds depending on parameters.
+    
+    Args:
+        image: Product image file (JPEG, PNG)
+        slat_cfg_scale: SLAT configuration scale (default: 5.0)
+        ss_cfg_scale: SS configuration scale (default: 10.0)
+        slat_sampling_steps: SLAT sampling steps (default: 50)
+        ss_sampling_steps: SS sampling steps (default: 50)
+        seed: Random seed for reproducibility (default: 0)
+        return_json: If True, return JSON with base64-encoded GLB; if False, return binary GLB (default: False)
+        
+    Returns:
+        Binary GLB file (model/gltf-binary) or JSON with base64-encoded GLB
+    """
+    try:
+        validation_result, error_response = await _validate_image(image, "/generate/3d")
+        if error_response:
+            return error_response
+        image_bytes, content_type = validation_result
+        
+        logger.info(
+            f"Generating 3D asset: slat_cfg={slat_cfg_scale}, ss_cfg={ss_cfg_scale}, "
+            f"slat_steps={slat_sampling_steps}, ss_steps={ss_sampling_steps}, seed={seed}"
+        )
+        
+        result = generate_3d_asset(
+            image_bytes=image_bytes,
+            content_type=content_type,
+            slat_cfg_scale=slat_cfg_scale,
+            ss_cfg_scale=ss_cfg_scale,
+            slat_sampling_steps=slat_sampling_steps,
+            ss_sampling_steps=ss_sampling_steps,
+            seed=seed
+        )
+        
+        glb_data = result["glb_data"]
+        artifact_id = result["artifact_id"]
+        metadata = result["metadata"]
+        
+        logger.info(
+            f"/generate/3d success: artifact_id={artifact_id} size={metadata['size_bytes']} bytes"
+        )
+        
+        if return_json:
+            # Return JSON with base64-encoded GLB
+            glb_b64 = base64.b64encode(glb_data).decode("ascii")
+            payload = {
+                "glb_base64": glb_b64,
+                "artifact_id": artifact_id,
+                "metadata": metadata
+            }
+            return JSONResponse(payload)
+        else:
+            # Return binary GLB file
+            return Response(
+                content=glb_data,
+                media_type="model/gltf-binary",
+                headers={
+                    "Content-Disposition": f'attachment; filename="product_3d_{artifact_id}.glb"'
+                }
+            )
+        
+    except Exception as exc:
+        logger.exception(f"/generate/3d exception: {exc}")
+        return JSONResponse({"detail": str(exc)}, status_code=500)
+
 
 @app.post("/vlm/describe")
 async def vlm_describe(

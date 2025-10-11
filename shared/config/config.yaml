@@ -10,3 +10,6 @@ llm:
 
 flux:
   url: "http://localhost:8005/v1/infer"
+
+trellis:
+  url: "http://localhost:8006/v1/infer"
