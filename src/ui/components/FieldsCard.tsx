@@ -30,7 +30,7 @@ export function FieldsCard({ fields, augmentedData, isAnalyzing, isGenerating, o
                 {(args: any) => (
                   <TextInput 
                     {...args}
-                    placeholder="Enter product title"
+                    placeholder=""
                     size="medium"
                     value={fields.title}
                     onChange={(e: any) => onFieldChange('title', e.target.value)}
@@ -53,7 +53,7 @@ export function FieldsCard({ fields, augmentedData, isAnalyzing, isGenerating, o
                 {(args: any) => (
                   <TextArea 
                     {...args}
-                    placeholder="Enter product description"
+                    placeholder=""
                     size="medium"
                     resizeable="manual"
                     value={fields.description}
@@ -80,7 +80,7 @@ export function FieldsCard({ fields, augmentedData, isAnalyzing, isGenerating, o
                 {(args: any) => (
                   <TextInput 
                     {...args}
-                    placeholder="e.g., Black, Red, Blue"
+                    placeholder=""
                     size="medium"
                     value={fields.color}
                     onChange={(e: any) => onFieldChange('color', e.target.value)}
@@ -103,7 +103,7 @@ export function FieldsCard({ fields, augmentedData, isAnalyzing, isGenerating, o
                 {(args: any) => (
                   <TextInput 
                     {...args}
-                    placeholder="e.g., furniture, electronics, clothing"
+                    placeholder=""
                     size="medium"
                     value={fields.categories}
                     onChange={(e: any) => onFieldChange('categories', e.target.value)}
@@ -126,7 +126,7 @@ export function FieldsCard({ fields, augmentedData, isAnalyzing, isGenerating, o
                 {(args: any) => (
                   <TextInput 
                     {...args}
-                    placeholder="e.g., fashion, accessories, luxury"
+                    placeholder=""
                     size="medium"
                     value={fields.tags}
                     onChange={(e: any) => onFieldChange('tags', e.target.value)}
@@ -149,7 +149,7 @@ export function FieldsCard({ fields, augmentedData, isAnalyzing, isGenerating, o
                 <TextInput 
                   {...args}
                   type="number"
-                  placeholder="0.00"
+                  placeholder=""
                   size="medium"
                   value={fields.price}
                   onChange={(e: any) => onFieldChange('price', e.target.value)}
