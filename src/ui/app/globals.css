@@ -73,6 +73,25 @@
   z-index: 1;
 }
 
+/* Force Nebula to take full height */
+[data-testid="nv-nebula"] {
+  width: 100% !important;
+  height: 100% !important;
+  min-height: 100% !important;
+}
+
+[data-testid="nv-nebula"] canvas {
+  width: 100% !important;
+  height: 100% !important;
+}
+
+/* Transparent Header - blend with background like build.nvidia.com */
+.transparent-header .nv-app-bar-root {
+  background: transparent !important;
+  background-color: transparent !important;
+  border-bottom: none !important;
+}
+
 
 
 

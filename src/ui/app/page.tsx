@@ -1,7 +1,8 @@
 'use client';
 
-import { Stack, Button, Flex, FormField, Select, Spinner } from '@/kui-foundations-react-external';
+import { Stack } from '@/kui-foundations-react-external';
 import { useState, useRef } from 'react';
+import { Nebula } from '@kui-contrib/nebula';
 import { Header } from '@/components/Header';
 import { ImageUploadCard } from '@/components/ImageUploadCard';
 import { FieldsCard } from '@/components/FieldsCard';
@@ -163,61 +164,68 @@ function Home() {
   };
 
   return (
-    <div className="min-h-screen bg-surface-base">
-      <Header />
+    <div className="min-h-screen bg-surface-base relative">
+      {/* Nebula Background */}
+      <div 
+        className="pointer-events-none" 
+        style={{ 
+          position: 'fixed', 
+          top: 0, 
+          left: 0, 
+          right: 0, 
+          bottom: 0, 
+          width: '100vw',
+          height: '100vh',
+          zIndex: 0,
+          overflow: 'hidden'
+        }}
+      >
+        <div style={{ width: '100%', height: '100%' }}>
+          <Nebula variant="ambient" />
+        </div>
+      </div>
       
-      <main className="pt-16 bg-surface-base min-h-screen">
+      {/* Top Green Gradient Overlay */}
+      <div 
+        className="pointer-events-none"
+        style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          height: '500px',
+          background: 'linear-gradient(80.22deg, #BFF230 1.49%, #7CD7FE 99.95%)',
+          opacity: 0.12,
+          zIndex: 0,
+          maskImage: 'radial-gradient(ellipse 150% 120% at top, black 0%, black 30%, transparent 70%)',
+          WebkitMaskImage: 'radial-gradient(ellipse 150% 120% at top, black 0%, black 30%, transparent 70%)'
+        }}
+      />
+      
+      {/* Bottom Green Gradient Overlay */}
+      <div 
+        className="pointer-events-none"
+        style={{
+          position: 'fixed',
+          bottom: 0,
+          left: 0,
+          right: 0,
+          height: '300px',
+          background: 'linear-gradient(80.22deg, #BFF230 1.49%, #7CD7FE 99.95%)',
+          opacity: 0.12,
+          zIndex: 0,
+          maskImage: 'radial-gradient(ellipse 120% 130% at bottom, black 0%, black 25%, transparent 60%)',
+          WebkitMaskImage: 'radial-gradient(ellipse 120% 130% at bottom, black 0%, black 25%, transparent 60%)'
+        }}
+      />
+      
+      {/* Content */}
+      <div className="relative" style={{ zIndex: 1 }}>
+        <Header />
+        
+        <main className="pt-16 min-h-screen">
         <div className="max-w-7xl mx-auto px-8" style={{ paddingTop: '48px', paddingBottom: '48px' }}>
           <Stack gap="8">
-            <div style={{ padding: '0 16px' }}>
-              <Flex gap="4" align="center">
-                <Button 
-                  kind="primary" 
-                  size="large" 
-                  className="nvidia-green-button"
-                  disabled={!uploadedImage || isAnalyzingFields || isGeneratingImage}
-                  onClick={handleGenerate}
-                >
-                  {isAnalyzingFields ? (
-                    <Flex gap="2" align="center">
-                      <Spinner size="small" aria-label="Analyzing" />
-                      <span>Analyzing...</span>
-                    </Flex>
-                  ) : isGeneratingImage ? (
-                    <Flex gap="2" align="center">
-                      <Spinner size="small" aria-label="Generating" />
-                      <span>Generating Image...</span>
-                    </Flex>
-                  ) : uploadedImage ? 'Generate Enriched Data' : 'Upload Image to Start'}
-                </Button>
-                
-                <div style={{ width: '240px' }}>
-                  <FormField slotLabel="Locale">
-                    {(args: any) => (
-                      <Select
-                        {...args}
-                        items={SUPPORTED_LOCALES}
-                        value={locale}
-                        onValueChange={setLocale}
-                        placeholder="Select locale"
-                        size="large"
-                        disabled={isAnalyzingFields || isGeneratingImage}
-                      />
-                    )}
-                  </FormField>
-                </div>
-
-                <Button 
-                  kind="secondary" 
-                  size="large"
-                  disabled={isAnalyzingFields || isGeneratingImage}
-                  onClick={handleReset}
-                >
-                  Reset
-                </Button>
-              </Flex>
-            </div>
-
             <input
               ref={fileInputRef}
               type="file"
@@ -234,11 +242,16 @@ function Home() {
                 uploadedImage={uploadedImage}
                 isUploading={isUploading}
                 imageMetadata={imageMetadata}
+                locale={locale}
+                localeOptions={SUPPORTED_LOCALES}
+                isAnalyzingFields={isAnalyzingFields}
+                isGeneratingImage={isGeneratingImage}
                 onFileSelect={() => fileInputRef.current?.click()}
-                onFileChange={() => fileInputRef.current?.click()}
-                onFileRemove={handleReset}
                 onDragOver={handleDragOver}
                 onDrop={handleDrop}
+                onLocaleChange={setLocale}
+                onGenerate={handleGenerate}
+                onReset={handleReset}
               />
 
               <FieldsCard
@@ -259,6 +272,7 @@ function Home() {
           </Stack>
         </div>
       </main>
+      </div>
     </div>
   );
 }
