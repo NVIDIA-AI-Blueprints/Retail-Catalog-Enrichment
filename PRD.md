@@ -2,8 +2,8 @@
 
 ## Project: Catalog Enrichment System
 
-**Version:** 1.1.0
-**Last Updated:** 08-Oct-2025  
+**Version:** 1.2.0
+**Last Updated:** 14-Oct-2025  
 **Owner:** Antonio Martinez (NVIDIA)
 
 ## Problem Statement
@@ -103,6 +103,15 @@ A GenAI-powered catalog enrichment system that transforms basic product images i
 - Maintain compliance with platform terms of service and data privacy regulations
 - Support both real-time monitoring and periodic batch analysis modes
 
+### FR-8: Brand Voice & Taxonomy Customization
+- Accept custom brand instructions to guide content enrichment and generation
+- Support brand-specific voice, tone, and writing style preferences
+- Apply custom taxonomy and categorization guidelines consistent with brand standards
+- Incorporate brand-specific terminology, keywords, and messaging preferences
+- Enable brands to define product classification rules and hierarchies
+- Maintain consistency across all enriched content (titles, descriptions, tags, categories)
+- Allow optional brand instructions parameter alongside product data and images
+
 ## Technical Requirements
 
 ### TR-1: Model Integration
@@ -194,6 +203,11 @@ A GenAI-powered catalog enrichment system that transforms basic product images i
 **I want to** identify trending color combinations, styling preferences, and complementary products from social media analysis  
 **So that** I can optimize product assortments and create effective cross-selling opportunities
 
+### US-6: Brand-Consistent Enrichment
+**As a** brand manager  
+**I want to** provide custom brand voice, tone, and taxonomy guidelines to the enrichment system  
+**So that** all generated product content maintains consistency with my brand identity and uses our preferred terminology and classification standards
+
 ## Success Criteria
 
 - **Processing Time**: <1 minute per product for complete enrichment
@@ -216,6 +230,7 @@ A GenAI-powered catalog enrichment system that transforms basic product images i
 - [ ] FR-5: Video Clip Generation
 - [x] ~~FR-6: Multi-Language & Cultural Localization~~ *(Complete with 10 regional locales and cultural image generation)*
 - [ ] FR-7: Social Media Content Integration
+- [x] ~~FR-8: Brand Voice & Taxonomy Customization~~ *(Complete with brand_instructions parameter support)*
 
 - [ ] TR-1: Model Integration
   - [x] ~~NVIDIA Nemotron VLM API integration~~

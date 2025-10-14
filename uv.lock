@@ -31,11 +31,13 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "fastapi" },
+    { name = "httpx" },
     { name = "langgraph" },
     { name = "openai" },
     { name = "pillow" },
     { name = "python-dotenv" },
     { name = "python-multipart" },
+    { name = "pyyaml" },
     { name = "requests" },
     { name = "starlette" },
     { name = "uvicorn", extra = ["standard"] },
@@ -50,11 +52,13 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "fastapi", specifier = ">=0.115.0,<1.0" },
+    { name = "httpx", specifier = ">=0.27,<1.0" },
     { name = "langgraph", specifier = "==0.6.7" },
     { name = "openai", specifier = ">=1.47.0,<2.0" },
     { name = "pillow", specifier = ">=11.3.0" },
     { name = "python-dotenv", specifier = ">=1.0.1,<2.0" },
     { name = "python-multipart", specifier = ">=0.0.9,<1.0" },
+    { name = "pyyaml", specifier = ">=6.0,<7.0" },
     { name = "requests", specifier = ">=2.32,<3.0" },
     { name = "starlette", specifier = ">=0.37,<1.0" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.30,<1.0" },

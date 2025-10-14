@@ -51,7 +51,7 @@ app = FastAPI(lifespan=lifespan)
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3001"],  # Frontend origins
+    allow_origins=["http://localhost:3000"],  # Frontend origins
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -71,7 +71,8 @@ async def health() -> JSONResponse:
 async def vlm_analyze(
     image: UploadFile = File(...),
     locale: str = Form("en-US"),
-    product_data: str = Form(None)
+    product_data: str = Form(None),
+    brand_instructions: str = Form(None)
 ) -> JSONResponse:
     """
     Fast endpoint: Analyze image and extract product fields using VLM.
@@ -99,7 +100,7 @@ async def vlm_analyze(
         image_bytes, content_type = validation_result
         
         logger.info(f"Running VLM analysis: locale={locale} mode={'augmentation' if product_json else 'generation'}")
-        result = run_vlm_analysis(image_bytes, content_type, locale, product_json)
+        result = run_vlm_analysis(image_bytes, content_type, locale, product_json, brand_instructions)
         
         payload = {
             "title": result.get("title", ""),
@@ -288,7 +289,8 @@ async def generate_3d(
 async def vlm_describe(
     image: UploadFile = File(...), 
     locale: str = Form("en-US"),
-    product_data: str = Form(None)
+    product_data: str = Form(None),
+    brand_instructions: str = Form(None)
 ) -> JSONResponse:
     try:
         if locale not in VALID_LOCALES:
@@ -312,12 +314,13 @@ async def vlm_describe(
         if not compiled_graph:
             return JSONResponse({"detail": "Graph is not initialized"}, status_code=500)
 
-        logger.info(f"Invoking graph: VLM -> Planner -> FLUX -> Persist with locale={locale} mode={'augmentation' if product_json else 'generation'}")
+        logger.info(f"Invoking graph: VLM -> Planner -> FLUX -> Persist with locale={locale} mode={'augmentation' if product_json else 'generation'} brand_instructions={bool(brand_instructions)}")
         result = compiled_graph.invoke({
             "image_bytes": image_bytes, 
             "content_type": content_type, 
             "locale": locale,
-            "product_data": product_json
+            "product_data": product_json,
+            "brand_instructions": brand_instructions
         })
         logger.info("Graph invocation complete")
 

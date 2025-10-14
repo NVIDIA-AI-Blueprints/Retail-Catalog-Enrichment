@@ -25,12 +25,16 @@ function Home() {
     color: '',
     categories: '',
     tags: '',
-    price: ''
+    price: '',
+    brandInstructions: ''
   });
   const [augmentedData, setAugmentedData] = useState<AugmentedData | null>(null);
   const [generatedImages, setGeneratedImages] = useState<(string | null)[]>([null, null]);
   const [generated3DModel, setGenerated3DModel] = useState<string | null>(null);
   const [model3DError, setModel3DError] = useState<string | null>(null);
+  const [enableVariation1, setEnableVariation1] = useState<boolean>(true);
+  const [enableVariation2, setEnableVariation2] = useState<boolean>(true);
+  const [enable3D, setEnable3D] = useState<boolean>(true);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleFileUpload = async (file: File) => {
@@ -84,7 +88,7 @@ function Home() {
     setGenerated3DModel(null);
     setModel3DError(null);
     setLocale('en-US');
-    setFields({ title: '', description: '', color: '', categories: '', tags: '', price: '' });
+    setFields({ title: '', description: '', color: '', categories: '', tags: '', price: '', brandInstructions: '' });
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
@@ -100,7 +104,12 @@ function Home() {
       setIsAnalyzingFields(true);
       const productData = prepareProductData(fields);
       
-      const analyzeData = await analyzeImage({ file: uploadedFile, locale, productData });
+      const analyzeData = await analyzeImage({ 
+        file: uploadedFile, 
+        locale, 
+        productData,
+        brandInstructions: fields.brandInstructions 
+      });
       
       setAugmentedData({
         title: analyzeData.title || '',
@@ -124,36 +133,52 @@ function Home() {
         enhancedProduct: (analyzeData as any).enhanced_product
       };
 
-      await Promise.all([
-        (async () => {
-          try {
-            const imageUrl = await generateImageVariation(variationParams);
-            setGeneratedImages(prev => [imageUrl, prev[1]]);
-          } catch (error) {
-            console.error('Error generating variation 1:', error);
-          }
-        })(),
-        (async () => {
-          try {
-            const imageUrl = await generateImageVariation(variationParams);
-            setGeneratedImages(prev => [prev[0], imageUrl]);
-          } catch (error) {
-            console.error('Error generating variation 2:', error);
-          }
-        })(),
-        (async () => {
-          try {
-            const modelUrl = await generate3DModel(uploadedFile);
-            setGenerated3DModel(modelUrl);
-            if (!modelUrl) {
-              setModel3DError('3D model generation completed but no model data was returned');
+      const tasks = [];
+      
+      if (enableVariation1) {
+        tasks.push(
+          (async () => {
+            try {
+              const imageUrl = await generateImageVariation(variationParams);
+              setGeneratedImages(prev => [imageUrl, prev[1]]);
+            } catch (error) {
+              console.error('Error generating variation 1:', error);
             }
-          } catch (error) {
-            console.error('Error generating 3D model:', error);
-            setModel3DError(error instanceof Error ? error.message : 'Failed to generate 3D model');
-          }
-        })()
-      ]);
+          })()
+        );
+      }
+      
+      if (enableVariation2) {
+        tasks.push(
+          (async () => {
+            try {
+              const imageUrl = await generateImageVariation(variationParams);
+              setGeneratedImages(prev => [prev[0], imageUrl]);
+            } catch (error) {
+              console.error('Error generating variation 2:', error);
+            }
+          })()
+        );
+      }
+      
+      if (enable3D) {
+        tasks.push(
+          (async () => {
+            try {
+              const modelUrl = await generate3DModel(uploadedFile);
+              setGenerated3DModel(modelUrl);
+              if (!modelUrl) {
+                setModel3DError('3D model generation completed but no model data was returned');
+              }
+            } catch (error) {
+              console.error('Error generating 3D model:', error);
+              setModel3DError(error instanceof Error ? error.message : 'Failed to generate 3D model');
+            }
+          })()
+        );
+      }
+      
+      await Promise.all(tasks);
     } catch (error) {
       console.error('Generation error:', error);
       alert(error instanceof Error ? error.message : 'Failed to generate enriched data');
@@ -246,10 +271,18 @@ function Home() {
                 localeOptions={SUPPORTED_LOCALES}
                 isAnalyzingFields={isAnalyzingFields}
                 isGeneratingImage={isGeneratingImage}
+                brandInstructions={fields.brandInstructions}
+                enableVariation1={enableVariation1}
+                enableVariation2={enableVariation2}
+                enable3D={enable3D}
                 onFileSelect={() => fileInputRef.current?.click()}
                 onDragOver={handleDragOver}
                 onDrop={handleDrop}
                 onLocaleChange={setLocale}
+                onBrandInstructionsChange={(value) => setFields(prev => ({ ...prev, brandInstructions: value }))}
+                onEnableVariation1Change={setEnableVariation1}
+                onEnableVariation2Change={setEnableVariation2}
+                onEnable3DChange={setEnable3D}
                 onGenerate={handleGenerate}
                 onReset={handleReset}
               />

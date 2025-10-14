@@ -69,7 +69,9 @@ export function FieldsCard({ fields, augmentedData, isAnalyzing, isGenerating, o
                 <div className="mt-2 p-3 rounded-lg border border-base bg-surface-sunken">
                   <Stack gap="2">
                     <Text kind="body/semibold/md" className="nvidia-green-text">Augmented:</Text>
-                    <Text kind="body/regular/md" className="text-primary">{augmentedData.description}</Text>
+                    <Text kind="body/regular/md" className="text-primary" style={{ whiteSpace: 'pre-line' }}>
+                      {augmentedData.description}
+                    </Text>
                   </Stack>
                 </div>
               )}
@@ -143,20 +145,6 @@ export function FieldsCard({ fields, augmentedData, isAnalyzing, isGenerating, o
                 </div>
               )}
             </div>
-
-            <FormField slotLabel="Price">
-              {(args: any) => (
-                <TextInput 
-                  {...args}
-                  type="number"
-                  placeholder=""
-                  size="medium"
-                  value={fields.price}
-                  onChange={(e: any) => onFieldChange('price', e.target.value)}
-                  disabled={disabled}
-                />
-              )}
-            </FormField>
           </Stack>
         )}
       </Stack>

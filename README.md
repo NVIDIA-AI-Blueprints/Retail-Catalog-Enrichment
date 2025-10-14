@@ -104,6 +104,22 @@ curl -X POST \
   http://localhost:8000/vlm/analyze
 ```
 
+##### With Brand-Specific Instructions:
+```bash
+curl -X POST \
+  -F "image=@bag.jpg;type=image/jpeg" \
+  -F 'product_data={"title":"Beauty Product","description":"Nice cream"}' \
+  -F "locale=en-US" \
+  -F 'brand_instructions=Write the catalog as a professional expert in Sephora Beauty. Strictly use this tone and style when writing the product document. Use this example as guidance for fragrance products: Title: Good Girl Blush Eau de Parfum with Floral Vanilla Description: A fresh, floral explosion of femininity, this radiant reinvention of the iconic Good Girl scent reveals the multifaceted nature of modern womanhood with a double dose of sensual vanilla and exotic ylang-ylang.' \
+  http://localhost:8000/vlm/analyze
+```
+
+**Request Parameters:**
+- `image` (required): Product image file
+- `locale` (optional, default: "en-US"): Regional locale code for language/terminology
+- `product_data` (optional): Existing product data JSON to augment
+- `brand_instructions` (optional): Custom brand voice, tone, style, and taxonomy guidelines
+
 **Input Schema (optional `product_data`):**
 ```json
 {

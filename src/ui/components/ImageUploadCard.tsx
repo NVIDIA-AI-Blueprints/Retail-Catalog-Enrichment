@@ -1,4 +1,4 @@
-import { Card, Stack, Text, Button, Flex, Spinner, Select } from '@/kui-foundations-react-external';
+import { Card, Stack, Text, Button, Flex, Spinner, Select, Accordion, TextArea, FormField, Checkbox } from '@/kui-foundations-react-external';
 import { ImageMetadata, LocaleOption } from '@/types';
 import { useState } from 'react';
 
@@ -10,10 +10,18 @@ interface Props {
   localeOptions: LocaleOption[];
   isAnalyzingFields: boolean;
   isGeneratingImage: boolean;
+  brandInstructions: string;
+  enableVariation1: boolean;
+  enableVariation2: boolean;
+  enable3D: boolean;
   onFileSelect: () => void;
   onDragOver: (e: React.DragEvent) => void;
   onDrop: (e: React.DragEvent) => void;
   onLocaleChange: (value: string) => void;
+  onBrandInstructionsChange: (value: string) => void;
+  onEnableVariation1Change: (value: boolean) => void;
+  onEnableVariation2Change: (value: boolean) => void;
+  onEnable3DChange: (value: boolean) => void;
   onGenerate: () => void;
   onReset: () => void;
 }
@@ -26,10 +34,18 @@ export function ImageUploadCard({
   localeOptions,
   isAnalyzingFields,
   isGeneratingImage,
+  brandInstructions,
+  enableVariation1,
+  enableVariation2,
+  enable3D,
   onFileSelect,
   onDragOver,
   onDrop,
   onLocaleChange,
+  onBrandInstructionsChange,
+  onEnableVariation1Change,
+  onEnableVariation2Change,
+  onEnable3DChange,
   onGenerate,
   onReset
 }: Props) {
@@ -141,6 +157,65 @@ export function ImageUploadCard({
                 Reset
               </Button>
             </Flex>
+
+            {/* Advanced Options Accordion */}
+            <Accordion
+              items={[{
+                value: 'advanced',
+                slotTrigger: (
+                  <Flex gap="2" align="center">
+                    <Text kind="body/semibold/md">Advanced Options</Text>
+                  </Flex>
+                ),
+                slotContent: (
+                  <Stack gap="4" style={{ paddingTop: '12px' }}>
+                    <FormField slotLabel="Brand Instructions">
+                      {(args: any) => (
+                        <TextArea 
+                          {...args}
+                          placeholder="Optional: Specify brand voice, tone, style, and taxonomy guidelines..."
+                          size="medium"
+                          resizeable="manual"
+                          value={brandInstructions}
+                          onChange={(e: any) => onBrandInstructionsChange(e.target.value)}
+                          disabled={isAnalyzingFields || isGeneratingImage}
+                          attributes={{
+                            TextAreaElement: { rows: 4 }
+                          }}
+                        />
+                      )}
+                    </FormField>
+                    
+                    <div>
+                      <Text kind="body/semibold/sm" style={{ marginBottom: '8px', display: 'block' }}>
+                        Generation Options
+                      </Text>
+                      <Flex gap="4" align="center">
+                        <Checkbox
+                          checked={enableVariation1}
+                          onCheckedChange={(checked) => onEnableVariation1Change(checked === true)}
+                          disabled={isAnalyzingFields || isGeneratingImage}
+                          slotLabel="Image Variation 1"
+                        />
+                        <Checkbox
+                          checked={enableVariation2}
+                          onCheckedChange={(checked) => onEnableVariation2Change(checked === true)}
+                          disabled={isAnalyzingFields || isGeneratingImage}
+                          slotLabel="Image Variation 2"
+                        />
+                        <Checkbox
+                          checked={enable3D}
+                          onCheckedChange={(checked) => onEnable3DChange(checked === true)}
+                          disabled={isAnalyzingFields || isGeneratingImage}
+                          slotLabel="3D Model"
+                        />
+                      </Flex>
+                    </div>
+                  </Stack>
+                )
+              }]}
+              collapsible
+            />
           </>
         ) : (
           <div 

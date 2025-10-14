@@ -43,6 +43,7 @@ class VLMState(TypedDict, total=False):
     content_type: str
     locale: str
     product_data: Optional[Dict[str, Any]]
+    brand_instructions: Optional[str]
     title: str
     description: str
     categories: List[str]
@@ -57,10 +58,22 @@ class VLMState(TypedDict, total=False):
     flux_prompt: str
     enhanced_product: Dict[str, Any]
 
-def _call_nemotron_merge(vlm_output: Dict[str, Any], product_data: Dict[str, Any], locale: str = "en-US") -> Dict[str, Any]:
-    """Intelligently merge VLM visual analysis with existing product data using Nemotron LLM."""
-    logger.info("Calling Nemotron merge: vlm_keys=%s, product_keys=%s, locale=%s", 
-                list(vlm_output.keys()), list(product_data.keys()), locale)
+def _call_nemotron_enhance_vlm(
+    vlm_output: Dict[str, Any], 
+    product_data: Optional[Dict[str, Any]] = None,
+    locale: str = "en-US"
+) -> Dict[str, Any]:
+    """
+    Step 1: Enhance VLM output with compelling copywriting and merge with product data.
+    
+    This function focuses purely on content quality enhancement:
+    - Refines raw VLM output with better copywriting
+    - Merges with existing product data if provided
+    - Applies locale-specific terminology
+    - NO brand voice/tone considerations (handled in Step 2)
+    """
+    logger.info("[Step 1] Nemotron VLM enhance: vlm_keys=%s, product_keys=%s, locale=%s", 
+                list(vlm_output.keys()), list(product_data.keys()) if product_data else None, locale)
     
     if not (api_key := os.getenv("NVIDIA_API_KEY")):
         raise RuntimeError("NVIDIA_API_KEY is not set")
@@ -70,69 +83,70 @@ def _call_nemotron_merge(vlm_output: Dict[str, Any], product_data: Dict[str, Any
     client = OpenAI(base_url=llm_config['url'], api_key=api_key)
 
     vlm_json = json.dumps(vlm_output, indent=2, ensure_ascii=False)
-    product_json = json.dumps(product_data, indent=2, ensure_ascii=False)
+    product_json = json.dumps(product_data, indent=2, ensure_ascii=False) if product_data else None
 
-    prompt = f"""You are a product data merging specialist for an e-commerce platform. Your task is to intelligently merge visual analysis from a VLM with existing product data.
-
-VISUAL ANALYSIS (from Vision Model - direct observation of the product image):
-{vlm_json}
-
+    # Build the product data section
+    product_section = ""
+    if product_data:
+        product_section = f"""
 EXISTING PRODUCT DATA (may contain errors or be incomplete):
 {product_json}
 
+"""
+
+    prompt = f"""You are an expert product catalog content specialist for an e-commerce platform. Your role is to create compelling, accurate catalog content.
+
+VISUAL ANALYSIS (from Vision Model - direct observation of the product image):
+{vlm_json}
+{product_section}
 ALLOWED CATEGORIES (must use one or more from this list):
 {json.dumps(PRODUCT_CATEGORIES)}
 
-MERGING STRATEGY:
+{'═' * 80}
+CONTENT ENHANCEMENT STRATEGY:
+{'═' * 80}
 
-1. **Trust Priority**:
-   - TRUST visual analysis for: colors, materials, design details, visual attributes
-   - PRESERVE existing data for: price, SKU, specifications, dimensions (unless visually contradicted)
-   - RESOLVE conflicts by prioritizing visual evidence when it contradicts existing data
-
-2. **Title** (in {info['language']} for {info['region']}):
-   - Intelligently merge both titles by:
-     * Preserving brand terms, material descriptors, and unique identifiers from existing title
-     * Incorporating visual details and attributes from VLM's title
-     * Creating a natural, cohesive result that's richer than either source alone
-   - If existing title is generic/poor and VLM title is comprehensive, prefer VLM
-   - If existing title has valuable brand/material terms, integrate them with VLM insights
+1. **Title** (in {info['language']} for {info['region']}):
+   {'- If existing product data provided:' if product_data else '- Enhance the VLM title with:'}
+   {'  * Preserve brand terms, material descriptors, and identifiers from existing title' if product_data else '  * More compelling and precise language'}
+   {'  * Incorporate visual details from VLM analysis' if product_data else '  * Focus on key product features'}
+   {'  * Create a cohesive result richer than either source' if product_data else '  * Ensure clarity and appeal'}
    - Apply regional terminology: {info['context']}
 
-3. **Description** (in {info['language']} for {info['region']}):
-   - Weave both sources into a unified, flowing narrative
-   - Preserve brand voice and marketing language from existing description
-   - Enrich with VLM's visual observations (materials, design details, features)
-   - Avoid simple concatenation - integrate insights naturally
+2. **Description** (in {info['language']} for {info['region']}):
+   {'- If existing product data provided:' if product_data else '- Expand the VLM description with:'}
+   {'  * Preserve core messaging from existing description' if product_data else '  * Rich, flowing narrative'}
+   {'  * Enrich with VLM visual observations' if product_data else '  * Persuasive marketing language'}
+   {'  * Create unified, flowing narrative (not concatenation)' if product_data else '  * Focus on materials, design, features'}
    - Use regional language and terminology
 
-4. **Categories** (MUST be an array):
-   - Validate existing categories against VLM observation
-   - Use VLM's categories if existing is incorrect or ["uncategorized"]
+3. **Categories** (MUST be an array):
+   {'- Validate existing categories against VLM observation' if product_data else '- Use VLM categories as baseline'}
    - MUST use categories from the allowed list above
    - Always return as an array: "categories": ["category1", "category2"]
    - Keep in English
 
-5. **Attributes**:
-   - Merge both dictionaries, with VLM's visual observations taking priority for conflicts
-   - Example: existing "color": "Black" + VLM observes "Matte Black" → use "Matte Black"
-   - Add new attributes from VLM if observed
-
-6. **Tags**:
-   - Combine tags from both sources, remove duplicates
+4. **Tags**:
+   {'- Combine tags from VLM and existing data, remove duplicates' if product_data else '- Enhance VLM tags with additional relevant terms'}
    - Keep in English
+   - Make them specific and useful for search/filtering
 
-7. **Specs & Price**:
-   - Keep existing specs and price unchanged
-   - Only add if VLM can visually verify (rare)
-
-8. **Colors**:
+5. **Colors**:
    - Use VLM's color analysis (most accurate from visual observation)
 
+{'6. **Trust Priority** (when merging existing product data):' if product_data else ''}
+{'   - TRUST visual analysis for: colors, materials, design details, visual attributes' if product_data else ''}
+{'   - PRESERVE existing data for: price, SKU, specifications, dimensions' if product_data else ''}
+{'   - RESOLVE conflicts by prioritizing visual evidence' if product_data else ''}
+
+{'═' * 80}
 OUTPUT FORMAT:
-Return the merged data using the EXISTING PRODUCT DATA schema/structure. Preserve all original fields and add VLM insights where appropriate.
+{'═' * 80}
+{f'Return the enhanced data using the EXISTING PRODUCT DATA schema/structure. Preserve all original fields and add enriched insights.' if product_data else 'Return enhanced product data with the structure: {"title": "...", "description": "...", "categories": [...], "tags": [...], "colors": [...]}'}
 
 Return ONLY valid JSON with no markdown formatting or commentary."""
+
+    logger.info("[Step 1] Sending prompt to Nemotron (length: %d chars)", len(prompt))
 
     completion = client.chat.completions.create(
         model=llm_config['model'],
@@ -141,7 +155,7 @@ Return ONLY valid JSON with no markdown formatting or commentary."""
     )
 
     text = "".join(chunk.choices[0].delta.content for chunk in completion if chunk.choices[0].delta and chunk.choices[0].delta.content)
-    logger.info("Nemotron merge response received: %d chars", len(text))
+    logger.info("[Step 1] Nemotron response received: %d chars", len(text))
 
     json_text = text.strip()
     for marker in ("```json", "```"):
@@ -153,17 +167,171 @@ Return ONLY valid JSON with no markdown formatting or commentary."""
                     json_text = json_text[start:end].strip()
                     break
             except Exception as e:
-                logger.warning(f"Failed to extract JSON from {marker}: {e}")
+                logger.warning(f"[Step 1] Failed to extract JSON from {marker}: {e}")
 
     try:
         parsed = json.loads(json_text)
         if isinstance(parsed, dict):
-            logger.info("Nemotron merge successful: merged_keys=%s", list(parsed.keys()))
+            logger.info("[Step 1] Enhancement successful: enhanced_keys=%s", list(parsed.keys()))
             return parsed
     except Exception as e:
-        logger.warning(f"Nemotron merge JSON parse error: {e}, using VLM output")
+        logger.warning(f"[Step 1] JSON parse error: {e}, using VLM output")
     
     return vlm_output
+
+
+def _call_nemotron_apply_branding(
+    enhanced_content: Dict[str, Any],
+    brand_instructions: str,
+    locale: str = "en-US"
+) -> Dict[str, Any]:
+    """
+    Step 2: Apply brand voice, tone, and taxonomy to already-enhanced content.
+    
+    This function focuses purely on brand alignment:
+    - Takes Step 1's enhanced content as input
+    - Applies brand-specific voice, tone, and style
+    - Applies brand taxonomy and terminology
+    - Preserves content quality from Step 1
+    """
+    logger.info("[Step 2] Nemotron brand application: content_keys=%s, locale=%s", 
+                list(enhanced_content.keys()), locale)
+    
+    if not (api_key := os.getenv("NVIDIA_API_KEY")):
+        raise RuntimeError("NVIDIA_API_KEY is not set")
+
+    info = LOCALE_CONFIG.get(locale, {"language": "English", "region": "United States", "country": "United States", "context": "American English"})
+    llm_config = get_config().get_llm_config()
+    client = OpenAI(base_url=llm_config['url'], api_key=api_key)
+
+    content_json = json.dumps(enhanced_content, indent=2, ensure_ascii=False)
+
+    prompt = f"""You are a brand compliance specialist. Apply the following brand-specific instructions to enhance product catalog content.
+
+BRAND INSTRUCTIONS:
+{brand_instructions}
+
+ENHANCED PRODUCT CONTENT (already well-written, needs brand alignment):
+{content_json}
+
+ALLOWED CATEGORIES (must use one or more from this list):
+{json.dumps(PRODUCT_CATEGORIES)}
+
+{'═' * 80}
+CRITICAL RULES:
+{'═' * 80}
+
+1. **Maintain Exact JSON Structure**:
+   - Return the EXACT SAME JSON keys/fields as the enhanced content above
+   - DO NOT add new fields or keys to the JSON
+   - DO NOT remove existing fields
+   - Only modify the VALUES of existing fields
+
+2. **Description Field Formatting**:
+   - If brand instructions specify sections or structure for the description (e.g., "Fragrance Family", "About the Bottle"), incorporate them INTO the description field as formatted text
+   - CRITICAL: Separate each section with double newlines (\\n\\n) for readability
+   - Each section should be on its own paragraph
+   - Format example: "Fragrance Family: ...\\n\\nFragrance Description: ...\\n\\nAbout the Bottle: ...\\n\\nAbout the Fragrance: ..."
+   - Keep everything in the description field - DO NOT create separate JSON fields for sections
+   - The description must be a single string value with proper line breaks between sections
+
+3. **Apply Brand Voice** (in {info['language']} for {info['region']}):
+   - Transform title, description, categories, and tags to match brand voice/tone specified
+   - Use brand-preferred terminology and expressions
+   - Maintain factual accuracy while applying brand personality
+
+4. **Categories**:
+   - Validate against the allowed categories list above
+   - Apply brand taxonomy preferences if specified
+   - Keep in English
+
+5. **Tags**:
+   - Include brand-preferred terminology and descriptors
+   - Keep in English
+
+6. **Preserve All Other Fields**:
+   - If enhanced content has fields like price, SKU, colors, specs - preserve them exactly
+   - Only modify: title, description, categories, tags
+
+{'═' * 80}
+OUTPUT FORMAT:
+{'═' * 80}
+Return valid JSON with the EXACT SAME structure as the enhanced content input.
+Apply brand instructions by modifying the VALUES of existing fields, not by adding new fields.
+
+Return ONLY valid JSON with no markdown formatting or commentary."""
+
+    logger.info("[Step 2] Sending prompt to Nemotron (length: %d chars)", len(prompt))
+
+    completion = client.chat.completions.create(
+        model=llm_config['model'],
+        messages=[{"role": "system", "content": "/no_think"}, {"role": "user", "content": prompt}],
+        temperature=0.5, top_p=0.9, max_tokens=2048, stream=True
+    )
+
+    text = "".join(chunk.choices[0].delta.content for chunk in completion if chunk.choices[0].delta and chunk.choices[0].delta.content)
+    logger.info("[Step 2] Nemotron response received: %d chars", len(text))
+
+    json_text = text.strip()
+    for marker in ("```json", "```"):
+        if marker in json_text:
+            try:
+                start = json_text.find(marker) + len(marker)
+                end = json_text.find("```", start)
+                if end > start:
+                    json_text = json_text[start:end].strip()
+                    break
+            except Exception as e:
+                logger.warning(f"[Step 2] Failed to extract JSON from {marker}: {e}")
+
+    try:
+        parsed = json.loads(json_text)
+        if isinstance(parsed, dict):
+            logger.info("[Step 2] Brand alignment successful: keys=%s", list(parsed.keys()))
+            return parsed
+    except Exception as e:
+        logger.warning(f"[Step 2] JSON parse error: {e}, returning Step 1 content unchanged")
+    
+    return enhanced_content
+
+
+def _call_nemotron_enhance(
+    vlm_output: Dict[str, Any], 
+    product_data: Optional[Dict[str, Any]] = None,
+    locale: str = "en-US", 
+    brand_instructions: Optional[str] = None
+) -> Dict[str, Any]:
+    """
+    Orchestrate two-step enhancement pipeline for VLM output.
+    
+    Step 1: Content enhancement (always runs)
+        - Refines VLM output with compelling copywriting
+        - Merges with product_data if provided
+        - Applies locale-specific terminology
+    
+    Step 2: Brand alignment (conditional - only if brand_instructions provided)
+        - Applies brand voice, tone, and style
+        - Applies brand taxonomy and terminology
+        - Takes Step 1's output as input
+    
+    This two-step approach provides clearer context per call and better results.
+    """
+    logger.info("Nemotron enhancement pipeline start: vlm_keys=%s, product_keys=%s, locale=%s, brand_instructions=%s", 
+                list(vlm_output.keys()), list(product_data.keys()) if product_data else None, locale, bool(brand_instructions))
+    
+    # Step 1: Always enhance VLM output with compelling copywriting
+    enhanced = _call_nemotron_enhance_vlm(vlm_output, product_data, locale)
+    logger.info("Step 1 complete: enhanced_keys=%s", list(enhanced.keys()))
+    
+    # Step 2: Apply brand instructions if provided
+    if brand_instructions:
+        enhanced = _call_nemotron_apply_branding(enhanced, brand_instructions, locale)
+        logger.info("Step 2 complete: brand-aligned content ready")
+    else:
+        logger.info("Step 2 skipped: no brand_instructions provided")
+    
+    logger.info("Nemotron enhancement pipeline complete: final_keys=%s", list(enhanced.keys()))
+    return enhanced
 
 def _call_vlm(image_bytes: bytes, content_type: str, locale: str = "en-US") -> Dict[str, Any]:
     logger.info("Calling VLM: bytes=%d, content_type=%s, locale=%s", len(image_bytes or b""), content_type, locale)
@@ -245,6 +413,7 @@ def vlm_node(state: VLMState) -> VLMState:
     content_type = state.get("content_type", "image/png")
     locale = state.get("locale", "en-US")
     product_data = state.get("product_data")
+    brand_instructions = state.get("brand_instructions")
 
     if not image_bytes:
         return {"error": "image_bytes missing or empty", **state}
@@ -255,37 +424,35 @@ def vlm_node(state: VLMState) -> VLMState:
     logger.info("VLM analysis: title_len=%d desc_len=%d categories=%s", 
                 len(vlm_result.get("title", "")), len(vlm_result.get("description", "")), vlm_result.get("categories", []))
     
-    if product_data:
-        merged = _call_nemotron_merge(vlm_result, product_data, locale)
-        logger.info("Nemotron merge: keys=%s", list(merged.keys()))
-        
-        categories = (merged.get("categories") if merged.get("categories") and isinstance(merged.get("categories"), list) 
-                     else vlm_result.get("categories", ["uncategorized"]))
-        
-        return {
-            **state, 
-            "enhanced_product": merged,
-            "title": merged.get("title", vlm_result.get("title", "")),
-            "description": merged.get("description", vlm_result.get("description", "")),
-            "categories": categories,
-            "tags": merged.get("tags", vlm_result.get("tags", [])),
-            "colors": vlm_result.get("colors", [])
-        }
+    # Always enhance VLM output with Nemotron (handles all scenarios)
+    enhanced = _call_nemotron_enhance(vlm_result, product_data, locale, brand_instructions)
+    logger.info("Nemotron enhance: keys=%s", list(enhanced.keys()))
     
-    return {
+    categories = (enhanced.get("categories") if enhanced.get("categories") and isinstance(enhanced.get("categories"), list) 
+                 else vlm_result.get("categories", ["uncategorized"]))
+    
+    result = {
         **state, 
-        "title": vlm_result.get("title", ""), 
-        "description": vlm_result.get("description", ""), 
-        "categories": vlm_result.get("categories", ["uncategorized"]), 
-        "tags": vlm_result.get("tags", []), 
-        "colors": vlm_result.get("colors", [])
+        "title": enhanced.get("title", vlm_result.get("title", "")),
+        "description": enhanced.get("description", vlm_result.get("description", "")),
+        "categories": categories,
+        "tags": enhanced.get("tags", vlm_result.get("tags", [])),
+        "colors": enhanced.get("colors", vlm_result.get("colors", []))
     }
+    
+    # If product data was provided, merge enhanced fields back into original product_data
+    # to preserve untouched fields (price, SKU, specs, etc.)
+    if product_data:
+        result["enhanced_product"] = {**product_data, **enhanced}
+    
+    return result
 
 def run_vlm_analysis(
     image_bytes: bytes,
     content_type: str,
     locale: str = "en-US",
-    product_data: Optional[Dict[str, Any]] = None
+    product_data: Optional[Dict[str, Any]] = None,
+    brand_instructions: Optional[str] = None
 ) -> Dict[str, Any]:
     """
     Run VLM analysis on an image to extract product fields.
@@ -298,11 +465,12 @@ def run_vlm_analysis(
         content_type: Image MIME type
         locale: Target locale for analysis
         product_data: Optional existing product data to augment
+        brand_instructions: Optional brand-specific tone/style instructions
     
     Returns:
         Dict with title, description, categories, tags, colors, enhanced_product (if augmentation)
     """
-    logger.info("Running VLM analysis: locale=%s mode=%s", locale, "augmentation" if product_data else "generation")
+    logger.info("Running VLM analysis: locale=%s mode=%s brand_instructions=%s", locale, "augmentation" if product_data else "generation", bool(brand_instructions))
     
     if not image_bytes:
         raise ValueError("image_bytes is required")
@@ -314,28 +482,24 @@ def run_vlm_analysis(
     logger.info("VLM analysis complete: title_len=%d desc_len=%d categories=%s",
                 len(vlm_result.get("title", "")), len(vlm_result.get("description", "")), vlm_result.get("categories", []))
     
-    # If product data provided, merge with VLM analysis
-    if product_data:
-        merged = _call_nemotron_merge(vlm_result, product_data, locale)
-        logger.info("Nemotron merge complete: keys=%s", list(merged.keys()))
-        
-        categories = (merged.get("categories") if merged.get("categories") and isinstance(merged.get("categories"), list)
-                     else vlm_result.get("categories", ["uncategorized"]))
-        
-        return {
-            "enhanced_product": merged,
-            "title": merged.get("title", vlm_result.get("title", "")),
-            "description": merged.get("description", vlm_result.get("description", "")),
-            "categories": categories,
-            "tags": merged.get("tags", vlm_result.get("tags", [])),
-            "colors": vlm_result.get("colors", [])
-        }
+    # Always enhance VLM output with Nemotron (handles all scenarios)
+    enhanced = _call_nemotron_enhance(vlm_result, product_data, locale, brand_instructions)
+    logger.info("Nemotron enhance complete: keys=%s", list(enhanced.keys()))
     
-    # Return VLM results directly
-    return {
-        "title": vlm_result.get("title", ""),
-        "description": vlm_result.get("description", ""),
-        "categories": vlm_result.get("categories", ["uncategorized"]),
-        "tags": vlm_result.get("tags", []),
-        "colors": vlm_result.get("colors", [])
+    categories = (enhanced.get("categories") if enhanced.get("categories") and isinstance(enhanced.get("categories"), list)
+                 else vlm_result.get("categories", ["uncategorized"]))
+    
+    result = {
+        "title": enhanced.get("title", vlm_result.get("title", "")),
+        "description": enhanced.get("description", vlm_result.get("description", "")),
+        "categories": categories,
+        "tags": enhanced.get("tags", vlm_result.get("tags", [])),
+        "colors": enhanced.get("colors", vlm_result.get("colors", []))
     }
+    
+    # If product data was provided, merge enhanced fields back into original product_data
+    # to preserve untouched fields (price, SKU, specs, etc.)
+    if product_data:
+        result["enhanced_product"] = {**product_data, **enhanced}
+    
+    return result

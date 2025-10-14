@@ -6,7 +6,7 @@ vlm:
 
 llm:
   url: "https://integrate.api.nvidia.com/v1"
-  model: "nvidia/nvidia-nemotron-nano-9b-v2"
+  model: "nvidia/llama-3.3-nemotron-super-49b-v1.5"
 
 flux:
   url: "http://localhost:8005/v1/infer"
