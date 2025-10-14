@@ -64,6 +64,7 @@ uvicorn --app-dir src backend.main:app --host 0.0.0.0 --port 8000 --reload
     - `image` (file): Product image
     - `product_data` (JSON string, optional): Existing product data to augment
     - `locale` (string, optional): Regional locale code (default: "en-US")
+    - `brand_instructions` (string, optional): Custom brand voice, tone, style, and taxonomy guidelines
   - Response: Product fields JSON with:
     - `title`: string (enriched and localized)
     - `description`: string (expanded and localized)
@@ -147,6 +148,7 @@ Supported locales: `en-US`, `en-GB`, `en-AU`, `en-CA`, `es-ES`, `es-MX`, `es-AR`
 - Validates and improves `categories` array based on visual analysis
 - Expands `tags` with additional relevant terms
 - Includes regional context and terminology guidance (e.g., "ordenador" vs "computadora" for Spanish regions)
+- Applies custom brand instructions when provided for consistent tone, voice, and taxonomy
 - Preserves existing structured data (price, specs, etc.) while enhancing descriptive fields
 
 #### Examples
@@ -171,6 +173,14 @@ curl -X POST \
   -F "image=@bag.jpg;type=image/jpeg" \
   -F 'product_data={"categories":["accessories"],"title":"Black Purse","description":"Elegant bag"}' \
   -F "locale=es-ES" \
+  http://localhost:8000/vlm/analyze
+
+# With brand-specific instructions for custom tone and taxonomy
+curl -X POST \
+  -F "image=@product.jpg;type=image/jpeg" \
+  -F 'product_data={"title":"Beauty Product","description":"Nice cream"}' \
+  -F "locale=en-US" \
+  -F 'brand_instructions=You work at a premium beauty retailer. Use a playful, empowering, and inclusive brand voice. Focus on self-expression and beauty discovery. Use terms like "beauty lovers", "glow", "radiant", and "treat yourself". Our product taxonomy emphasizes skin benefits and ingredient transparency.' \
   http://localhost:8000/vlm/analyze
 ```
 

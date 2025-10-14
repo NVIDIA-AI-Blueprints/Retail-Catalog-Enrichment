@@ -180,7 +180,7 @@ def _render_flux_prompt(plan: Dict[str, Any]) -> str:
     negatives = plan.get("negatives", [])
     neg_text = "; ".join(negatives) if isinstance(negatives, list) else str(negatives)
     
-    return f"Keep {preserve} unchanged. Replace only the background with {background}. Make it hyperrealistic, ideal for an e-commerce product image. " \
+    return f"Keep {preserve} unchanged. Replace only the background with {background}. Make it hyperrealistic, ideal for an e-commerce product image. If the product is a fragrance, skincare product, etc. have a human hand holding the product " \
            f"Use {lighting} lighting and {camera} camera angle. " \
            f"Maintain subject color, orientation, and material. Scale the product to natural, proportional size for the environment. " \
            f"{('Avoid: ' + neg_text) if neg_text else ''}".strip()

@@ -5,6 +5,7 @@ export interface ProductFields {
   categories: string;
   tags: string;
   price: string;
+  brandInstructions: string;
 }
 
 export interface AugmentedData {
