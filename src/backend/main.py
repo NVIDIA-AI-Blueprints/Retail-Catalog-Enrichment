@@ -263,13 +263,29 @@ async def generate_3d(
         
         if return_json:
             # Return JSON with base64-encoded GLB
+            logger.info(f"Encoding GLB to base64: {len(glb_data)} bytes")
             glb_b64 = base64.b64encode(glb_data).decode("ascii")
+            b64_size = len(glb_b64)
+            logger.info(f"Base64 encoded: {b64_size} chars (~{b64_size / 1024 / 1024:.2f} MB)")
+            
             payload = {
                 "glb_base64": glb_b64,
                 "artifact_id": artifact_id,
                 "metadata": metadata
             }
-            return JSONResponse(payload)
+            
+            import json as json_module
+            payload_json = json_module.dumps(payload)
+            payload_size = len(payload_json)
+            logger.info(f"Returning JSON response with glb_base64 field (present: {bool(glb_b64)}, approx payload size: {payload_size / 1024 / 1024:.2f} MB)")            
+            
+            return JSONResponse(
+                payload,
+                headers={
+                    "X-GLB-Size-Bytes": str(metadata['size_bytes']),
+                    "X-Artifact-ID": artifact_id
+                }
+            )
         else:
             # Return binary GLB file
             return Response(
