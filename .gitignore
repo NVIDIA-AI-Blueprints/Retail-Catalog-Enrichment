@@ -9,7 +9,10 @@ develop-eggs/
 downloads/
 eggs/
 .eggs/
-lib/
+# Only ignore lib/ at specific Python locations, not everywhere
+.venv/lib/
+venv/lib/
+env/lib/
 lib64/
 parts/
 sdist/
