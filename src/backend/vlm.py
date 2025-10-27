@@ -2,7 +2,7 @@ import os
 import json
 import base64
 import logging
-from typing import TypedDict, Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any
 
 from dotenv import load_dotenv
 from openai import OpenAI
@@ -34,29 +34,10 @@ PRODUCT_CATEGORIES = [
     "electronics",
     "furniture",
     "office",
-    "shoes",
-    "skincare"
+    "fragrance",
+    "skincare",
+    "bags"
 ]
-
-class VLMState(TypedDict, total=False):
-    image_bytes: bytes
-    content_type: str
-    locale: str
-    product_data: Optional[Dict[str, Any]]
-    brand_instructions: Optional[str]
-    title: str
-    description: str
-    categories: List[str]
-    tags: List[str]
-    colors: List[str]
-    error: Optional[str]
-    generated_image_b64: str
-    image_path: str
-    metadata_path: str
-    artifact_id: str
-    variation_plan: Dict[str, Any]
-    flux_prompt: str
-    enhanced_product: Dict[str, Any]
 
 def _call_nemotron_enhance_vlm(
     vlm_output: Dict[str, Any], 
@@ -64,15 +45,15 @@ def _call_nemotron_enhance_vlm(
     locale: str = "en-US"
 ) -> Dict[str, Any]:
     """
-    Step 1: Enhance VLM output with compelling copywriting and merge with product data.
+    Step 1: Enhance VLM output with compelling copywriting, merge with product data, and localize.
     
-    This function focuses purely on content quality enhancement:
-    - Refines raw VLM output with better copywriting
+    This function handles:
+    - Refines raw VLM output (which is always in English) with better copywriting
     - Merges with existing product data if provided
-    - Applies locale-specific terminology
+    - Localizes content to target language/region (done here to avoid extra LLM call)
     - NO brand voice/tone considerations (handled in Step 2)
     """
-    logger.info("[Step 1] Nemotron VLM enhance: vlm_keys=%s, product_keys=%s, locale=%s", 
+    logger.info("[Step 1] Nemotron enhance + localize: vlm_keys=%s, product_keys=%s, locale=%s", 
                 list(vlm_output.keys()), list(product_data.keys()) if product_data else None, locale)
     
     if not (api_key := os.getenv("NVIDIA_API_KEY")):
@@ -96,43 +77,48 @@ EXISTING PRODUCT DATA (may contain errors or be incomplete):
 
     prompt = f"""You are an expert product catalog content specialist for an e-commerce platform. Your role is to create compelling, accurate catalog content.
 
-VISUAL ANALYSIS (from Vision Model - direct observation of the product image):
+VISUAL ANALYSIS (from Vision Model - always in English, direct observation of the product image):
 {vlm_json}
 {product_section}
 ALLOWED CATEGORIES (must use one or more from this list):
 {json.dumps(PRODUCT_CATEGORIES)}
 
 {'═' * 80}
-CONTENT ENHANCEMENT STRATEGY:
+CONTENT ENHANCEMENT & LOCALIZATION STRATEGY:
 {'═' * 80}
+
+IMPORTANT: The VLM analysis above is always in English. Your task is to enhance it and then localize to {info['language']} for {info['region']}.
 
 1. **Title** (in {info['language']} for {info['region']}):
    {'- If existing product data provided:' if product_data else '- Enhance the VLM title with:'}
    {'  * Preserve brand terms, material descriptors, and identifiers from existing title' if product_data else '  * More compelling and precise language'}
    {'  * Incorporate visual details from VLM analysis' if product_data else '  * Focus on key product features'}
    {'  * Create a cohesive result richer than either source' if product_data else '  * Ensure clarity and appeal'}
-   - Apply regional terminology: {info['context']}
+   - Translate naturally to {info['language']} using proper regional terminology: {info['context']}
+   - Maintain accuracy - don't hallucinate product types (e.g., don't call a handbag a beach bag)
 
 2. **Description** (in {info['language']} for {info['region']}):
    {'- If existing product data provided:' if product_data else '- Expand the VLM description with:'}
    {'  * Preserve core messaging from existing description' if product_data else '  * Rich, flowing narrative'}
    {'  * Enrich with VLM visual observations' if product_data else '  * Persuasive marketing language'}
    {'  * Create unified, flowing narrative (not concatenation)' if product_data else '  * Focus on materials, design, features'}
-   - Use regional language and terminology
+   - Translate naturally to {info['language']} with regional terminology
+   - Maintain factual accuracy from the VLM observation
 
 3. **Categories** (MUST be an array):
    {'- Validate existing categories against VLM observation' if product_data else '- Use VLM categories as baseline'}
    - MUST use categories from the allowed list above
    - Always return as an array: "categories": ["category1", "category2"]
-   - Keep in English
+   - Keep in English (not translated)
 
 4. **Tags**:
    {'- Combine tags from VLM and existing data, remove duplicates' if product_data else '- Enhance VLM tags with additional relevant terms'}
-   - Keep in English
+   - Keep in English (not translated)
    - Make them specific and useful for search/filtering
 
 5. **Colors**:
    - Use VLM's color analysis (most accurate from visual observation)
+   - Keep in English (not translated)
 
 {'6. **Trust Priority** (when merging existing product data):' if product_data else ''}
 {'   - TRUST visual analysis for: colors, materials, design details, visual attributes' if product_data else ''}
@@ -142,7 +128,7 @@ CONTENT ENHANCEMENT STRATEGY:
 {'═' * 80}
 OUTPUT FORMAT:
 {'═' * 80}
-{f'Return the enhanced data using the EXISTING PRODUCT DATA schema/structure. Preserve all original fields and add enriched insights.' if product_data else 'Return enhanced product data with the structure: {"title": "...", "description": "...", "categories": [...], "tags": [...], "colors": [...]}'}
+{f'Return the enhanced data using the EXISTING PRODUCT DATA schema/structure. Preserve all original fields and add enriched insights. Translate title and description to {info["language"]}.' if product_data else f'Return enhanced product data with the structure: {{"title": "...", "description": "...", "categories": [...], "tags": [...], "colors": [...]}}. Write title and description in {info["language"]} for {info["region"]}.'}
 
 Return ONLY valid JSON with no markdown formatting or commentary."""
 
@@ -304,24 +290,25 @@ def _call_nemotron_enhance(
     """
     Orchestrate two-step enhancement pipeline for VLM output.
     
-    Step 1: Content enhancement (always runs)
-        - Refines VLM output with compelling copywriting
+    Step 1: Content enhancement + localization (always runs)
+        - Refines VLM output (which is always in English) with compelling copywriting
         - Merges with product_data if provided
-        - Applies locale-specific terminology
+        - Localizes to target language/region (single LLM call for efficiency)
     
     Step 2: Brand alignment (conditional - only if brand_instructions provided)
         - Applies brand voice, tone, and style
         - Applies brand taxonomy and terminology
         - Takes Step 1's output as input
     
-    This two-step approach provides clearer context per call and better results.
+    This approach ensures VLM works only in English (preventing hallucinations),
+    while LLM handles accurate localization and enhancement.
     """
     logger.info("Nemotron enhancement pipeline start: vlm_keys=%s, product_keys=%s, locale=%s, brand_instructions=%s", 
                 list(vlm_output.keys()), list(product_data.keys()) if product_data else None, locale, bool(brand_instructions))
     
-    # Step 1: Always enhance VLM output with compelling copywriting
+    # Step 1: Enhance VLM output and localize to target language (single call for efficiency)
     enhanced = _call_nemotron_enhance_vlm(vlm_output, product_data, locale)
-    logger.info("Step 1 complete: enhanced_keys=%s", list(enhanced.keys()))
+    logger.info("Step 1 complete (enhanced + localized to %s): enhanced_keys=%s", locale, list(enhanced.keys()))
     
     # Step 2: Apply brand instructions if provided
     if brand_instructions:
@@ -333,14 +320,18 @@ def _call_nemotron_enhance(
     logger.info("Nemotron enhancement pipeline complete: final_keys=%s", list(enhanced.keys()))
     return enhanced
 
-def _call_vlm(image_bytes: bytes, content_type: str, locale: str = "en-US") -> Dict[str, Any]:
-    logger.info("Calling VLM: bytes=%d, content_type=%s, locale=%s", len(image_bytes or b""), content_type, locale)
+def _call_vlm(image_bytes: bytes, content_type: str) -> Dict[str, Any]:
+    """Call VLM to analyze product image.
+    
+    NOTE: Always analyzes in ENGLISH regardless of target locale.
+    This prevents hallucinations that occur when VLMs work in non-English languages.
+    Localization is handled separately by the LLM in a subsequent step.
+    """
+    logger.info("Calling VLM: bytes=%d, content_type=%s (English-only analysis)", len(image_bytes or b""), content_type)
     
     api_key = os.getenv("NVIDIA_API_KEY")
     if not api_key:
         raise RuntimeError("NVIDIA_API_KEY is not set")
-
-    info = LOCALE_CONFIG.get(locale, {"language": "English", "region": "United States", "country": "United States", "context": "American English"})
     
     vlm_config = get_config().get_vlm_config()
     client = OpenAI(base_url=vlm_config['url'], api_key=api_key)
@@ -351,15 +342,11 @@ def _call_vlm(image_bytes: bytes, content_type: str, locale: str = "en-US") -> D
 
 Focus on the actual product visible in the image - describe the item itself, its materials, design, and features. Do not focus on contents, intended use scenarios, or lifestyle experiences.
 
-READ AND INCORPORATE VISIBLE TEXT:
-- Carefully read any text visible on the product packaging, labels, or the product itself
-- Look for and include: net weight (e.g., "Net Wt. 50g"), volume (e.g., "250ml", "8 fl oz"), dimensions, quantities, product names, brand names, variant descriptions (e.g., "Moisturizing", "Extra Strength")
-- Incorporate these specific details naturally into the title and description
-- If measurements use both metric and imperial units, include both
-- Use the exact text visible for product names or variant types to ensure accuracy
-- Example: If you see "Net Wt. 1.7 oz / 50g", include "1.7 oz (50g)" in the description
+READ AND INCORPORATE VISIBLE TEXT (IF PRESENT):
+- Look for brand names, product names, or variant descriptions visible on the product or packaging (e.g., "Moisturizing", "Extra Strength", "Matte Finish")
+- Use the exact text visible to ensure accuracy
 
-Create an engaging product title and description in {info['language']} as spoken in {info['region']}. {info['context']}.
+CRITICAL: Write all content in ENGLISH. Be accurate and precise about what you see.
 
 Classify the product into one or more categories from this fixed allowed set only:
 {categories_str}
@@ -372,17 +359,16 @@ Extract up to 3 primary colors visible in the product. Choose the most prominent
 IMPORTANT GUIDELINES:
 - Write compelling catalog copy that sells the physical product itself
 - Highlight the product's materials, design, construction, and notable features
-- Incorporate any visible specifications (weight, volume, dimensions) from text on the product
 - Use persuasive but accurate language focused on the tangible item
 - Avoid analytical observations like "appears to be" or "seems to be"
-- Generate product-focused titles and descriptions using regional {info['language']} terminology
-- Keep categories and tags in English as specified above
+- Be specific and accurate - for example, distinguish between a handbag, beach bag, tote, clutch, etc.
+- Keep all content in ENGLISH (title, description, categories, tags, colors)
 - Make tags specific and useful for search/filtering
 
 Return ONLY valid JSON with the following structure:
 {{
-  "title": "<compelling product name describing the physical item in regional {info['language']}>",
-  "description": "<persuasive catalog description highlighting the product's materials, design, and features in regional {info['language']}>",
+  "title": "<compelling product name in ENGLISH describing what you see>",
+  "description": "<persuasive catalog description in ENGLISH with accurate product details>",
   "categories": ["<one or more from the allowed English set>"],
   "tags": ["<exactly 10 descriptive English tags>"],
   "colors": ["<up to 3 primary colors in simple English color names>"]
@@ -406,46 +392,6 @@ No extra text or commentary; only return the JSON object."""
         return parsed if isinstance(parsed, dict) else {"title": "", "description": text, "categories": ["uncategorized"], "tags": [], "colors": []}
     except Exception:
         return {"title": "", "description": text, "categories": ["uncategorized"], "tags": [], "colors": []}
-
-def vlm_node(state: VLMState) -> VLMState:
-    logger.info("VLM node start")
-    image_bytes = state.get("image_bytes")
-    content_type = state.get("content_type", "image/png")
-    locale = state.get("locale", "en-US")
-    product_data = state.get("product_data")
-    brand_instructions = state.get("brand_instructions")
-
-    if not image_bytes:
-        return {"error": "image_bytes missing or empty", **state}
-    if not isinstance(content_type, str) or not content_type.startswith("image/"):
-        return {"error": "content_type must be an image/* MIME type", **state}
-
-    vlm_result = _call_vlm(image_bytes, content_type, locale)
-    logger.info("VLM analysis: title_len=%d desc_len=%d categories=%s", 
-                len(vlm_result.get("title", "")), len(vlm_result.get("description", "")), vlm_result.get("categories", []))
-    
-    # Always enhance VLM output with Nemotron (handles all scenarios)
-    enhanced = _call_nemotron_enhance(vlm_result, product_data, locale, brand_instructions)
-    logger.info("Nemotron enhance: keys=%s", list(enhanced.keys()))
-    
-    categories = (enhanced.get("categories") if enhanced.get("categories") and isinstance(enhanced.get("categories"), list) 
-                 else vlm_result.get("categories", ["uncategorized"]))
-    
-    result = {
-        **state, 
-        "title": enhanced.get("title", vlm_result.get("title", "")),
-        "description": enhanced.get("description", vlm_result.get("description", "")),
-        "categories": categories,
-        "tags": enhanced.get("tags", vlm_result.get("tags", [])),
-        "colors": enhanced.get("colors", vlm_result.get("colors", []))
-    }
-    
-    # If product data was provided, merge enhanced fields back into original product_data
-    # to preserve untouched fields (price, SKU, specs, etc.)
-    if product_data:
-        result["enhanced_product"] = {**product_data, **enhanced}
-    
-    return result
 
 def run_vlm_analysis(
     image_bytes: bytes,
@@ -477,9 +423,9 @@ def run_vlm_analysis(
     if not isinstance(content_type, str) or not content_type.startswith("image/"):
         raise ValueError("content_type must be an image/* MIME type")
     
-    # Run VLM analysis
-    vlm_result = _call_vlm(image_bytes, content_type, locale)
-    logger.info("VLM analysis complete: title_len=%d desc_len=%d categories=%s",
+    # Run VLM analysis (always in English)
+    vlm_result = _call_vlm(image_bytes, content_type)
+    logger.info("VLM analysis complete (English): title_len=%d desc_len=%d categories=%s",
                 len(vlm_result.get("title", "")), len(vlm_result.get("description", "")), vlm_result.get("categories", []))
     
     # Always enhance VLM output with Nemotron (handles all scenarios)

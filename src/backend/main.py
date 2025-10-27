@@ -2,47 +2,26 @@ import base64
 import json
 import logging
 from contextlib import asynccontextmanager
-from typing import List
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, PlainTextResponse, Response
-from langgraph.graph import StateGraph
 
-from backend.vlm import run_vlm_analysis, vlm_node, VLMState
-from backend.image import generate_image_variation, planner_node, flux_node, persist_node
+from backend.vlm import run_vlm_analysis
+from backend.image import generate_image_variation
 from backend.trellis import generate_3d_asset
 
 load_dotenv()
 
 logger = logging.getLogger("catalog_enrichment.api")
-compiled_graph = None
 VALID_LOCALES = {"en-US", "en-GB", "en-AU", "en-CA", "es-ES", "es-MX", "es-AR", "es-CO", "fr-FR", "fr-CA"}
 
 
-def create_compiled_graph():
-    """Create the complete pipeline graph (VLM -> Planner -> FLUX -> Persist)."""
-    graph = StateGraph(VLMState)
-    graph.add_node("vlm", vlm_node)
-    graph.add_node("planner", planner_node)
-    graph.add_node("flux", flux_node)
-    graph.add_node("persist", persist_node)
-    graph.set_entry_point("vlm")
-    graph.add_edge("vlm", "planner")
-    graph.add_edge("planner", "flux")
-    graph.add_edge("flux", "persist")
-    graph.set_finish_point("persist")
-    logger.info("Graph compiled (VLM -> Planner -> FLUX -> Persist): nodes=%s", ["vlm", "planner", "flux", "persist"])
-    return graph.compile()
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global compiled_graph
     if not logging.getLogger().handlers:
         logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s - %(message)s")
-    logger.info("App startup: compiling graph (FLUX-only)")
-    compiled_graph = create_compiled_graph()
     logger.info("App startup complete")
     yield
 
@@ -128,10 +107,10 @@ async def generate_variation(
     locale: str = Form("en-US"),
     title: str = Form(...),
     description: str = Form(...),
-    categories: str = Form(...),  # JSON array as string
-    tags: str = Form("[]"),  # JSON array as string
-    colors: str = Form("[]"),  # JSON array as string
-    enhanced_product: str = Form(None)  # Optional JSON object as string
+    categories: str = Form(...),
+    tags: str = Form("[]"),
+    colors: str = Form("[]"),
+    enhanced_product: str = Form(None)
 ) -> JSONResponse:
     """
     Slow endpoint: Generate image variation given VLM analysis results.
@@ -243,7 +222,7 @@ async def generate_3d(
             f"slat_steps={slat_sampling_steps}, ss_steps={ss_sampling_steps}, seed={seed}"
         )
         
-        result = generate_3d_asset(
+        result = await generate_3d_asset(
             image_bytes=image_bytes,
             content_type=content_type,
             slat_cfg_scale=slat_cfg_scale,
@@ -298,72 +277,4 @@ async def generate_3d(
         
     except Exception as exc:
         logger.exception(f"/generate/3d exception: {exc}")
-        return JSONResponse({"detail": str(exc)}, status_code=500)
-
-
-@app.post("/vlm/describe")
-async def vlm_describe(
-    image: UploadFile = File(...), 
-    locale: str = Form("en-US"),
-    product_data: str = Form(None),
-    brand_instructions: str = Form(None)
-) -> JSONResponse:
-    try:
-        if locale not in VALID_LOCALES:
-            logger.error(f"/vlm/describe error: invalid locale={locale}, valid options: {VALID_LOCALES}")
-            return JSONResponse({"detail": f"Invalid locale. Supported locales: {sorted(VALID_LOCALES)}"}, status_code=400)
-
-        product_json = None
-        if product_data:
-            try:
-                product_json = json.loads(product_data)
-                logger.info(f"Parsed product_data: {product_json}")
-            except Exception as e:
-                logger.error(f"/vlm/describe error: invalid JSON in product_data: {e}")
-                return JSONResponse({"detail": f"Invalid JSON in product_data: {e}"}, status_code=400)
-
-        validation_result, error_response = await _validate_image(image, "/vlm/describe")
-        if error_response:
-            return error_response
-        image_bytes, content_type = validation_result
-
-        if not compiled_graph:
-            return JSONResponse({"detail": "Graph is not initialized"}, status_code=500)
-
-        logger.info(f"Invoking graph: VLM -> Planner -> FLUX -> Persist with locale={locale} mode={'augmentation' if product_json else 'generation'} brand_instructions={bool(brand_instructions)}")
-        result = compiled_graph.invoke({
-            "image_bytes": image_bytes, 
-            "content_type": content_type, 
-            "locale": locale,
-            "product_data": product_json,
-            "brand_instructions": brand_instructions
-        })
-        logger.info("Graph invocation complete")
-
-        if result.get("error"):
-            return JSONResponse({"detail": result["error"]}, status_code=400)
-
-        payload = result.get("enhanced_product", {}) if product_json else {
-            "title": result.get("title", ""),
-            "description": result.get("description", ""),
-            "categories": result.get("categories", ["uncategorized"]),
-            "colors": result.get("colors", []),
-            "tags": result.get("tags", [])
-        }
-        payload["locale"] = locale
-        
-        # Include generated image if available
-        if result.get("generated_image_b64"):
-            payload["generated_image_b64"] = result.get("generated_image_b64")
-            logger.info(f"Including generated image in response: b64_len={len(result.get('generated_image_b64', ''))}")
-        
-        if product_json:
-            logger.info(f"/vlm/describe success (augmentation): keys={list(payload.keys())} locale={locale}")
-        else:
-            logger.info(f"/vlm/describe success (generation): title_len={len(payload['title'])} desc_len={len(payload['description'])} cats={payload['categories']} colors={payload['colors']} tags={payload['tags']} locale={locale}")
-        
-        return JSONResponse(payload)
-
-    except Exception as exc:
-        logger.exception(f"/vlm/describe exception: {exc}")
         return JSONResponse({"detail": str(exc)}, status_code=500)
