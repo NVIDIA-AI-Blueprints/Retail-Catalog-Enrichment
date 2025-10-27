@@ -1,5 +1,6 @@
 import { Card, Stack, Text, FormField, TextInput, TextArea, Spinner } from '@/kui-foundations-react-external';
 import { ProductFields, AugmentedData } from '@/types';
+import { ProcessingSteps } from './ProcessingSteps';
 
 interface Props {
   fields: ProductFields;
@@ -18,10 +19,8 @@ export function FieldsCard({ fields, augmentedData, isAnalyzing, isGenerating, o
         <Text kind="title/md" className="text-primary">Fields</Text>
         
         {isAnalyzing ? (
-          <div className="flex items-center justify-center py-16">
-            <Stack gap="4" align="center">
-              <Spinner size="large" aria-label="Analyzing image with VLM..." />
-            </Stack>
+          <div>
+            <ProcessingSteps isAnalyzing={isAnalyzing} hasAugmentedData={!!augmentedData} />
           </div>
         ) : (
           <Stack gap="4">

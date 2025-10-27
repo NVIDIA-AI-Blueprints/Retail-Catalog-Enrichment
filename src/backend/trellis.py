@@ -3,14 +3,14 @@ import json
 import base64
 import logging
 from typing import Dict, Any
-import requests
+import httpx
 
 from backend.config import get_config
 
 logger = logging.getLogger("catalog_enrichment.trellis")
 
 
-def generate_3d_asset(
+async def generate_3d_asset(
     image_bytes: bytes,
     content_type: str,
     slat_cfg_scale: float = 5.0,
@@ -56,8 +56,9 @@ def generate_3d_asset(
     logger.info(f"Calling TRELLIS endpoint: {endpoint_url}")
     
     try:
-        response = requests.post(endpoint_url, headers=headers, json=payload, timeout=120)
-        response.raise_for_status()
+        async with httpx.AsyncClient(timeout=120.0) as client:
+            response = await client.post(endpoint_url, headers=headers, json=payload)
+            response.raise_for_status()
         
         try:
             response_json = response.json()
@@ -82,15 +83,19 @@ def generate_3d_asset(
                 "ss_cfg_scale": ss_cfg_scale,
                 "slat_sampling_steps": slat_sampling_steps,
                 "ss_sampling_steps": ss_sampling_steps,
+                "disable_safety_checker": 1,
                 "seed": seed,
                 "size_bytes": len(glb_data)
             }
         }
         
-    except requests.exceptions.Timeout:
+    except httpx.TimeoutException:
         logger.error("TRELLIS request timed out after 120 seconds")
         raise
-    except requests.exceptions.RequestException as e:
+    except httpx.HTTPStatusError as e:
+        logger.error(f"TRELLIS request failed with status {e.response.status_code}: {e}")
+        raise
+    except httpx.RequestError as e:
         logger.error(f"TRELLIS request failed: {e}")
         raise
 
