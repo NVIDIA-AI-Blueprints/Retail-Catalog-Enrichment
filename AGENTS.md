@@ -36,7 +36,7 @@ cd catalog-enrichment
 ### Backend (current)
 
 - Stack: FastAPI + Uvicorn (ASGI), OpenAI client (NVIDIA endpoint), Starlette under the hood
-- Dependencies: `fastapi`, `uvicorn[standard]`, `openai`, `python-multipart`, `python-dotenv`, `langgraph==0.6.7`
+- Dependencies: `fastapi`, `uvicorn[standard]`, `openai`, `python-multipart`, `python-dotenv`, `httpx`, `pillow`, `pyyaml`
 - Python: 3.11+
 
 #### Environment
@@ -104,16 +104,6 @@ uvicorn --app-dir src backend.main:app --host 0.0.0.0 --port 8000 --reload
     - `glb_base64`: string (base64-encoded GLB file)
     - `artifact_id`: string (unique identifier)
     - `metadata`: object (generation parameters and file size)
-
-**Legacy (Complete Pipeline - ~35-65 seconds):**
-- POST `/vlm/describe`
-  - Request: `multipart/form-data` with fields:
-    - `image` (file): Product image
-    - `product_data` (JSON string, optional): Existing product data to augment
-    - `locale` (string, optional): Regional locale code (default: "en-US")
-  - Response: Complete JSON with fields + generated image
-    - All fields from `/vlm/analyze`
-    - `generated_image_b64`: string (base64-encoded PNG)
 
 
 Input Product Data Schema (optional):
@@ -222,22 +212,6 @@ curl -X POST \
   -F "image=@bag.jpg;type=image/jpeg" \
   -F "return_json=true" \
   http://localhost:8000/generate/3d
-```
-
-**Complete Pipeline (legacy endpoint - returns everything in ~35-65 seconds):**
-```bash
-# Image only (generation mode)
-curl -X POST \
-  -F "image=@bag.jpg;type=image/jpeg" \
-  -F "locale=en-US" \
-  http://localhost:8000/vlm/describe
-
-# With product data (augmentation mode)
-curl -X POST \
-  -F "image=@bag.jpg;type=image/jpeg" \
-  -F 'product_data={"title":"Classic Black Patent purse","description":"Elegant bag"}' \
-  -F "locale=en-US" \
-  http://localhost:8000/vlm/describe
 ```
 
 **Note:** Build and test commands will be updated as the project's technology stack is finalized.

@@ -14,7 +14,7 @@ import logging
 import httpx
 from uuid import uuid4
 from datetime import datetime, timezone
-from typing import Dict, Any, List, Optional, TypedDict
+from typing import Dict, Any, List, Optional
 from io import BytesIO
 from PIL import Image
 
@@ -41,29 +41,12 @@ LOCALE_CONFIG = {
 }
 
 
-# VLMState type (needed for node functions)
-class VLMState(TypedDict, total=False):
-    image_bytes: bytes
-    content_type: str
-    locale: str
-    product_data: Optional[Dict[str, Any]]
-    title: str
-    description: str
-    categories: List[str]
-    tags: List[str]
-    colors: List[str]
-    error: Optional[str]
-    generated_image_b64: str
-    image_path: str
-    metadata_path: str
-    artifact_id: str
-    variation_plan: Dict[str, Any]
-    flux_prompt: str
-    enhanced_product: Dict[str, Any]
-
-
 def _call_planner_llm(title: str, description: str, categories: List[str], locale: str = "en-US") -> Dict[str, Any]:
-    """Call the planner LLM to create an image variation plan."""
+    """Call the planner LLM to create an image variation plan.
+    
+    NOTE: Always generates plans in ENGLISH regardless of locale, since FLUX only supports English.
+    However, the planner is culturally aware and creates backgrounds appropriate for the target locale.
+    """
     logger.info("Calling planner LLM: title_len=%d desc_len=%d cats=%s locale=%s", len(title or ""), len(description or ""), categories, locale)
 
     api_key = os.getenv("NVIDIA_API_KEY")
@@ -80,38 +63,55 @@ def _call_planner_llm(title: str, description: str, categories: List[str], local
         messages=[
             {"role": "system", "content": "/no_think You are a product image variation planner with cultural awareness. Output ONLY valid JSON - no markdown formatting, no code blocks, no backticks. "
              "Preserve the subject identity. Change ONLY background, camera angle, lighting, and mood according to the title, description, and target locale. "
-             "Create backgrounds that reflect the cultural aesthetic and lifestyle of the target region!"
+             "Create backgrounds that reflect the cultural aesthetic and lifestyle of the target region! "
+             "IMPORTANT: Always write your plan in ENGLISH, even if the product title/description is in another language. The image generation model only understands English. "
              "Adhere to the JSON schema with fields: preserve_subject, background_style, camera_angle, lighting, color_palette, negatives, cfg_scale, steps, variants."},
             {"role": "user", "content": f"""TITLE: {title}
 DESCRIPTION: {description}
 CATEGORIES: {categories}
 TARGET LOCALE: {locale}
+TARGET COUNTRY: {country}
 
 Create a background style that authentically reflects how this product would be used in {country}. Use your knowledge of local architecture, interior design, lifestyle, and cultural preferences for that country.
 
+CULTURAL ELEMENTS & ICONIC LANDMARKS:
+- Incorporate distinctive architectural elements from {country} (e.g., Parisian Haussmannian apartments with wrought iron balconies, Barcelona's modernist architecture, New York's industrial loft style)
+- When appropriate, subtly reference iconic landmarks or cityscapes in the background view (e.g., Eiffel Tower visible through a window, Sydney Harbour glimpse, Big Ben in the distance, Golden Gate Bridge view)
+- Include culturally distinctive design elements (e.g., French bistro tables, Spanish tilework, Mexican talavera pottery)
+- Use region-specific materials and textures (e.g., Mediterranean whitewashed walls, Scandinavian wood, English brick, American hardwood)
+- Reference local lifestyle and aesthetic preferences (e.g., Spanish terrace lifestyle, American casual luxury)
+
 BE CREATIVE AND VARY YOUR CHOICES:
-- Consider diverse settings: home interiors, outdoor scenes, professional environments, lifestyle contexts
-- Think beyond obvious choices - vary backgrounds based on product type and cultural context
+- Consider diverse settings: home interiors with iconic views, outdoor scenes with landmarks, cafés/restaurants, lifestyle contexts
+- Balance subtlety with cultural identity - landmarks should enhance but not overwhelm the product
+- Think beyond obvious tourist shots - use authentic local environments
 - Use different camera angles: overhead, eye-level, low angle, 3/4 view, close-up
-- Vary lighting: natural window light, golden hour, studio softbox, dramatic side light, diffused overcast
-- Avoid repetitive patterns - each generation should feel unique
+- Vary lighting based on regional characteristics: natural window light, golden hour, studio softbox, dramatic side light, diffused overcast
+- Avoid repetitive patterns - each generation should feel unique and natural
 
 CATEGORY-SPECIFIC BACKGROUNDS:
-- For "skincare" products: use bathroom counters, bathroom vanity setups, living room side tables, bedroom vanities, or spa-inspired settings
-- For "kitchen" products: use kitchen counters, dining tables, or cooking prep areas
-- For "accessories": use lifestyle contexts like entryways, closets, or fashion displays
-- For other categories: choose contextually appropriate settings that match how the product is typically used
+- For "skincare" products: bathroom counters, vanity setups, living room side tables, bedroom vanities, spa-inspired settings - with cultural touches
+- For "kitchen" products: kitchen counters, dining tables, cooking prep areas - reflecting local culinary culture
+- For "accessories": lifestyle contexts like entryways, closets, fashion displays, outdoor café tables, cobblestone streets
+- For other categories: choose contextually appropriate settings that match how the product is typically used in that country
+
+EXAMPLES BY COUNTRY:
+- France: "on a marble bistro table at a Parisian café, with the Eiffel Tower softly blurred in the background through the window"
+- Spain: "on a white-tiled balcony in Barcelona with wrought iron railings, partial view of Sagrada Familia in the distance"
+- Japan: "on a minimalist wooden surface in a Tokyo apartment, with shoji screen and distant city skyline visible"
+- UK: "on a traditional English side table, Georgian window with a glimpse of Big Ben across the Thames"
+- USA: "on an industrial concrete counter in a New York loft, floor-to-ceiling windows showing the city skyline"
 
 Produce ONLY a JSON object with no markdown formatting or code blocks. Required schema:
-{{"preserve_subject": "<exact product description from title>", 
-"background_style": "<culturally authentic setting for {country} - be specific and creative>", 
+{{"preserve_subject": "<describe the product in ENGLISH - e.g., 'luxury black and gold handbag'>", 
+"background_style": "<culturally authentic setting for {country} in ENGLISH with iconic elements - be specific and creative>", 
 "camera_angle": "<varied: overhead/eye-level/low angle/3-4 view/close-up>", 
-"lighting": "<varied: natural window/golden hour/studio softbox/side light/overcast/etc>", 
-"color_palette": "<complement the product and setting>", 
+"lighting": "<varied and region-appropriate: natural window/golden hour/studio softbox/side light/overcast/etc>", 
+"color_palette": "<complement the product and cultural setting>", 
 "negatives": ["do not alter the subject", "no text, no logos, no duplicates"], 
 "cfg_scale": <float between 2.5-4.5>, "steps": <int 25-40>, "variants": 1}}
 
-CRITICAL: Return the raw JSON object only - no ```json``` or ``` blocks. Keep the subject unchanged. Do not add extra keys or commentary. Make each background contextually appropriate AND visually distinct."""}
+CRITICAL: Write EVERYTHING in ENGLISH (preserve_subject, background_style, all fields). Return the raw JSON object only - no ```json``` or ``` blocks. Keep the subject unchanged. Do not add extra keys or commentary. Make each background culturally rich AND visually compelling."""}
         ],
         temperature=0.8, top_p=1, max_tokens=1024, stream=True
     )
@@ -171,8 +171,12 @@ CRITICAL: Return the raw JSON object only - no ```json``` or ``` blocks. Keep th
     }
 
 
-def _render_flux_prompt(plan: Dict[str, Any]) -> str:
-    """Render a FLUX prompt from a variation plan."""
+def _render_flux_prompt(plan: Dict[str, Any], locale: str = "en-US") -> str:
+    """Render a FLUX prompt from a variation plan.
+    
+    NOTE: Always renders in English since FLUX only supports English.
+    The plan itself should already be in English (enforced by _call_planner_llm).
+    """
     preserve = plan.get("preserve_subject", "the product")
     background = plan.get("background_style", "neutral studio background")
     camera = plan.get("camera_angle", "eye-level")
@@ -180,10 +184,19 @@ def _render_flux_prompt(plan: Dict[str, Any]) -> str:
     negatives = plan.get("negatives", [])
     neg_text = "; ".join(negatives) if isinstance(negatives, list) else str(negatives)
     
-    return f"Keep {preserve} unchanged. Replace only the background with {background}. Make it hyperrealistic, ideal for an e-commerce product image. " \
-           f"Use {lighting} lighting and {camera} camera angle. " \
-           f"Maintain subject color, orientation, and material. Scale the product to natural, proportional size for the environment. " \
-           f"{('Avoid: ' + neg_text) if neg_text else ''}".strip()
+    logger.info("Rendering FLUX prompt (English-only) for locale=%s", locale)
+    
+    # Build English prompt for FLUX
+    prompt = f"Keep {preserve} unchanged. Replace only the background with {background}. " \
+             f"Make it hyperrealistic, ideal for an e-commerce product image. " \
+             f"Use {lighting} lighting and {camera} camera angle. " \
+             f"Maintain subject color, orientation, and material. " \
+             f"Scale the product to natural, proportional size for the environment."
+    
+    if neg_text:
+        prompt += f" Avoid: {neg_text}"
+    
+    return prompt.strip()
 
 
 async def _call_flux_edit(image_bytes: bytes, content_type: str, prompt: str, steps: int, cfg_scale: float, seed: Optional[int] = None) -> Dict[str, Any]:
@@ -213,7 +226,7 @@ async def _call_flux_edit(image_bytes: bytes, content_type: str, prompt: str, st
         response = await client.post(
             flux_config['url'],
             headers={"Authorization": f"Bearer {api_key}", "Accept": "application/json", "Content-Type": "application/json"},
-            json={"prompt": prompt, "image": data_url, "aspect_ratio": "match_input_image", 
+            json={"prompt": prompt, "image": data_url, "aspect_ratio": "match_input_image", "disable_safety_checker": 1,
                   "steps": int(steps or 30), "cfg_scale": float(cfg_scale or 3.5), "seed": int(seed if seed is not None else 0)}
         )
     
@@ -241,97 +254,6 @@ def _extract_base64_image_from_flux_response(response_body: Dict[str, Any]) -> O
                     if isinstance(val, str) and val:
                         return val
     return None
-
-
-def planner_node(state: VLMState) -> VLMState:
-    """LangGraph node: Create variation plan from VLM analysis."""
-    logger.info("Planner node start")
-    try:
-        locale = state.get("locale", "en-US")
-        plan = _call_planner_llm(state.get("title", "").strip(), state.get("description", "").strip(), state.get("categories", []), locale)
-        prompt = _render_flux_prompt(plan)
-        logger.info("Planner node success: prompt_len=%d locale=%s", len(prompt), locale)
-        return {**state, "variation_plan": plan, "flux_prompt": prompt}
-    except Exception as exc:
-        logger.exception("Planner node exception: %s", exc)
-        return {"error": str(exc), **state}
-
-
-async def flux_node(state: VLMState) -> VLMState:
-    """LangGraph node: Generate image variation using FLUX."""
-    logger.info("FLUX node start")
-    image_bytes = state.get("image_bytes")
-    prompt = (state.get("flux_prompt") or "").strip()
-
-    if not image_bytes or not prompt:
-        error = "image_bytes missing" if not image_bytes else "flux_prompt missing"
-        logger.error(f"FLUX node error: {error}")
-        return {"error": error, **state}
-
-    try:
-        plan = state.get("variation_plan", {})
-        flux_response = await _call_flux_edit(
-            image_bytes, state.get("content_type", "image/png"), prompt,
-            int(plan.get("steps", 30)), float(plan.get("cfg_scale", 3.5)),
-            random.randint(1, 10_000_000)
-        )
-        image_b64 = _extract_base64_image_from_flux_response(flux_response)
-        if not image_b64:
-            return {"error": "FLUX response did not include an image", **state}
-        logger.info("FLUX node success: image_b64_len=%d", len(image_b64))
-        return {**state, "generated_image_b64": image_b64}
-    except Exception as exc:
-        logger.exception("FLUX node exception: %s", exc)
-        return {"error": str(exc), **state}
-
-
-def persist_node(state: VLMState) -> VLMState:
-    """LangGraph node: Persist generated image and metadata to disk."""
-    logger.info("Persist node start")
-    if not (image_b64 := state.get("generated_image_b64")):
-        return {"error": "generated_image_b64 missing", **state}
-
-    try:
-        output_dir = os.getenv("OUTPUT_DIR", os.path.join(os.getcwd(), "data", "outputs"))
-        os.makedirs(output_dir, exist_ok=True)
-
-        artifact_id = uuid4().hex
-        image_path = os.path.join(output_dir, f"{artifact_id}.png")
-        metadata_path = os.path.join(output_dir, f"{artifact_id}.json")
-
-        with open(image_path, "wb") as f:
-            f.write(base64.b64decode(image_b64))
-
-        base_meta = {
-            "id": artifact_id,
-            "locale": state.get("locale", "en-US"),
-            "created_at": datetime.now(timezone.utc).isoformat(),
-            "image_path": image_path,
-            "source_content_type": state.get("content_type")
-        }
-        
-        if enhanced := state.get("enhanced_product"):
-            logger.info("Persist node: saving enhanced_product with keys=%s", list(enhanced.keys()))
-            metadata = {**enhanced, **base_meta}
-        else:
-            logger.info("Persist node: saving VLM-only data")
-            metadata = {
-                **base_meta,
-                "title": state.get("title", ""),
-                "description": state.get("description", ""),
-                "categories": state.get("categories", []),
-                "tags": state.get("tags", []),
-                "colors": state.get("colors", [])
-            }
-
-        with open(metadata_path, "w", encoding="utf-8") as f:
-            json.dump(metadata, f, ensure_ascii=False, indent=2)
-
-        logger.info("Persist node success: image_path=%s metadata_path=%s", image_path, metadata_path)
-        return {**state, "artifact_id": artifact_id, "image_path": image_path, "metadata_path": metadata_path}
-    except Exception as exc:
-        logger.exception("Persist node exception: %s", exc)
-        return {"error": str(exc), **state}
 
 
 def persist_generated_image(
@@ -434,7 +356,7 @@ async def generate_image_variation(
         # Step 1: Planner - Create variation plan
         logger.info("Step 1: Planning variation")
         plan = _call_planner_llm(title, description, categories, locale)
-        prompt = _render_flux_prompt(plan)
+        prompt = _render_flux_prompt(plan, locale)
         logger.info("Planner complete: prompt_len=%d", len(prompt))
         
         # Step 2: FLUX - Generate image (async!)
