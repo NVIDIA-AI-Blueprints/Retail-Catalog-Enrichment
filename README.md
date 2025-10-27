@@ -46,19 +46,18 @@ Backend endpoints:
 - `POST /vlm/analyze` → **Fast VLM analysis** (~2-5 seconds) - extract product fields without image generation
 - `POST /generate/variation` → **Image generation with FLUX** (~30-60 seconds) - generate product variation using VLM results
 - `POST /generate/3d` → **3D asset generation with TRELLIS** (~30-120 seconds) - generate 3D GLB models from 2D images
-- `POST /vlm/describe` → **Legacy complete pipeline** (~35-65 seconds) - VLM analysis + image generation in one call
 
 ### API Endpoints
 
-#### Recommended Workflow: Modular Pipeline for Better Performance
+#### Modular Pipeline Workflow
 
-For optimal performance and flexibility, use the modular approach:
+The API provides a modular approach for optimal performance and flexibility:
 
 **1) Fast VLM Analysis (POST `/vlm/analyze`)** - Get product fields quickly (~2-5 seconds)
 **2) Image Generation (POST `/generate/variation`)** - Generate 2D variations on demand (~30-60 seconds)
 **3) 3D Asset Generation (POST `/generate/3d`)** - Generate 3D models on demand (~30-120 seconds)
 
-This allows you to:
+Benefits of this approach:
 - Display product information immediately to users
 - Generate images and 3D assets in the background or on-demand
 - Cache VLM results and generate multiple variations
@@ -242,34 +241,6 @@ curl -X POST \
     "seed": 42,
     "size_bytes": 1234567
   }
-}
-```
----
-
-#### 4️⃣ Legacy Complete Pipeline: `/vlm/describe`
-
-Complete enrichment pipeline (VLM analysis + image generation in one call).
-
-**Note:** This endpoint is kept for backward compatibility but is slower (~35-65 seconds). Consider using the split approach above for better UX.
-
-**Usage Example:**
-```bash
-curl -X POST \
-  -F "image=@bag.jpg;type=image/jpeg" \
-  -F "locale=en-US" \
-  http://localhost:8000/vlm/describe
-```
-
-**Response Schema:**
-```json
-{
-  "title": "Glamorous Black Evening Handbag with Gold Accents",
-  "description": "This exquisite handbag exudes sophistication...",
-  "categories": ["accessories"],
-  "tags": ["black leather", "gold accents", "evening bag"],
-  "colors": ["black", "gold"],
-  "generated_image_b64": "iVBORw0KGgoAAAANS...",
-  "locale": "en-US"
 }
 ```
 

@@ -120,15 +120,41 @@ export async function generate3DModel(file: File): Promise<string | null> {
 }
 
 export function prepareProductData(fields: ProductFields) {
-  const hasFields = Object.values(fields).some(val => val.trim() !== '');
-  if (!hasFields) return null;
-
   const data: any = {};
-  if (fields.title) data.title = fields.title;
-  if (fields.description) data.description = fields.description;
-  if (fields.categories) data.categories = fields.categories.split(',').map(c => c.trim());
-  if (fields.tags) data.tags = fields.tags.split(',').map(t => t.trim());
-  if (fields.price) data.price = parseFloat(fields.price);
-  return data;
+  
+  if (fields.title && fields.title.trim()) {
+    data.title = fields.title.trim();
+  }
+  
+  if (fields.description && fields.description.trim()) {
+    data.description = fields.description.trim();
+  }
+  
+  if (fields.categories && fields.categories.trim()) {
+    const categories = fields.categories.split(',')
+      .map(c => c.trim())
+      .filter(c => c !== '');
+    if (categories.length > 0) {
+      data.categories = categories;
+    }
+  }
+  
+  if (fields.tags && fields.tags.trim()) {
+    const tags = fields.tags.split(',')
+      .map(t => t.trim())
+      .filter(t => t !== '');
+    if (tags.length > 0) {
+      data.tags = tags;
+    }
+  }
+  
+  if (fields.price && fields.price.trim()) {
+    const price = parseFloat(fields.price);
+    if (!isNaN(price)) {
+      data.price = price;
+    }
+  }
+  
+  return Object.keys(data).length > 0 ? data : null;
 }
 
