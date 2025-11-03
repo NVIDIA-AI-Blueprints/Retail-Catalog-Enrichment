@@ -1,0 +1,157 @@
+version: '3.8'
+
+services:
+  # Backend API Service
+  backend:
+    build:
+      context: ./src/backend
+      dockerfile: Dockerfile
+    container_name: catalog-enrichment-backend
+    ports:
+      - "8000:8000"
+    environment:
+      - NGC_API_KEY=${NGC_API_KEY}
+      - HF_TOKEN=${HF_TOKEN}
+      - NVIDIA_API_KEY=${NGC_API_KEY}
+    volumes:
+      - ./data/outputs:/app/data/outputs
+      - ./shared/config:/app/shared/config:ro
+    depends_on:
+      - vlm-nim
+      - llm-nim
+      - flux-nim
+      - trellis-nim
+    restart: unless-stopped
+    networks:
+      - catalog-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Frontend UI Service
+  frontend:
+    build:
+      context: ./src/ui
+      dockerfile: Dockerfile
+    container_name: catalog-enrichment-frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_BACKEND_URL=http://localhost:8000
+    depends_on:
+      - backend
+    restart: unless-stopped
+    networks:
+      - catalog-network
+
+  # VLM Model
+  vlm-nim:
+    image: nvcr.io/nim/nvidia/llama-3.1-nemotron-nano-vl-8b-v1:1
+    container_name: nim-vlm
+    ports:
+      - "8001:8000"
+    environment:
+      - NGC_API_KEY=${NGC_API_KEY}
+    volumes:
+      - ${LOCAL_NIM_CACHE:-~/.cache/nim}/vlm:/opt/nim/.cache
+    user: "${UID:-1000}"
+    shm_size: "16gb"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ['0']
+              capabilities: [gpu]
+    restart: "no"
+    stdin_open: true
+    tty: true
+    networks:
+      - catalog-network
+
+  # LLM Model
+  llm-nim:
+    image: nvcr.io/nim/nvidia/llama-3.3-nemotron-super-49b-v1:1.10.1
+    container_name: nim-llm
+    ports:
+      - "8002:8000"
+    environment:
+      - NGC_API_KEY=${NGC_API_KEY}
+    volumes:
+      - ${LOCAL_NIM_CACHE:-~/.cache/nim}/llm:/opt/nim/.cache
+    user: "${UID:-1000}"
+    shm_size: "16gb"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ['1']
+              capabilities: [gpu]
+    restart: "no"
+    stdin_open: true
+    tty: true
+    networks:
+      - catalog-network
+
+  # Trellis Model - 3D Asset Generation
+  trellis-nim:
+    image: nvcr.io/nim/microsoft/trellis:latest
+    container_name: nim-trellis
+    ports:
+      - "8004:8000"
+    environment:
+      - NGC_API_KEY=${NGC_API_KEY}
+      - NIM_MODEL_VARIANT=large:image
+      - NIM_ALLOW_UNCHECKED_GENERATION=1
+    volumes:
+      - ${LOCAL_NIM_CACHE:-~/.cache/nim}/trellis:/opt/nim/.cache
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ['2']
+              capabilities: [gpu]
+    restart: "no"
+    stdin_open: true
+    tty: true
+    networks:
+      - catalog-network
+
+  # Flux Model - 2D Image Variation Generation
+  flux-nim:
+    image: nvcr.io/nim/black-forest-labs/flux.1-kontext-dev:latest
+    container_name: nim-flux
+    ports:
+      - "8003:8000"
+    environment:
+      - NGC_API_KEY=${NGC_API_KEY}
+      - HF_TOKEN=${HF_TOKEN}
+      - NIM_ALLOW_UNCHECKED_GENERATION=1
+    volumes:
+      - ${LOCAL_NIM_CACHE:-~/.cache/nim}/flux:/opt/nim/.cache
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ['3']
+              capabilities: [gpu]
+    restart: "no"
+    stdin_open: true
+    tty: true
+    networks:
+      - catalog-network
+
+networks:
+  catalog-network:
+    driver: bridge
+
+volumes:
+  nim-cache:
+    driver: local
+

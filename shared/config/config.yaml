@@ -1,15 +1,15 @@
 # Configuration file for catalog-enrichment endpoints
 
 vlm:
-  url: "https://integrate.api.nvidia.com/v1"
+  url: "http://nim-vlm:8000/v1"
   model: "nvidia/llama-3.1-nemotron-nano-vl-8b-v1"
 
 llm:
-  url: "https://integrate.api.nvidia.com/v1"
+  url: "http://nim-llm:8000/v1"
   model: "nvidia/llama-3.3-nemotron-super-49b-v1.5"
 
 flux:
-  url: "http://localhost:8005/v1/infer"
+  url: "http://nim-flux:8000/v1/infer"
 
 trellis:
-  url: "http://localhost:8006/v1/infer"
+  url: "http://nim-trellis:8000/v1/infer"
