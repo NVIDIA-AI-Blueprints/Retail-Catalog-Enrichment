@@ -1,4 +1,4 @@
-FROM python:3.11-slim as builder
+FROM python:3.11-slim AS builder
 
 WORKDIR /app
 
@@ -7,7 +7,7 @@ RUN apt-get update && apt-get install -y \
     g++ \
     && rm -rf /var/lib/apt/lists/*
 
-COPY ../../pyproject.toml ./
+COPY pyproject.toml ./
 
 RUN pip install --no-cache-dir uv
 
@@ -25,15 +25,15 @@ RUN apt-get update && apt-get install -y \
 COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
 COPY --from=builder /usr/local/bin /usr/local/bin
 
-COPY . ./src/backend/
-COPY ../../shared/ ./shared/
+COPY src/backend/ ./src/backend/
+COPY shared/ ./shared/
 
 RUN mkdir -p data/outputs && \
     chmod -R 777 data
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONPATH=/app
+    PYTHONPATH=/app/src
 
 EXPOSE 8000
 

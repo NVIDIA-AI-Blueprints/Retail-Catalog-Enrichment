@@ -1,14 +1,25 @@
-version: '3.8'
-
 services:
+  # Nginx Reverse Proxy
+  nginx:
+    image: nginx:1.25.3-alpine
+    container_name: catalog-enrichment-nginx
+    ports:
+      - "3000:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - frontend
+      - backend
+    restart: unless-stopped
+    networks:
+      - catalog-network
+
   # Backend API Service
   backend:
     build:
-      context: ./src/backend
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: src/backend/Dockerfile
     container_name: catalog-enrichment-backend
-    ports:
-      - "8000:8000"
     environment:
       - NGC_API_KEY=${NGC_API_KEY}
       - HF_TOKEN=${HF_TOKEN}
@@ -36,11 +47,11 @@ services:
     build:
       context: ./src/ui
       dockerfile: Dockerfile
+      args:
+        - NEXT_PUBLIC_BACKEND_URL=/api
     container_name: catalog-enrichment-frontend
-    ports:
-      - "3000:3000"
     environment:
-      - NEXT_PUBLIC_BACKEND_URL=http://localhost:8000
+      - NEXT_PUBLIC_BACKEND_URL=/api
     depends_on:
       - backend
     restart: unless-stopped
@@ -56,8 +67,7 @@ services:
     environment:
       - NGC_API_KEY=${NGC_API_KEY}
     volumes:
-      - ${LOCAL_NIM_CACHE:-~/.cache/nim}/vlm:/opt/nim/.cache
-    user: "${UID:-1000}"
+      - ${LOCAL_NIM_CACHE:-~/.cache/nim}:/opt/nim/.cache
     shm_size: "16gb"
     deploy:
       resources:
@@ -74,15 +84,14 @@ services:
 
   # LLM Model
   llm-nim:
-    image: nvcr.io/nim/nvidia/llama-3.3-nemotron-super-49b-v1:1.10.1
+    image: nvcr.io/nim/nvidia/llama-3.3-nemotron-super-49b-v1.5:1.14
     container_name: nim-llm
     ports:
       - "8002:8000"
     environment:
       - NGC_API_KEY=${NGC_API_KEY}
     volumes:
-      - ${LOCAL_NIM_CACHE:-~/.cache/nim}/llm:/opt/nim/.cache
-    user: "${UID:-1000}"
+      - ${LOCAL_NIM_CACHE:-~/.cache/nim}:/opt/nim/.cache
     shm_size: "16gb"
     deploy:
       resources:
@@ -108,7 +117,7 @@ services:
       - NIM_MODEL_VARIANT=large:image
       - NIM_ALLOW_UNCHECKED_GENERATION=1
     volumes:
-      - ${LOCAL_NIM_CACHE:-~/.cache/nim}/trellis:/opt/nim/.cache
+      - ${LOCAL_NIM_CACHE:-~/.cache/nim}:/opt/nim/.cache
     deploy:
       resources:
         reservations:
@@ -133,7 +142,7 @@ services:
       - HF_TOKEN=${HF_TOKEN}
       - NIM_ALLOW_UNCHECKED_GENERATION=1
     volumes:
-      - ${LOCAL_NIM_CACHE:-~/.cache/nim}/flux:/opt/nim/.cache
+      - ${LOCAL_NIM_CACHE:-~/.cache/nim}:/opt/nim/.cache
     deploy:
       resources:
         reservations:
