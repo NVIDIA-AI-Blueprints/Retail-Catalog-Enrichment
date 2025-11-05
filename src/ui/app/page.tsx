@@ -2,7 +2,7 @@
 
 import { Stack } from '@/kui-foundations-react-external';
 import { useState, useRef } from 'react';
-import { Nebula } from '@kui-contrib/nebula';
+import { Nebula } from '@/kui-foundations-react-external/nebula';
 import { Header } from '@/components/Header';
 import { ImageUploadCard } from '@/components/ImageUploadCard';
 import { FieldsCard } from '@/components/FieldsCard';
