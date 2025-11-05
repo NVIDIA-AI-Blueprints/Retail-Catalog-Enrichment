@@ -58,7 +58,7 @@ A GenAI-powered catalog enrichment system that transforms basic product images i
 Create a `.env` file in the project root:
 
 ```bash
-NVIDIA_API_KEY=your_nvidia_api_key_here
+NGC_API_KEY=your_nvidia_api_key_here
 HF_TOKEN=your_huggingface_token_here
 ```
 
