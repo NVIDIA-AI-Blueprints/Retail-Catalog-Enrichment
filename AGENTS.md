@@ -8,6 +8,13 @@ This document provides guidelines and instructions for AI assistants working on 
 **Repository:** https://gitlab-master.nvidia.com/anmartinez/catalog-enrichment.git  
 **Purpose:** A system for enriching product catalog data with additional metadata, descriptions, and categorization.
 
+### Documentation Structure
+- **[README.md](README.md)** - Quick start guide and high-level overview
+- **[docs/API.md](docs/API.md)** - Complete API reference with examples
+- **[docs/DOCKER.md](docs/DOCKER.md)** - Docker and container deployment guide
+- **[PRD.md](PRD.md)** - Product requirements document
+- **[AGENTS.md](AGENTS.md)** - This file (AI assistant guidelines)
+
 ### Current Status
 - ✅ **Multi-Language Support** - Locale-based product descriptions (FR-6 completed)
 - ✅ **VLM Content Augmentation** - Enhances existing product data with visual insights (FR-2 completed)

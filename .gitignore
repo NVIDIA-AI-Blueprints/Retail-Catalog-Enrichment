@@ -101,3 +101,7 @@ logs/
 *.swp
 *.swo
 *~
+
+# Project-specific
+data/
+nim_cache/
