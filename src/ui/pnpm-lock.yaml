@@ -93,9 +93,6 @@ importers:
       '@eslint/eslintrc':
         specifier: ^3
         version: 3.3.1
-      '@kui/foundations':
-        specifier: ^0.401.1
-        version: 0.401.2
       '@tailwindcss/postcss':
         specifier: ^4
         version: 4.1.14
@@ -368,9 +365,6 @@ packages:
 
   '@jridgewell/trace-mapping@0.3.31':
     resolution: {integrity: sha512-zzNR+SdQSDJzc8joaeP8QQoCQr8NuYx2dIIytl1QeBEZHJ9uW6hebsrYgbz8hJwUQao3TWCMtmfV8Nu1twOLAw==}
-
-  '@kui/foundations@0.401.2':
-    resolution: {integrity: sha512-9EQ06xSqqmpr9ym7fgJ5Lc2a258k7H/+j0nWHn0umWIAU23ueZ7WTdFb7onEJivdoFbio/u3YXVZyYSI8GbK9Q==, tarball: https://urm.nvidia.com/artifactory/api/npm/sw-ngc-cloud-npm-local/@kui/foundations/-/@kui/foundations-0.401.2.tgz}
 
   '@napi-rs/wasm-runtime@0.2.12':
     resolution: {integrity: sha512-ZVWUcfwY4E/yPitQJl481FjFo3K22D6qF0DuFH6Y/nbnE11GY5uguDxZMGXPQ8WQ0128MXQD7TnfHyK4oWoIJQ==}
@@ -2699,8 +2693,6 @@ snapshots:
     dependencies:
       '@jridgewell/resolve-uri': 3.1.2
       '@jridgewell/sourcemap-codec': 1.5.5
-
-  '@kui/foundations@0.401.2': {}
 
   '@napi-rs/wasm-runtime@0.2.12':
     dependencies:
