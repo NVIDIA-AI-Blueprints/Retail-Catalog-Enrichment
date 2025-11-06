@@ -2,6 +2,7 @@
 @import "tailwindcss/preflight.css";
 @import "tailwindcss/utilities.css";
 @import "@kui/foundations-react-external/base.css";
+@import "@/kui-foundations-react-external/nebula/dist/styles.css";
 
 @plugin "@kui/foundations" {
   /**

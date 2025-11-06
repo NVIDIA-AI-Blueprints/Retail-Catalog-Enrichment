@@ -9,7 +9,7 @@ WORKDIR /app
 FROM base AS deps
 
 COPY package.json pnpm-lock.yaml ./
-COPY kui-foundations-react-external/package.json ./kui-foundations-react-external/
+COPY kui-foundations-react-external ./kui-foundations-react-external/
 
 RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm install --frozen-lockfile
 

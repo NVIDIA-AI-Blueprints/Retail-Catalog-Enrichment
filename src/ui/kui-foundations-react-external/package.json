@@ -51,7 +51,7 @@
     "date-fns": "^4.1.0",
     "fast-equals": "^5.2.2",
     "react-day-picker": "^9.7.0",
-    "@kui/foundations-design-tokens": "^0.500.1"
+    "@kui/foundations-react-external": "link:kui-foundations-react-external"
   },
   "devDependencies": {
     "@babel/preset-react": "^7.27.1",

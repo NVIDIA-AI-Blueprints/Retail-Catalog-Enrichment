@@ -1,4 +1,10 @@
-# Catalog Enrichment System
+# Retail Catalog Enrichment Blueprint
+
+<div align="center">
+
+![NVIDIA Logo](https://avatars.githubusercontent.com/u/178940881?s=200&v=4)
+
+</div>
 
 A GenAI-powered catalog enrichment system that transforms basic product images into comprehensive, rich catalog entries using NVIDIA's Nemotron VLM for content analysis, Nemotron LLM for intelligent prompt planning, FLUX models for generating high-quality product variations, and TRELLIS model for 3D asset generation.
 

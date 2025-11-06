@@ -14,12 +14,9 @@ importers:
       '@date-fns/tz':
         specifier: ^1.4.1
         version: 1.4.1
-      '@kui-contrib/nebula':
-        specifier: ^1.3.9
-        version: 1.3.9(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@kui/foundations-design-tokens':
-        specifier: ^0.500.1
-        version: 0.500.1
+        specifier: link:kui-foundations-react-external/foundations-design-tokens
+        version: link:kui-foundations-react-external/foundations-design-tokens
       '@kui/foundations-react-external':
         specifier: link:kui-foundations-react-external
         version: link:kui-foundations-react-external
@@ -96,9 +93,6 @@ importers:
       '@eslint/eslintrc':
         specifier: ^3
         version: 3.3.1
-      '@kui/foundations':
-        specifier: ^0.401.1
-        version: 0.401.2
       '@tailwindcss/postcss':
         specifier: ^4
         version: 4.1.14
@@ -371,18 +365,6 @@ packages:
 
   '@jridgewell/trace-mapping@0.3.31':
     resolution: {integrity: sha512-zzNR+SdQSDJzc8joaeP8QQoCQr8NuYx2dIIytl1QeBEZHJ9uW6hebsrYgbz8hJwUQao3TWCMtmfV8Nu1twOLAw==}
-
-  '@kui-contrib/nebula@1.3.9':
-    resolution: {integrity: sha512-WQ2Im1Th2NO6zKLkfQ8JU4v/YFoHOnlKh1f3qiodGnAUP/+/k7sjuuDkNmdFToCihW24EaC9X0fM0uG9pBm+4g==, tarball: https://urm.nvidia.com/artifactory/api/npm/sw-ngc-unified-npm-proxy/@kui-contrib/nebula/-/@kui-contrib/nebula-1.3.9.tgz}
-    peerDependencies:
-      react: '>=18'
-      react-dom: '>=18'
-
-  '@kui/foundations-design-tokens@0.500.1':
-    resolution: {integrity: sha512-c1irEeseWwLHQKiz2p2Mt8vFICwoOLiqjYAekXJXcHsP8BQwHuSgRYuQVtNtjQQYwR9lD8iS/8H0OW/pXupX/A==, tarball: https://urm.nvidia.com/artifactory/api/npm/sw-ngc-cloud-npm-local/@kui/foundations-design-tokens/-/@kui/foundations-design-tokens-0.500.1.tgz}
-
-  '@kui/foundations@0.401.2':
-    resolution: {integrity: sha512-9EQ06xSqqmpr9ym7fgJ5Lc2a258k7H/+j0nWHn0umWIAU23ueZ7WTdFb7onEJivdoFbio/u3YXVZyYSI8GbK9Q==, tarball: https://urm.nvidia.com/artifactory/api/npm/sw-ngc-cloud-npm-local/@kui/foundations/-/@kui/foundations-0.401.2.tgz}
 
   '@napi-rs/wasm-runtime@0.2.12':
     resolution: {integrity: sha512-ZVWUcfwY4E/yPitQJl481FjFo3K22D6qF0DuFH6Y/nbnE11GY5uguDxZMGXPQ8WQ0128MXQD7TnfHyK4oWoIJQ==}
@@ -2711,15 +2693,6 @@ snapshots:
     dependencies:
       '@jridgewell/resolve-uri': 3.1.2
       '@jridgewell/sourcemap-codec': 1.5.5
-
-  '@kui-contrib/nebula@1.3.9(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
-    dependencies:
-      react: 19.1.0
-      react-dom: 19.1.0(react@19.1.0)
-
-  '@kui/foundations-design-tokens@0.500.1': {}
-
-  '@kui/foundations@0.401.2': {}
 
   '@napi-rs/wasm-runtime@0.2.12':
     dependencies:
