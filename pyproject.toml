@@ -8,16 +8,16 @@ version = "0.1.0"
 description = "A system for enriching product catalog data with additional metadata, descriptions, and categorization."
 requires-python = ">=3.11"
 dependencies = [
-  "uvicorn[standard]>=0.30,<1.0",
-  "starlette>=0.37,<1.0",
-  "fastapi>=0.115.0,<1.0",
-  "python-multipart>=0.0.9,<1.0",
-  "openai>=1.47.0,<2.0",
-  "python-dotenv>=1.0.1,<2.0",
-  "requests>=2.32,<3.0",
-  "httpx>=0.27,<1.0",
-  "pillow>=11.3.0",
-  "pyyaml>=6.0,<7.0",
+  "uvicorn[standard]==0.38.0",
+  "starlette==0.49.3",
+  "fastapi==0.121.0",
+  "python-multipart==0.0.20",
+  "openai==2.7.1",
+  "python-dotenv==1.2.1",
+  "requests==2.32.5",
+  "httpx==0.28.1",
+  "pillow==12.0.0",
+  "pyyaml==6.0.3",
 ]
 
 [tool.hatch.build.targets.wheel]
@@ -25,8 +25,8 @@ packages = ["src/backend"]
 
 [tool.uv]
 dev-dependencies = [
-  "pytest>=8.3,<9.0",
-  "httpx>=0.27,<1.0",
+  "pytest==8.4.2",
+  "httpx==0.28.1",
 ]
 
 
