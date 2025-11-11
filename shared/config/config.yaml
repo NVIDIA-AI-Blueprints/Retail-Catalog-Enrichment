@@ -2,7 +2,7 @@
 
 vlm:
   url: "http://nim-vlm:8000/v1"
-  model: "nvidia/llama-3.1-nemotron-nano-vl-8b-v1"
+  model: "nvidia/nemotron-nano-12b-v2-vl"
 
 llm:
   url: "http://nim-llm:8000/v1"

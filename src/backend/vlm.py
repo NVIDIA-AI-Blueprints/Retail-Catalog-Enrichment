@@ -75,7 +75,7 @@ EXISTING PRODUCT DATA (may contain errors or be incomplete):
 
 """
 
-    prompt = f"""You are an expert product catalog content specialist for an e-commerce platform. Your role is to create compelling, accurate catalog content.
+    prompt = f"""/no_think You are an expert product catalog content specialist for an e-commerce platform. Your role is to create compelling, accurate catalog content.
 
 VISUAL ANALYSIS (from Vision Model - always in English, direct observation of the product image):
 {vlm_json}
@@ -95,7 +95,7 @@ IMPORTANT: The VLM analysis above is always in English. Your task is to enhance 
    {'  * Incorporate visual details from VLM analysis' if product_data else '  * Focus on key product features'}
    {'  * Create a cohesive result richer than either source' if product_data else '  * Ensure clarity and appeal'}
    - Translate naturally to {info['language']} using proper regional terminology: {info['context']}
-   - Maintain accuracy - don't hallucinate product types (e.g., don't call a handbag a beach bag)
+   - Maintain accuracy - don't hallucinate product types
 
 2. **Description** (in {info['language']} for {info['region']}):
    {'- If existing product data provided:' if product_data else '- Expand the VLM description with:'}
@@ -214,10 +214,9 @@ CRITICAL RULES:
    - Only modify the VALUES of existing fields
 
 2. **Description Field Formatting**:
-   - If brand instructions specify sections or structure for the description (e.g., "Fragrance Family", "About the Bottle"), incorporate them INTO the description field as formatted text
+   - If brand instructions specify sections or structure for the description, incorporate them INTO the description field as formatted text
    - CRITICAL: Separate each section with double newlines (\\n\\n) for readability
    - Each section should be on its own paragraph
-   - Format example: "Fragrance Family: ...\\n\\nFragrance Description: ...\\n\\nAbout the Bottle: ...\\n\\nAbout the Fragrance: ..."
    - Keep everything in the description field - DO NOT create separate JSON fields for sections
    - The description must be a single string value with proper line breaks between sections
 
