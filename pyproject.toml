@@ -26,6 +26,8 @@ packages = ["src/backend"]
 [tool.uv]
 dev-dependencies = [
   "pytest==8.4.2",
+  "pytest-mock==3.14.0",
+  "pytest-asyncio==0.25.2",
   "httpx==0.28.1",
 ]
 

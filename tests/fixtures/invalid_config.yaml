@@ -1,0 +1,15 @@
+# Invalid test configuration (missing required fields)
+
+vlm:
+  url: "http://test-vlm:8000/v1"
+  # Missing 'model' field
+
+llm:
+  model: "test-llm-model"
+  # Missing 'url' field
+
+flux:
+  url: "http://test-flux:8000/v1/infer"
+
+# Missing 'trellis' section entirely
+
