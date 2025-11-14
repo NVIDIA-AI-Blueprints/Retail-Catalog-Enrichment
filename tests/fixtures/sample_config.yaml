@@ -1,0 +1,16 @@
+# Valid test configuration for unit tests
+
+vlm:
+  url: "http://test-vlm:8000/v1"
+  model: "test-vlm-model"
+
+llm:
+  url: "http://test-llm:8000/v1"
+  model: "test-llm-model"
+
+flux:
+  url: "http://test-flux:8000/v1/infer"
+
+trellis:
+  url: "http://test-trellis:8000/v1/infer"
+

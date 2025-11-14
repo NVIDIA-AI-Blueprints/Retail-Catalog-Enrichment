@@ -65,7 +65,7 @@ uvicorn --app-dir src backend.main:app --host 0.0.0.0 --port 8000 --reload
 - GET `/` → plaintext greeting
 - GET `/health` → `{ "status": "ok" }`
 
-**VLM Analysis (Fast - ~2-5 seconds):**
+**VLM Analysis:**
 - POST `/vlm/analyze`
   - Request: `multipart/form-data` with fields:
     - `image` (file): Product image
@@ -80,7 +80,7 @@ uvicorn --app-dir src backend.main:app --host 0.0.0.0 --port 8000 --reload
     - `colors`: array (extracted color palette, e.g. ["black", "gold"])
     - `enhanced_product`: object (if product_data was provided)
 
-**Image Generation (Slow - ~30-60 seconds):**
+**Image Generation:**
 - POST `/generate/variation`
   - Request: `multipart/form-data` with fields:
     - `image` (file): Product image
@@ -97,7 +97,7 @@ uvicorn --app-dir src backend.main:app --host 0.0.0.0 --port 8000 --reload
     - `image_path`: string (disk location of saved image)
     - `metadata_path`: string (disk location of saved metadata)
 
-**3D Asset Generation (Slow - ~30-120 seconds):**
+**3D Asset Generation:**
 - POST `/generate/3d`
   - Request: `multipart/form-data` with fields:
     - `image` (file): Product image (JPEG, PNG)
@@ -150,7 +150,7 @@ Supported locales: `en-US`, `en-GB`, `en-AU`, `en-CA`, `es-ES`, `es-MX`, `es-AR`
 
 #### Examples
 
-**Fast VLM Analysis (returns fields in ~2-5 seconds):**
+**Fast VLM Analysis:**
 ```bash
 # Analyze image only - Default American English
 curl -X POST \
@@ -181,7 +181,7 @@ curl -X POST \
   http://localhost:8000/vlm/analyze
 ```
 
-**Image Generation (returns generated image in ~30-60 seconds):**
+**Image Generation:**
 ```bash
 # Generate variation using VLM results
 curl -X POST \
@@ -195,7 +195,7 @@ curl -X POST \
   http://localhost:8000/generate/variation
 ```
 
-**3D Asset Generation (returns GLB file in ~30-120 seconds):**
+**3D Asset Generation:**
 ```bash
 # Generate 3D GLB asset with default parameters (returns binary GLB)
 curl -X POST \
