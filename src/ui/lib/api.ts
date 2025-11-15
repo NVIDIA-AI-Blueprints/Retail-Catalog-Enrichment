@@ -44,7 +44,7 @@ interface GenerateVariationParams {
   enhancedProduct?: any;
 }
 
-export async function generateImageVariation(params: GenerateVariationParams): Promise<string | null> {
+export async function generateImageVariation(params: GenerateVariationParams): Promise<{ imageUrl: string | null, qualityScore: number | null, qualityIssues: string[] }> {
   const formData = new FormData();
   formData.append('image', params.file);
   formData.append('locale', params.locale);
@@ -68,7 +68,17 @@ export async function generateImageVariation(params: GenerateVariationParams): P
   }
 
   const data = await response.json();
-  return data.generated_image_b64 ? `data:image/png;base64,${data.generated_image_b64}` : null;
+  
+  // Log quality issues if present
+  if (data.quality_issues && data.quality_issues.length > 0) {
+    console.log(`[Quality Check] Score: ${data.quality_score}% - Issues found:`, data.quality_issues);
+  }
+  
+  return {
+    imageUrl: data.generated_image_b64 ? `data:image/png;base64,${data.generated_image_b64}` : null,
+    qualityScore: data.quality_score !== undefined && data.quality_score !== null ? data.quality_score : null,
+    qualityIssues: data.quality_issues || []
+  };
 }
 
 export async function generate3DModel(file: File): Promise<string | null> {

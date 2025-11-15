@@ -331,17 +331,24 @@ class TestGenerateImageVariation:
     """Tests for generate_image_variation orchestration function."""
     
     @pytest.mark.asyncio
+    @patch('backend.image.evaluate_image_quality')
     @patch('backend.image.persist_generated_image')
     @patch('backend.image._call_flux_edit')
     @patch('backend.image._call_planner_llm')
-    async def test_generate_variation_complete_pipeline(self, mock_planner, mock_flux, mock_persist, sample_image_bytes, sample_flux_plan):
-        """Test complete image generation pipeline."""
+    async def test_generate_variation_complete_pipeline(self, mock_planner, mock_flux, mock_persist, mock_reflection, sample_image_bytes, sample_flux_plan):
+        """Test complete image generation pipeline with reflection."""
         # Mock planner
         mock_planner.return_value = sample_flux_plan
         
         # Mock FLUX
         mock_flux.return_value = {
             "image": "generatedbase64image"
+        }
+        
+        # Mock reflection
+        mock_reflection.return_value = {
+            "score": 85.5,
+            "issues": ["Minor background blur"]
         }
         
         # Mock persist
@@ -369,17 +376,26 @@ class TestGenerateImageVariation:
         assert "image_path" in result
         assert "metadata_path" in result
         assert "variation_plan" in result
+        assert "quality_score" in result
+        assert "quality_issues" in result
         
-        # Verify pipeline calls
+        # Verify new reflection fields
+        assert result["quality_score"] == 85.5
+        assert isinstance(result["quality_issues"], list)
+        assert len(result["quality_issues"]) == 1
+        
+        # Verify pipeline calls (now includes reflection)
         mock_planner.assert_called_once()
         mock_flux.assert_called_once()
+        mock_reflection.assert_called_once()
         mock_persist.assert_called_once()
     
     @pytest.mark.asyncio
+    @patch('backend.image.evaluate_image_quality')
     @patch('backend.image.persist_generated_image')
     @patch('backend.image._call_flux_edit')
     @patch('backend.image._call_planner_llm')
-    async def test_generate_variation_with_enhanced_product(self, mock_planner, mock_flux, mock_persist, sample_image_bytes, sample_flux_plan, sample_enhanced_product):
+    async def test_generate_variation_with_enhanced_product(self, mock_planner, mock_flux, mock_persist, mock_reflection, sample_image_bytes, sample_flux_plan, sample_enhanced_product):
         """Test image generation with enhanced product data."""
         # Mock planner
         mock_planner.return_value = sample_flux_plan
@@ -387,6 +403,12 @@ class TestGenerateImageVariation:
         # Mock FLUX
         mock_flux.return_value = {
             "image": "generatedbase64image"
+        }
+        
+        # Mock reflection
+        mock_reflection.return_value = {
+            "score": 92.0,
+            "issues": []
         }
         
         # Mock persist
@@ -412,6 +434,10 @@ class TestGenerateImageVariation:
         # Verify enhanced_product was passed to persist
         persist_call_kwargs = mock_persist.call_args[1]
         assert persist_call_kwargs["enhanced_product"] == sample_enhanced_product
+        
+        # Verify reflection ran
+        assert result["quality_score"] == 92.0
+        assert result["quality_issues"] == []
     
     @pytest.mark.asyncio
     @patch('backend.image._call_flux_edit')
@@ -443,16 +469,23 @@ class TestGenerateImageVariation:
         assert "did not include an image" in str(exc_info.value)
     
     @pytest.mark.asyncio
+    @patch('backend.image.evaluate_image_quality')
     @patch('backend.image.persist_generated_image')
     @patch('backend.image._call_flux_edit')
     @patch('backend.image._call_planner_llm')
-    async def test_generate_variation_with_different_locales(self, mock_planner, mock_flux, mock_persist, sample_image_bytes, sample_flux_plan):
+    async def test_generate_variation_with_different_locales(self, mock_planner, mock_flux, mock_persist, mock_reflection, sample_image_bytes, sample_base64_image, sample_flux_plan):
         """Test image generation with different locales."""
         # Mock planner
         mock_planner.return_value = sample_flux_plan
         
-        # Mock FLUX
-        mock_flux.return_value = {"image": "base64image"}
+        # Mock FLUX with valid base64
+        mock_flux.return_value = {"image": sample_base64_image}
+        
+        # Mock reflection
+        mock_reflection.return_value = {
+            "score": 88.0,
+            "issues": []
+        }
         
         # Mock persist
         mock_persist.return_value = {
@@ -478,4 +511,54 @@ class TestGenerateImageVariation:
         planner_call_kwargs = mock_planner.call_args[1] if len(mock_planner.call_args) > 1 else {}
         # Locale should be passed to planner
         assert planner_call_kwargs.get("locale") == "es-ES" or planner_call_args[-1] == "es-ES"
+        
+        # Verify reflection fields in result
+        assert "quality_score" in result
+        assert "quality_issues" in result
+    
+    @pytest.mark.asyncio
+    @patch('backend.image.evaluate_image_quality')
+    @patch('backend.image.persist_generated_image')
+    @patch('backend.image._call_flux_edit')
+    @patch('backend.image._call_planner_llm')
+    async def test_generate_variation_handles_reflection_failure(self, mock_planner, mock_flux, mock_persist, mock_reflection, sample_image_bytes, sample_base64_image, sample_flux_plan):
+        """Test image generation handles reflection failure gracefully."""
+        # Mock planner
+        mock_planner.return_value = sample_flux_plan
+        
+        # Mock FLUX with valid base64
+        mock_flux.return_value = {"image": sample_base64_image}
+        
+        # Mock reflection to return None (failure)
+        mock_reflection.return_value = None
+        
+        # Mock persist
+        mock_persist.return_value = {
+            "artifact_id": "test999",
+            "image_path": "/tmp/test4.png",
+            "metadata_path": "/tmp/test4.json"
+        }
+        
+        # Call function
+        result = await generate_image_variation(
+            image_bytes=sample_image_bytes,
+            content_type="image/png",
+            title="Test Product",
+            description="Test description",
+            categories=["accessories"],
+            tags=["test"],
+            colors=["black"],
+            locale="en-US"
+        )
+        
+        # Should still complete successfully
+        assert "generated_image_b64" in result
+        assert "artifact_id" in result
+        
+        # Reflection fields should be None and empty list
+        assert result["quality_score"] is None
+        assert result["quality_issues"] == []
+        
+        # Pipeline should have completed despite reflection failure
+        mock_persist.assert_called_once()
 

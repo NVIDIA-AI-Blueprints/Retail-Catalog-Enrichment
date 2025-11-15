@@ -15,6 +15,7 @@ A GenAI-powered catalog enrichment system that transforms basic product images i
 - **Intelligent Prompt Planning**: Context-aware image variation planning based on regional aesthetics
 - **Multi-Language Support**: Generate product titles and descriptions in **10 regional locales**
 - **Cultural Image Generation**: Create culturally-appropriate product backgrounds (Spanish courtyards, Mexican family spaces, British formal settings)
+- **Quality Evaluation**: Automated VLM-based quality assessment of generated images with detailed scoring
 - **3D Asset Generation**: Transform 2D product images into interactive 3D GLB models using Microsoft TRELLIS
 - **Modular API**: Separate endpoints for VLM analysis, image generation, and 3D asset generation
 

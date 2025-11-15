@@ -18,8 +18,9 @@ This document provides guidelines and instructions for AI assistants working on 
 ### Current Status
 - ✅ **Multi-Language Support** - Locale-based product descriptions (FR-6 completed)
 - ✅ **VLM Content Augmentation** - Enhances existing product data with visual insights (FR-2 completed)
-- ✅ **2D Image Variation Generation** - Working with prompt planning (FR-3 completed)
-- ⚠️ **In Development** - 3D Asset Generation and Video Generation in progress
+- ✅ **2D Image Variation Generation** - Working with prompt planning and quality evaluation (FR-3 completed)
+- ✅ **Automated Quality Assessment** - VLM-based reflection for generated images (FR-9 completed)
+- ⚠️ **In Development** - 3D Asset Generation (backend complete) and Video Generation in progress
 
 ### Key Goals
 - Enhance product catalog data with AI-powered enrichment
@@ -96,6 +97,9 @@ uvicorn --app-dir src backend.main:app --host 0.0.0.0 --port 8000 --reload
     - `artifact_id`: string (unique identifier)
     - `image_path`: string (disk location of saved image)
     - `metadata_path`: string (disk location of saved metadata)
+    - `variation_plan`: object (planner LLM output with background style, camera angle, lighting)
+    - `quality_score`: float (0-100 quality score from VLM reflection, or null if evaluation failed)
+    - `quality_issues`: array (list of detected quality issues from reflection analysis)
 
 **3D Asset Generation:**
 - POST `/generate/3d`
@@ -147,6 +151,20 @@ Supported locales: `en-US`, `en-GB`, `en-AU`, `en-CA`, `es-ES`, `es-MX`, `es-AR`
 - Includes regional context and terminology guidance (e.g., "ordenador" vs "computadora" for Spanish regions)
 - Applies custom brand instructions when provided for consistent tone, voice, and taxonomy
 - Preserves existing structured data (price, specs, etc.) while enhancing descriptive fields
+
+#### Image Generation Pipeline
+The image variation generation follows a multi-stage pipeline:
+1. **Planner Stage**: LLM creates a culturally-aware variation plan with background style, camera angle, and lighting
+2. **FLUX Generation Stage**: Image generation model creates the variation based on the plan
+3. **Reflection Stage**: VLM evaluates the generated image quality by comparing it to the original product
+   - Evaluates product consistency (colors, materials, textures must match original)
+   - Assesses size and scale proportions (product must be realistically sized in new context)
+   - Checks anatomical accuracy (if hands are present, verifies natural appearance)
+   - Validates background quality (photorealism, appropriate context)
+   - Returns quality score (0-100) and list of detected issues
+4. **Persist Stage**: Saves generated image and metadata to disk
+
+**Quality Scoring**: The reflection module is exceptionally strict, with most images scoring 50-70%. Scores above 85% indicate excellent quality with only minor issues.
 
 #### Examples
 

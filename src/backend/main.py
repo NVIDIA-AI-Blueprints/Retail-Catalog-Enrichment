@@ -159,10 +159,12 @@ async def generate_variation(
             "artifact_id": result["artifact_id"],
             "image_path": result["image_path"],
             "metadata_path": result["metadata_path"],
+            "quality_score": result["quality_score"],
+            "quality_issues": result["quality_issues"],
             "locale": locale
         }
         
-        logger.info(f"/generate/variation success: artifact_id={result['artifact_id']} image_b64_len={len(result['generated_image_b64'])}")
+        logger.info(f"/generate/variation success: artifact_id={result['artifact_id']} image_b64_len={len(result['generated_image_b64'])} quality_score={result['quality_score']} issues_count={len(result['quality_issues'])}")
         return JSONResponse(payload)
         
     except Exception as exc:
