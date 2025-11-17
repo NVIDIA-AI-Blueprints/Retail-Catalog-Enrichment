@@ -398,7 +398,8 @@ async def generate_image_variation(
         quality_result = evaluate_image_quality(
             original_image_bytes=image_bytes,
             generated_image_bytes=generated_image_bytes,
-            content_type=content_type
+            content_type=content_type,
+            product_title=title
         )
         
         quality_score = None

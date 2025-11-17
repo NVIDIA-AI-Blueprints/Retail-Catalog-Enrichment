@@ -15,125 +15,80 @@ load_dotenv()
 
 logger = logging.getLogger("catalog_enrichment.reflection")
 
-REFLECTION_PROMPT = """Your job is to perform a comprehensive and EXTREMELY CRITICAL quality evaluation of a generated product image variation. You will see TWO images:
-1. ORIGINAL image - the source product photo (for PRODUCT REFERENCE ONLY)
-2. GENERATED image - a new variation with a DIFFERENT background
+REFLECTION_PROMPT_TEMPLATE = """Evaluate the quality of a generated product variation. You will see TWO images:
+1. ORIGINAL - source product photo (REFERENCE ONLY for the {product_name})
+2. GENERATED - new variation with DIFFERENT background (backgrounds SHOULD differ)
 
-**CRITICAL UNDERSTANDING**: The generated image is INTENDED to have a completely different background/scene/context. The background SHOULD NOT match the original. Only the PRODUCT itself should be preserved.
+**FOCUS**: Compare ONLY the {product_name} itself between images. Ignore background differences.
 
-**What to Compare**: ONLY compare the PRODUCT between the two images (colors, materials, textures, form)
-**What NOT to Compare**: DO NOT compare backgrounds, settings, or environmental elements between images
+**Evaluation Criteria** (100 points total, be EXTREMELY STRICT):
 
-BE EXCEPTIONALLY STRICT AND UNFORGIVING in your evaluation of product fidelity and technical quality. This is professional quality control for e-commerce - even small imperfections significantly degrade the customer experience and brand perception. Multiple minor issues compound exponentially.
+1. **Product Structure & Form Fidelity** (35 points):
+   - The {product_name} must be structurally identical: same shape, components, and features
+   - CRITICAL: Check if product has same structural elements
+   - Verify no features added or removed
+   - Colors, materials, textures, and reflective properties must match EXACTLY
+   - Hardware/details must retain identical finish
+   - Deduct 15-25 points for structural changes
+   - Deduct 10-15 points for material property changes (texture differences)
+   - Deduct 8-12 points for color/tone shifts
 
-Your task is to evaluate the generated image based on the following criteria:
+2. **Size & Scale Proportions** (35 points):
+   - Product size must be REALISTIC relative to GENERATED image's context (furniture, architecture, hands)
+   - Deduct 25-35 points if clearly oversized/undersized
+   - Deduct 15-25 points if moderately disproportionate
+   - Deduct 10-20 points if slightly off-scale
 
-1. **Product Consistency - Visual Fidelity** (Critical - 30 points):
-   - The product must be PIXEL-PERFECT identical: same colors, same materials, same textures, same reflective properties, same form factor
-   - Material texture must match EXACTLY (matte vs glossy, leather grain, fabric weave, metallic sheen, patent leather shine)
-   - Color accuracy is CRITICAL - any visible hue shift, saturation change, or brightness difference = deduct 8-12 points
-   - Surface properties must be preserved (reflections, highlights, shadows on the product itself)
-   - Hardware, clasps, zippers, buttons must retain identical finish and appearance
-   - **Deduct 10-15 points** for any noticeable material property changes (e.g., glossy becomes matte, smooth becomes textured)
-   - **Deduct 8-12 points** for any color shifts or tonal changes
-   - **Deduct 5-10 points** for altered reflectivity or sheen patterns
+3. **Anatomical Accuracy** (20 points) - IF hands/body parts visible:
+   - Exactly 5 fingers per hand with correct proportions
+   - Natural joint articulation and realistic skin texture
+   - Deduct 15-20 points for wrong finger count or major distortions
+   - Deduct 10-15 points for anatomical abnormalities (malformed thumbs, wrong nail proportions)
 
-2. **Size and Scale Proportions** (Critical - 35 points):
-   - **THIS IS ABSOLUTELY CRITICAL**: The product size must be PHOTOGRAPHICALLY REALISTIC and PROPORTIONAL to the NEW background elements in the generated image
-   - Evaluate the product's scale within the GENERATED image's context (not compared to the original image's context)
-   - Compare product size to elements in the GENERATED image: furniture, windows, architectural features, room dimensions, any visible hands
-   - Use real-world product dimensions as reference: handbags are typically 10-14 inches wide, perfume bottles are 2-5 inches tall, etc.
-   - A handbag should NOT appear as large as a window frame; a perfume bottle should NOT be as tall as furniture
-   - **Deduct 25-35 points** if the product is clearly oversized relative to its new scene
-   - **Deduct 20-30 points** if the product is moderately oversized (1.5-2x too large for its new context)
-   - **Deduct 10-20 points** if the product is slightly oversized or undersized (noticeable but not extreme)
-   - Ask yourself: "Does the product look naturally placed in this NEW environment at a realistic size?"
+4. **Background Quality** (10 points):
+   - Evaluate ONLY generated background's photorealism and technical quality
+   - DO NOT penalize simply because background differs from original (it should differ)
+   - Deduct for poor rendering, geometric distortions, or artifacts
 
-3. **Anatomical Accuracy** (Critical - 20 points):
-   - If human body parts are visible (hands, arms), inspect them with EXTREME scrutiny
-   - Verify finger count: exactly 5 fingers per hand, no exceptions
-   - Verify finger proportions: thumb should be shorter and thicker than other fingers
-   - Verify nail proportions: fingernails should be proportional to finger size (not unnaturally short/long/wide)
-   - Verify joint articulation: fingers should bend naturally at knuckles
-   - Verify skin texture: should be realistic, not waxy or plastic-looking
-   - **Deduct 15-20 points** for wrong finger count (6 fingers, 4 fingers, missing thumb)
-   - **Deduct 10-15 points** for anatomical distortions (unnaturally short nails, malformed thumbs, wrong finger proportions, twisted joints)
-   - **Deduct 8-12 points** for unnatural hand positioning or unrealistic skin rendering
+**Scoring Scale** (STRICT - most images score 50-70%):
+- 0-40%: Unusable (critical failures)
+- 41-60%: Poor (significant issues)
+- 61-75%: Acceptable with flaws
+- 76-85%: Good (minor imperfections)
+- 86-95%: Very good
+- 96-100%: Exceptional (rare, <1%)
 
-4. **Background Quality and Context** (10 points):
-   - Evaluate ONLY the generated image's background on its own merits (DO NOT compare to original's background)
-   - The NEW background should be photorealistic and contextually appropriate for the product type
-   - Background elements should have proper depth, focus, lighting, and geometric correctness
-   - Background should enhance the product presentation, not distract from it
-   - Deduct points if the background itself is poorly rendered, unrealistic, or has technical artifacts
-   - DO NOT deduct points simply because the background is different from the original (it's supposed to be)
+**Compounding Rule**: 2+ major issues → cap at 60%; 3+ issues → cap at 65%; 4+ issues → cap at 55%
 
-5. **Brand Logo Removal** (3 points):
-   - Ensure no brand logos, trademarks, or brand text appear that weren't in the original
-   - The product should be clean and neutral for e-commerce use
+Return ONLY this JSON:
+{{
+  "value": <float 0-100>,
+  "issues": ["specific issue 1", "specific issue 2", ...]
+}}
 
-6. **Text Quality** (2 points):
-   - If text is visible, verify no grammar errors, spelling mistakes, or gibberish
-
-**Scoring Guidelines (EXTREMELY STRICT - MOST IMAGES WILL SCORE 50-70%):**
-- 0-20% = Unusable (critical failures: completely wrong product, extreme proportion issues, major anatomical errors)
-- 21-40% = Very poor (multiple major issues: wrong scale, incorrect materials, anatomical problems, product inconsistency)
-- 41-60% = Poor but identifiable (significant issues: noticeable scale problems, material changes, minor anatomical errors)
-- 61-75% = Acceptable with flaws (some issues: slight scale problems, subtle material differences, or small quality issues)
-- 76-85% = Good (mostly correct with minor imperfections: very subtle scale variance or small quality issues)
-- 86-92% = Very good (excellent quality with only trivial issues)
-- 93-97% = Exceptional (near-perfect, professional quality)
-- 98-100% = Perfect (RESERVE THIS FOR TRULY FLAWLESS IMAGES - should be <1% of evaluations)
-
-**CRITICAL SCORING RULES:**
-- If there are 2+ major issues (scale + material, or scale + anatomy, or material + anatomy) = cap score at 60%
-- If there are 3+ issues of any kind = cap score at 65%
-- If there are 4+ issues = cap score at 55%
-- Multiple minor issues compound - don't be lenient just because individual issues are small
-
-Return a JSON object with your score AND a detailed list of issues found. Be specific about what's wrong.
-
-Output format:
-{
-  "value": <float between 0 and 100>,
-  "issues": [
-    "Brief description of issue 1",
-    "Brief description of issue 2",
-    ...
-  ]
-}
-
-If the image is perfect, return an empty issues array: "issues": []
-
-Example issues to report (BE SPECIFIC AND FOCUS ON THE GENERATED IMAGE):
-- "Product appears significantly oversized relative to the background context elements"
-- "Product scale is disproportionate - approximately 1.5-2x too large for its environment"
-- "Product material texture differs from original (glossy vs matte, smooth vs textured)"
-- "Product surface has different reflective properties compared to original"
-- "Product color shifted to a different tone/hue/saturation compared to original"
-- "Product hardware finish or detailing differs from original"
-- "Thumb nail is unnaturally short and disproportionate to finger size"
-- "Hand has incorrect number of fingers (not 5)"
-- "Finger proportions or joint articulation appears anatomically incorrect"
-- "Hand positioning looks unnatural or awkward"
-- "Skin texture on hand appears unrealistic or artificial"
-- "Background elements are poorly rendered or contain technical artifacts"
-- "Background architectural elements have geometric distortions or inconsistencies"
-- "Background appears unrealistic or synthetic"
-
-CRITICAL: Return ONLY the JSON object above with both "value" and "issues" fields. Nothing else."""
+Empty issues array if perfect. Focus on the {product_name} specifically."""
 
 
 def evaluate_image_quality(
     original_image_bytes: bytes,
     generated_image_bytes: bytes,
-    content_type: str
+    content_type: str,
+    product_title: Optional[str] = None
 ) -> Optional[Dict[str, Any]]:
     """Evaluate generated image quality vs original using VLM judge.
     
-    Returns dict with 'score' (0-100) and 'issues' list, or None on failure.
+    Args:
+        original_image_bytes: Original product image bytes
+        generated_image_bytes: Generated variation image bytes
+        content_type: Image content type
+        product_title: Product name/title to focus the VLM evaluation
+    
+    Returns:
+        dict with 'score' (0-100) and 'issues' list, or None on failure.
     """
-    logger.info(f"Starting evaluation: orig={len(original_image_bytes)}B gen={len(generated_image_bytes)}B")
+    product_name = product_title if product_title else "product"
+    
+    logger.info(f"Starting evaluation for '{product_name}': orig={len(original_image_bytes)}B gen={len(generated_image_bytes)}B")
     
     if not (api_key := os.getenv("NVIDIA_API_KEY")):
         logger.error("NVIDIA_API_KEY not set")
@@ -146,8 +101,10 @@ def evaluate_image_quality(
         vlm_config = get_config().get_vlm_config()
         client = OpenAI(base_url=vlm_config['url'], api_key=api_key)
         
+        reflection_prompt = REFLECTION_PROMPT_TEMPLATE.format(product_name=product_name)
+        
         content = [
-            {"type": "text", "text": REFLECTION_PROMPT},
+            {"type": "text", "text": reflection_prompt},
             {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{original_b64}"}},
             {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{generated_b64}"}}
         ]

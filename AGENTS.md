@@ -157,14 +157,16 @@ The image variation generation follows a multi-stage pipeline:
 1. **Planner Stage**: LLM creates a culturally-aware variation plan with background style, camera angle, and lighting
 2. **FLUX Generation Stage**: Image generation model creates the variation based on the plan
 3. **Reflection Stage**: VLM evaluates the generated image quality by comparing it to the original product
-   - Evaluates product consistency (colors, materials, textures must match original)
-   - Assesses size and scale proportions (product must be realistically sized in new context)
+   - Uses product title to focus evaluation on the specific product (not background elements)
+   - Evaluates product structure & form fidelity (structural elements like straps, handles, pockets must match)
+   - Assesses product consistency (colors, materials, textures, reflective properties must match original)
+   - Evaluates size and scale proportions (product must be realistically sized in new context)
    - Checks anatomical accuracy (if hands are present, verifies natural appearance)
    - Validates background quality (photorealism, appropriate context)
    - Returns quality score (0-100) and list of detected issues
 4. **Persist Stage**: Saves generated image and metadata to disk
 
-**Quality Scoring**: The reflection module is exceptionally strict, with most images scoring 50-70%. Scores above 85% indicate excellent quality with only minor issues.
+**Quality Scoring**: The reflection module is exceptionally strict, with most images scoring 50-70%. Scores above 85% indicate excellent quality with only minor issues. The evaluation now focuses specifically on the named product to avoid false positives from background variations.
 
 #### Examples
 
