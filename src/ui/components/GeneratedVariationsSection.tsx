@@ -4,13 +4,17 @@ import { ModelViewer3D } from '@/components/ModelViewer3D';
 
 interface Props {
   generatedImages: (string | null)[];
+  qualityScores: (number | null)[];
+  qualityIssues: (string[] | null)[];
   generated3DModel: string | null;
   model3DError: string | null;
   isGenerating: boolean;
 }
 
 export function GeneratedVariationsSection({ 
-  generatedImages, 
+  generatedImages,
+  qualityScores,
+  qualityIssues,
   generated3DModel, 
   model3DError,
   isGenerating 
@@ -36,6 +40,16 @@ export function GeneratedVariationsSection({
     if (generatedImages[index]) {
       setSelectedImageIndex(index);
       setModalOpen(true);
+    }
+  };
+
+  const getScoreBadgeColor = (score: number): string => {
+    if (score < 40) {
+      return '#ef4444';
+    } else if (score < 80) {
+      return '#f97316';
+    } else {
+      return '#76B900';
     }
   };
 
@@ -108,6 +122,35 @@ export function GeneratedVariationsSection({
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v6m3-3H7" />
                       </svg>
                     </div>
+                    {qualityScores[index] !== null && (
+                      <div
+                        style={{
+                          position: 'absolute',
+                          top: '12px',
+                          left: '12px',
+                          backgroundColor: getScoreBadgeColor(qualityScores[index]!),
+                          borderRadius: 'var(--radius-md)',
+                          padding: '6px 12px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          opacity: 0.95,
+                          pointerEvents: 'none',
+                          boxShadow: '0 2px 8px rgba(0, 0, 0, 0.3)'
+                        }}
+                      >
+                        <Text 
+                          kind="body/bold/sm" 
+                          style={{ 
+                            color: 'white',
+                            fontSize: '13px',
+                            lineHeight: '1'
+                          }}
+                        >
+                          {qualityScores[index]!.toFixed(1)}%
+                        </Text>
+                      </div>
+                    )}
                   </div>
                 ) : (
                   <div 
@@ -133,6 +176,60 @@ export function GeneratedVariationsSection({
                         <Text kind="body/regular/sm" className="text-subtle">Variation {index + 1}</Text>
                       </Stack>
                     )}
+                  </div>
+                )}
+                {generatedImages[index] && qualityIssues[index] && qualityIssues[index]!.length > 0 && (
+                  <div
+                    style={{
+                      padding: '12px',
+                      backgroundColor: 'var(--background-color-surface-sunken)',
+                      borderRadius: 'var(--radius-md)',
+                      border: '1px solid var(--border-color-base)'
+                    }}
+                  >
+                    <Stack gap="2">
+                      <Text 
+                        kind="body/bold/xs" 
+                        style={{ 
+                          color: 'var(--text-color-subtle)',
+                          textTransform: 'uppercase',
+                          letterSpacing: '0.5px',
+                          fontSize: '11px'
+                        }}
+                      >
+                        Quality Issues
+                      </Text>
+                      <Stack gap="1">
+                        {qualityIssues[index]!.map((issue, issueIdx) => (
+                          <div
+                            key={issueIdx}
+                            style={{
+                              display: 'flex',
+                              alignItems: 'flex-start',
+                              gap: '6px'
+                            }}
+                          >
+                            <span style={{ 
+                              color: '#f97316',
+                              fontSize: '14px',
+                              lineHeight: '1.4',
+                              marginTop: '1px'
+                            }}>•</span>
+                            <Text 
+                              kind="body/regular/xs" 
+                              style={{ 
+                                color: 'var(--text-color-primary)',
+                                fontSize: '12px',
+                                lineHeight: '1.4',
+                                flex: 1
+                              }}
+                            >
+                              {issue}
+                            </Text>
+                          </div>
+                        ))}
+                      </Stack>
+                    </Stack>
                   </div>
                 )}
                 <Button 

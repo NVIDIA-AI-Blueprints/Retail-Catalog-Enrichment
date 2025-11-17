@@ -39,9 +39,14 @@ A GenAI-powered catalog enrichment system that transforms basic product images i
    - Regional aesthetic preferences
    - Social media trend insights (when available)
 5. **Localized Image Generation**: System creates variation images using FLUX models with culturally-appropriate backgrounds
-6. **3D Asset Creation**: System generates 3D product assets using Microsoft's TRELLIS model
-7. **Video Generation**: System produces 3-5 second product video clips using open-source models
-8. **Output**: Culturally-enriched catalog entry with all generated assets optimized for target market, enhanced with social media insights
+6. **Quality Assessment**: System evaluates generated images using VLM-based reflection to verify:
+   - Product consistency and fidelity
+   - Size and scale proportions
+   - Anatomical accuracy (if applicable)
+   - Background quality and realism
+7. **3D Asset Creation**: System generates 3D product assets using Microsoft's TRELLIS model
+8. **Video Generation**: System produces 3-5 second product video clips using open-source models
+9. **Output**: Culturally-enriched catalog entry with quality-assessed generated assets optimized for target market, enhanced with social media insights
 
 ## Functional Requirements
 
@@ -111,6 +116,18 @@ A GenAI-powered catalog enrichment system that transforms basic product images i
 - Enable brands to define product classification rules and hierarchies
 - Maintain consistency across all enriched content (titles, descriptions, tags, categories)
 - Allow optional brand instructions parameter alongside product data and images
+
+### FR-9: Automated Quality Assessment for Generated Images
+- Integrate VLM-based reflection module to evaluate generated image variations
+- Compare generated images against original product photos for quality control
+- Evaluate product consistency (colors, materials, textures, reflective properties)
+- Assess size and scale proportions (product must appear realistic in new context)
+- Verify anatomical accuracy (hands must have correct finger count and natural proportions)
+- Validate background quality (photorealism, appropriate context, technical correctness)
+- Generate quality score (0-100 scale) with strict evaluation criteria
+- Provide detailed list of detected quality issues for developer feedback
+- Support automated filtering or flagging of low-quality generated images
+- Ensure background differences from original are not penalized (backgrounds should differ)
 
 ## Technical Requirements
 
@@ -208,12 +225,19 @@ A GenAI-powered catalog enrichment system that transforms basic product images i
 **I want to** provide custom brand voice, tone, and taxonomy guidelines to the enrichment system  
 **So that** all generated product content maintains consistency with my brand identity and uses our preferred terminology and classification standards
 
+### US-7: Automated Quality Control
+**As a** catalog operations manager  
+**I want to** receive automated quality assessments with detailed scoring and issue detection for generated product images  
+**So that** I can quickly identify and filter out low-quality variations without manual review, ensuring only high-quality assets enter my catalog
+
 ## Success Criteria
 
-- **Processing Time**: <1 minute per product for complete enrichment
+- **Processing Time**: <1 minute per product for complete enrichment (including quality assessment)
 - **Content Quality**: Generated descriptions and titles achieve >90% relevance rating in target locale
 - **Cultural Accuracy**: Generated backgrounds and contexts achieve >85% cultural appropriateness rating from regional reviewers
 - **Asset Generation**: Successfully generate 2D variations, 3D models, and video clips for >95% of input products
+- **Quality Assessment Accuracy**: Automated quality scores correlate >85% with human expert evaluations
+- **Quality Detection**: System identifies >90% of major quality issues (scale problems, anatomical errors, material inconsistencies)
 - **Localization Coverage**: Support 10 regional locales across English, Spanish, and French
 - **System Reliability**: 99% uptime for processing requests
 - **User Satisfaction**: Positive feedback on generated content quality and cultural authenticity
@@ -231,6 +255,7 @@ A GenAI-powered catalog enrichment system that transforms basic product images i
 - [x] ~~FR-6: Multi-Language & Cultural Localization~~ *(Complete with 10 regional locales and cultural image generation)*
 - [ ] FR-7: Social Media Content Integration
 - [x] ~~FR-8: Brand Voice & Taxonomy Customization~~ *(Complete with brand_instructions parameter support)*
+- [x] ~~FR-9: Automated Quality Assessment for Generated Images~~ *(VLM-based reflection module integrated into image generation pipeline)*
 
 - [ ] TR-1: Model Integration
   - [x] ~~NVIDIA Nemotron VLM API integration~~

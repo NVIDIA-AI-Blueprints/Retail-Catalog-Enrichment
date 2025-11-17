@@ -21,6 +21,7 @@ from PIL import Image
 from dotenv import load_dotenv
 from openai import OpenAI
 from backend.config import get_config
+from backend.reflection import evaluate_image_quality
 
 load_dotenv()
 
@@ -95,12 +96,27 @@ CATEGORY-SPECIFIC BACKGROUNDS:
 - For "accessories": lifestyle contexts like entryways, closets, fashion displays, outdoor café tables, cobblestone streets
 - For other categories: choose contextually appropriate settings that match how the product is typically used in that country
 
+SMALL PRODUCTS & HAND MODELING:
+- For small-to-medium handheld items (e.g., small bottles, skincare products, fragrances, perfumes, cosmetics, clutches, evening purses, handbags, small structured bags, jewelry, phone accessories), you SHOULD STRONGLY CONSIDER including a realistic hand naturally holding or presenting the product
+- BAG SIZE GUIDE: Clutches, evening purses, wristlets, handbags, and small-to-medium structured bags SHOULD be held in hand for elegant presentation. ONLY large bags (oversized totes, large shopping bags, backpacks, duffel bags, luggage) should be placed on surfaces
+- The hand should be well-manicured, natural-looking, and appropriate to the cultural context (e.g., diverse skin tones, regional nail aesthetics)
+- Hand positioning should be natural and elegant, not awkward or forced - the hand should complement the product, not dominate or distract from it
+- Use phrases like "held by a natural hand", "displayed in an elegant hand", "naturally held in a graceful hand", "presented by an elegant hand", "gracefully held"
+- For glamorous items like luxury handbags, perfumes, and evening accessories, hands often create a more aspirational and lifestyle-focused presentation
+- Consider the product's selling context: luxury and lifestyle items benefit greatly from hand modeling to create emotional connection
+
 EXAMPLES BY COUNTRY:
 - France: "on a marble bistro table at a Parisian café, with the Eiffel Tower softly blurred in the background through the window"
+- France (with hand, perfume/small item): "held elegantly by a manicured hand against a Parisian backdrop with Haussmannian architecture visible"
+- France (with hand, handbag): "gracefully held by an elegant hand near a Parisian boutique window, with Haussmannian buildings and the Arc de Triomphe softly visible in the background"
 - Spain: "on a white-tiled balcony in Barcelona with wrought iron railings, partial view of Sagrada Familia in the distance"
+- Spain (with hand, small item): "naturally held in a graceful hand on a Spanish terrace, Mediterranean coastline softly blurred behind"
 - Japan: "on a minimalist wooden surface in a Tokyo apartment, with shoji screen and distant city skyline visible"
 - UK: "on a traditional English side table, Georgian window with a glimpse of Big Ben across the Thames"
+- UK (with hand, luxury handbag): "presented in an elegant hand on a London street, with Big Ben and Westminster softly blurred in the evening light"
 - USA: "on an industrial concrete counter in a New York loft, floor-to-ceiling windows showing the city skyline"
+- USA (with hand, perfume): "displayed in an elegant hand with Manhattan skyline visible through floor-to-ceiling windows"
+- USA (with hand, luxury handbag): "held gracefully in a manicured hand at a Chicago penthouse, city skyline glowing at golden hour through floor-to-ceiling windows"
 
 Produce ONLY a JSON object with no markdown formatting or code blocks. Required schema:
 {{"preserve_subject": "<describe the product in ENGLISH - e.g., 'luxury black and gold handbag'>", 
@@ -334,7 +350,7 @@ async def generate_image_variation(
     """
     Generate image variation given pre-computed VLM analysis results.
     
-    Pipeline: Planner → FLUX → Persist
+    Pipeline: Planner → FLUX → Reflection → Persist
     
     Args:
         image_bytes: Original product image bytes
@@ -348,7 +364,7 @@ async def generate_image_variation(
         enhanced_product: Optional enhanced product data (if augmentation mode)
     
     Returns:
-        Dict with generated_image_b64, artifact_id, image_path, metadata_path
+        Dict with generated_image_b64, artifact_id, image_path, metadata_path, quality_score, quality_issues
     """
     logger.info("Starting image generation pipeline: title_len=%d locale=%s", len(title), locale)
     
@@ -376,8 +392,31 @@ async def generate_image_variation(
         
         logger.info("FLUX complete: image_b64_len=%d", len(image_b64))
         
-        # Step 3: Persist - Save to disk
-        logger.info("Step 3: Persisting artifact")
+        # Step 3: Reflection - Evaluate quality
+        logger.info("Step 3: Evaluating image quality with reflection")
+        generated_image_bytes = base64.b64decode(image_b64)
+        quality_result = evaluate_image_quality(
+            original_image_bytes=image_bytes,
+            generated_image_bytes=generated_image_bytes,
+            content_type=content_type,
+            product_title=title
+        )
+        
+        quality_score = None
+        quality_issues = []
+        
+        if quality_result is not None:
+            quality_score = quality_result.get("score")
+            quality_issues = quality_result.get("issues", [])
+            logger.info("Reflection complete: quality_score=%.1f issues_count=%d", 
+                       quality_score, len(quality_issues))
+            if quality_issues:
+                logger.info("Quality issues detected: %s", quality_issues)
+        else:
+            logger.warning("Reflection evaluation failed, continuing without score")
+        
+        # Step 4: Persist - Save to disk
+        logger.info("Step 4: Persisting artifact")
         artifact = persist_generated_image(
             image_b64=image_b64,
             title=title,
@@ -390,14 +429,17 @@ async def generate_image_variation(
             enhanced_product=enhanced_product
         )
         
-        logger.info("Image generation pipeline complete: artifact_id=%s", artifact["artifact_id"])
+        logger.info("Image generation pipeline complete: artifact_id=%s quality_score=%s issues_count=%d", 
+                   artifact["artifact_id"], quality_score, len(quality_issues))
         
         return {
             "generated_image_b64": image_b64,
             "artifact_id": artifact["artifact_id"],
             "image_path": artifact["image_path"],
             "metadata_path": artifact["metadata_path"],
-            "variation_plan": plan
+            "variation_plan": plan,
+            "quality_score": quality_score,
+            "quality_issues": quality_issues
         }
         
     except Exception as exc:

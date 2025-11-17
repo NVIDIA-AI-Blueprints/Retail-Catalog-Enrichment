@@ -30,6 +30,8 @@ function Home() {
   });
   const [augmentedData, setAugmentedData] = useState<AugmentedData | null>(null);
   const [generatedImages, setGeneratedImages] = useState<(string | null)[]>([null, null]);
+  const [qualityScores, setQualityScores] = useState<(number | null)[]>([null, null]);
+  const [qualityIssues, setQualityIssues] = useState<(string[] | null)[]>([null, null]);
   const [generated3DModel, setGenerated3DModel] = useState<string | null>(null);
   const [model3DError, setModel3DError] = useState<string | null>(null);
   const [enableVariation1, setEnableVariation1] = useState<boolean>(true);
@@ -85,6 +87,8 @@ function Home() {
     setImageMetadata(null);
     setAugmentedData(null);
     setGeneratedImages([null, null]);
+    setQualityScores([null, null]);
+    setQualityIssues([null, null]);
     setGenerated3DModel(null);
     setModel3DError(null);
     setLocale('en-US');
@@ -97,6 +101,8 @@ function Home() {
 
     setAugmentedData(null);
     setGeneratedImages([null, null]);
+    setQualityScores([null, null]);
+    setQualityIssues([null, null]);
     setGenerated3DModel(null);
     setModel3DError(null);
     
@@ -139,8 +145,13 @@ function Home() {
         tasks.push(
           (async () => {
             try {
-              const imageUrl = await generateImageVariation(variationParams);
-              setGeneratedImages(prev => [imageUrl, prev[1]]);
+              const result = await generateImageVariation(variationParams);
+              setGeneratedImages(prev => [result.imageUrl, prev[1]]);
+              setQualityScores(prev => [result.qualityScore, prev[1]]);
+              setQualityIssues(prev => [result.qualityIssues, prev[1]]);
+              if (result.qualityIssues && result.qualityIssues.length > 0) {
+                console.log('[Variation 1] Quality issues:', result.qualityIssues);
+              }
             } catch (error) {
               console.error('Error generating variation 1:', error);
             }
@@ -152,8 +163,13 @@ function Home() {
         tasks.push(
           (async () => {
             try {
-              const imageUrl = await generateImageVariation(variationParams);
-              setGeneratedImages(prev => [prev[0], imageUrl]);
+              const result = await generateImageVariation(variationParams);
+              setGeneratedImages(prev => [prev[0], result.imageUrl]);
+              setQualityScores(prev => [prev[0], result.qualityScore]);
+              setQualityIssues(prev => [prev[0], result.qualityIssues]);
+              if (result.qualityIssues && result.qualityIssues.length > 0) {
+                console.log('[Variation 2] Quality issues:', result.qualityIssues);
+              }
             } catch (error) {
               console.error('Error generating variation 2:', error);
             }
@@ -298,6 +314,8 @@ function Home() {
 
             <GeneratedVariationsSection
               generatedImages={generatedImages}
+              qualityScores={qualityScores}
+              qualityIssues={qualityIssues}
               generated3DModel={generated3DModel}
               model3DError={model3DError}
               isGenerating={isGeneratingImage}
