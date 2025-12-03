@@ -9,7 +9,6 @@ from fastapi import FastAPI, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, PlainTextResponse, Response
 import httpx
-import httpcore
 from openai import APIConnectionError
 
 from backend.vlm import run_vlm_analysis
@@ -172,7 +171,7 @@ async def vlm_analyze(
         logger.info(f"/vlm/analyze success: title_len={len(payload['title'])} desc_len={len(payload['description'])} locale={locale}")
         return JSONResponse(payload)
         
-    except (APIConnectionError, httpx.ConnectError, httpcore.ConnectError) as exc:
+    except (APIConnectionError, httpx.ConnectError) as exc:
         logger.exception(f"/vlm/analyze connection error: {exc}")
         return JSONResponse({
             "detail": "Unable to connect to the NIM endpoint. Please verify that the NVIDIA NIM container is running."
@@ -245,7 +244,7 @@ async def generate_variation(
         logger.info(f"/generate/variation success: artifact_id={result['artifact_id']} image_b64_len={len(result['generated_image_b64'])} quality_score={result['quality_score']} issues_count={len(result['quality_issues'])}")
         return JSONResponse(payload)
         
-    except (APIConnectionError, httpx.ConnectError, httpcore.ConnectError) as exc:
+    except (APIConnectionError, httpx.ConnectError) as exc:
         logger.exception(f"/generate/variation connection error: {exc}")
         return JSONResponse({
             "detail": "Unable to connect to the NIM endpoint. Please verify that the NVIDIA FluxNIM container is running."
@@ -363,7 +362,7 @@ async def generate_3d(
                 }
             )
         
-    except (httpx.ConnectError, httpcore.ConnectError) as exc:
+    except httpx.ConnectError as exc:
         logger.exception(f"/generate/3d connection error: {exc}")
         return JSONResponse({
             "detail": "Unable to connect to the TRELLIS 3D generation endpoint. Please verify that the service is running and configured correctly."
