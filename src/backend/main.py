@@ -67,7 +67,8 @@ async def health_nims() -> JSONResponse:
     
     async def check_service(name: str, base_url: str) -> str:
         """Check if a service is healthy by calling its health endpoint."""
-        health_url = f"{base_url}/health/ready"
+        health_base = base_url.rstrip('/').removesuffix('/infer')
+        health_url = f"{health_base}/health/ready"
         try:
             async with httpx.AsyncClient(timeout=3.0) as client:
                 response = await client.get(health_url)
