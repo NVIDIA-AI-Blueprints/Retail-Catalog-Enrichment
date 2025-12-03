@@ -449,3 +449,4 @@ class TestParseQualityResponse:
         for i, issue in enumerate(result["issues"]):
             assert issue == issues_text[i]
 
+

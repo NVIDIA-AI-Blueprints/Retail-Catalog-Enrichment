@@ -46,6 +46,7 @@ cd catalog-enrichment
 - Stack: FastAPI + Uvicorn (ASGI), OpenAI client (NVIDIA endpoint), Starlette under the hood
 - Dependencies: `fastapi`, `uvicorn[standard]`, `openai`, `python-multipart`, `python-dotenv`, `httpx`, `pillow`, `pyyaml`
 - Python: 3.11+
+- **Error Handling**: Comprehensive connection error detection with user-friendly messages when NIM endpoints are unreachable
 
 #### Environment
 - Create `.env` at repo root:

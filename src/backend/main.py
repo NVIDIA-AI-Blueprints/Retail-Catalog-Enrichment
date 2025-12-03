@@ -1,3 +1,4 @@
+import asyncio
 import base64
 import json
 import logging
@@ -7,10 +8,13 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, PlainTextResponse, Response
+import httpx
+from openai import APIConnectionError
 
 from backend.vlm import run_vlm_analysis
 from backend.image import generate_image_variation
 from backend.trellis import generate_3d_asset
+from backend.config import get_config
 
 load_dotenv()
 
@@ -22,6 +26,7 @@ VALID_LOCALES = {"en-US", "en-GB", "en-AU", "en-CA", "es-ES", "es-MX", "es-AR", 
 async def lifespan(app: FastAPI):
     if not logging.getLogger().handlers:
         logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s - %(message)s")
+    logging.getLogger("httpx").setLevel(logging.WARNING)
     logger.info("App startup complete")
     yield
 
@@ -48,6 +53,73 @@ async def homepage() -> PlainTextResponse:
 async def health() -> JSONResponse:
     logger.info("GET /health")
     return JSONResponse({"status": "ok"})
+
+@app.get("/health/nims")
+async def health_nims() -> JSONResponse:
+    """
+    Check the health status of all NVIDIA NIM endpoints.
+    
+    Returns the health status of VLM, LLM, FLUX, and TRELLIS services.
+    Each service is checked by calling its /v1/health/ready endpoint.
+    """
+    logger.debug("GET /health/nims - checking all NIM endpoints")
+    config = get_config()
+    
+    async def check_service(name: str, base_url: str) -> str:
+        """Check if a service is healthy by calling its health endpoint."""
+        health_url = f"{base_url}/health/ready"
+        try:
+            async with httpx.AsyncClient(timeout=3.0) as client:
+                response = await client.get(health_url)
+                if response.status_code == 200:
+                    data = response.json()
+                    # Check for VLM/LLM format: {"object":"health.response","message":"Service is ready."}
+                    if data.get("object") == "health.response" and data.get("message") == "Service is ready.":
+                        logger.debug(f"{name} service is healthy (VLM/LLM format)")
+                        return "healthy"
+                    # Check for FLUX/TRELLIS format: {"description":"Triton readiness check","status":"ready"}
+                    if data.get("status") == "ready":
+                        logger.debug(f"{name} service is healthy (Triton format)")
+                        return "healthy"
+                logger.warning(f"{name} service returned unexpected response: status={response.status_code}, data={data}")
+                return "unhealthy"
+        except Exception as e:
+            logger.warning(f"{name} service health check failed: {e}")
+            return "unhealthy"
+    
+    # Get all NIM configurations
+    try:
+        vlm_config = config.get_vlm_config()
+        llm_config = config.get_llm_config()
+        flux_config = config.get_flux_config()
+        trellis_config = config.get_trellis_config()
+        
+        # Check all services concurrently
+        vlm_status, llm_status, flux_status, trellis_status = await asyncio.gather(
+            check_service("VLM", vlm_config["url"]),
+            check_service("LLM", llm_config["url"]),
+            check_service("FLUX", flux_config["url"]),
+            check_service("TRELLIS", trellis_config["url"])
+        )
+        
+        result = {
+            "vlm": vlm_status,
+            "llm": llm_status,
+            "flux": flux_status,
+            "trellis": trellis_status
+        }
+        
+        logger.debug(f"NIM health check results: {result}")
+        return JSONResponse(result)
+        
+    except Exception as e:
+        logger.error(f"Error checking NIM health: {e}")
+        return JSONResponse({
+            "vlm": "unhealthy",
+            "llm": "unhealthy",
+            "flux": "unhealthy",
+            "trellis": "unhealthy"
+        })
 
 @app.post("/vlm/analyze")
 async def vlm_analyze(
@@ -99,6 +171,11 @@ async def vlm_analyze(
         logger.info(f"/vlm/analyze success: title_len={len(payload['title'])} desc_len={len(payload['description'])} locale={locale}")
         return JSONResponse(payload)
         
+    except (APIConnectionError, httpx.ConnectError) as exc:
+        logger.exception(f"/vlm/analyze connection error: {exc}")
+        return JSONResponse({
+            "detail": "Unable to connect to the NIM endpoint. Please verify that the NVIDIA NIM container is running."
+        }, status_code=503)
     except Exception as exc:
         logger.exception(f"/vlm/analyze exception: {exc}")
         return JSONResponse({"detail": str(exc)}, status_code=500)
@@ -167,6 +244,11 @@ async def generate_variation(
         logger.info(f"/generate/variation success: artifact_id={result['artifact_id']} image_b64_len={len(result['generated_image_b64'])} quality_score={result['quality_score']} issues_count={len(result['quality_issues'])}")
         return JSONResponse(payload)
         
+    except (APIConnectionError, httpx.ConnectError) as exc:
+        logger.exception(f"/generate/variation connection error: {exc}")
+        return JSONResponse({
+            "detail": "Unable to connect to the NIM endpoint. Please verify that the NVIDIA FluxNIM container is running."
+        }, status_code=503)
     except Exception as exc:
         logger.exception(f"/generate/variation exception: {exc}")
         return JSONResponse({"detail": str(exc)}, status_code=500)
@@ -280,6 +362,21 @@ async def generate_3d(
                 }
             )
         
+    except httpx.ConnectError as exc:
+        logger.exception(f"/generate/3d connection error: {exc}")
+        return JSONResponse({
+            "detail": "Unable to connect to the TRELLIS 3D generation endpoint. Please verify that the service is running and configured correctly."
+        }, status_code=503)
+    except httpx.TimeoutException as exc:
+        logger.exception(f"/generate/3d timeout error: {exc}")
+        return JSONResponse({
+            "detail": "3D generation request timed out. The model may be overloaded or the image may be too complex."
+        }, status_code=504)
+    except httpx.HTTPStatusError as exc:
+        logger.exception(f"/generate/3d HTTP error: {exc}")
+        return JSONResponse({
+            "detail": f"3D generation service returned an error: {exc.response.status_code}"
+        }, status_code=exc.response.status_code)
     except Exception as exc:
         logger.exception(f"/generate/3d exception: {exc}")
         return JSONResponse({"detail": str(exc)}, status_code=500)

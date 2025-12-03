@@ -40,3 +40,12 @@ export const SUPPORTED_LOCALES: LocaleOption[] = [
   { value: 'fr-CA', children: 'French (Canada)' }
 ];
 
+export type HealthState = "healthy" | "unhealthy" | "checking";
+
+export interface NIMHealthStatus {
+  vlm: HealthState;
+  llm: HealthState;
+  flux: HealthState;
+  trellis: HealthState;
+}
+
