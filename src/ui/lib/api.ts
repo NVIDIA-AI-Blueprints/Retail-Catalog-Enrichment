@@ -1,4 +1,4 @@
-import { ProductFields, AugmentedData } from '../types';
+import { ProductFields, AugmentedData, NIMHealthStatus } from '../types';
 
 const API_BASE = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
 
@@ -69,7 +69,6 @@ export async function generateImageVariation(params: GenerateVariationParams): P
 
   const data = await response.json();
   
-  // Log quality issues if present
   if (data.quality_issues && data.quality_issues.length > 0) {
     console.log(`[Quality Check] Score: ${data.quality_score}% - Issues found:`, data.quality_issues);
   }
@@ -166,5 +165,27 @@ export function prepareProductData(fields: ProductFields) {
   }
   
   return Object.keys(data).length > 0 ? data : null;
+}
+
+export async function checkNIMHealth(): Promise<NIMHealthStatus> {
+  try {
+    const response = await fetch(`${API_BASE}/health/nims`, {
+      method: 'GET'
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to check NIM health');
+    }
+
+    return response.json();
+  } catch (error) {
+    console.error('Error checking NIM health:', error);
+    return {
+      vlm: 'unhealthy',
+      llm: 'unhealthy',
+      flux: 'unhealthy',
+      trellis: 'unhealthy'
+    };
+  }
 }
 
