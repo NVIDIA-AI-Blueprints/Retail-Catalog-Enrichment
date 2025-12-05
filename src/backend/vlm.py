@@ -91,9 +91,9 @@ IMPORTANT: The VLM analysis above is always in English. Your task is to enhance 
 
 1. **Title** (in {info['language']} for {info['region']}):
    {'- If existing product data provided:' if product_data else '- Enhance the VLM title with:'}
-   {'  * Preserve brand terms, material descriptors, and identifiers from existing title' if product_data else '  * More compelling and precise language'}
-   {'  * Incorporate visual details from VLM analysis' if product_data else '  * Focus on key product features'}
-   {'  * Create a cohesive result richer than either source' if product_data else '  * Ensure clarity and appeal'}
+   {'  * MUST incorporate the provided title text into the enriched output' if product_data else '  * More compelling and precise language'}
+   {'  * Enrich with visual details from VLM analysis' if product_data else '  * Focus on key product features'}
+   {'  * Create a cohesive result that includes both sources' if product_data else '  * Ensure clarity and appeal'}
    - Translate naturally to {info['language']} using proper regional terminology: {info['context']}
    - Maintain accuracy - don't hallucinate product types
 
