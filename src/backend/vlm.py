@@ -353,7 +353,11 @@ If none apply, use ["uncategorized"].
 
 Generate exactly 10 useful product tags that describe the item's characteristics, materials, style, features, or type. These should be short descriptive phrases (2-4 words each) that would help customers find this product. Use English for the tags.
 
-Extract up to 3 primary colors visible in the product. Choose the most prominent and distinctive colors that would help customers identify or search for the product. Use simple, standard color names in English (e.g., "red", "blue", "black", "white", "brown", "grey", "green", "yellow", "orange", "purple", "pink", "navy", "beige", "cream", "silver", "gold"). If fewer than 3 distinct colors are clearly visible, provide only the colors you can confidently identify.
+Extract up to 5 primary colors visible in the PRODUCT ITSELF (not from text, background, or packaging). Choose the most prominent and distinctive colors from the actual product surface, materials, and design elements that would help customers identify or search for the product. IGNORE colors from:
+- Text or logos printed/embossed on the product
+- Background scenery or surfaces the product is placed on
+- Packaging materials (unless the packaging itself IS the product)
+Use simple, standard color names in English (e.g., "red", "blue", "black", "white", "brown", "grey", "green", "yellow", "orange", "purple", "pink", "navy", "beige", "cream", "silver", "gold"). If fewer than 5 distinct colors are clearly visible on the product itself, provide only the colors you can confidently identify.
 
 IMPORTANT GUIDELINES:
 - Write compelling catalog copy that sells the physical product itself
@@ -370,7 +374,7 @@ Return ONLY valid JSON with the following structure:
   "description": "<persuasive catalog description in ENGLISH with accurate product details>",
   "categories": ["<one or more from the allowed English set>"],
   "tags": ["<exactly 10 descriptive English tags>"],
-  "colors": ["<up to 3 primary colors in simple English color names>"]
+  "colors": ["<up to 5 primary colors in simple English color names>"]
 }}
 No extra text or commentary; only return the JSON object."""
 
