@@ -111,8 +111,11 @@ IMPORTANT: The VLM analysis above is always in English. Your task is to enhance 
    - Always return as an array: "categories": ["category1", "category2"]
    - Keep in English (not translated)
 
-4. **Tags**:
-   {'- Combine tags from VLM and existing data, remove duplicates' if product_data else '- Enhance VLM tags with additional relevant terms'}
+4. **Tags** (CRITICAL - User Input Priority):
+   {'- MUST PRESERVE ALL user-provided tags from existing data (these are intentional user choices)' if product_data else '- Enhance VLM tags with additional relevant terms'}
+   {'- ADD relevant tags from VLM analysis that complement user tags' if product_data else ''}
+   {'- User tags take priority even if not visually obvious' if product_data else ''}
+   {'- Combine user tags + VLM tags, remove only exact duplicates' if product_data else ''}
    - Keep in English (not translated)
    - Make them specific and useful for search/filtering
 
@@ -123,7 +126,8 @@ IMPORTANT: The VLM analysis above is always in English. Your task is to enhance 
 {'6. **Trust Priority** (when merging existing product data):' if product_data else ''}
 {'   - TRUST visual analysis for: colors, materials, design details, visual attributes' if product_data else ''}
 {'   - PRESERVE existing data for: price, SKU, specifications, dimensions' if product_data else ''}
-{'   - RESOLVE conflicts by prioritizing visual evidence' if product_data else ''}
+{'   - ALWAYS PRESERVE user-provided tags (they may describe non-visual attributes like taste, certifications, ingredients)' if product_data else ''}
+{'   - RESOLVE conflicts by prioritizing visual evidence, EXCEPT for tags (always keep user tags)' if product_data else ''}
 
 {'═' * 80}
 OUTPUT FORMAT:
@@ -230,8 +234,9 @@ CRITICAL RULES:
    - Apply brand taxonomy preferences if specified
    - Keep in English
 
-5. **Tags**:
-   - Include brand-preferred terminology and descriptors
+5. **Tags** (CRITICAL - Preserve User Input):
+   - MUST preserve all user-provided tags from the input (do not remove them)
+   - ADD brand-preferred terminology and descriptors alongside user tags
    - Keep in English
 
 6. **Preserve All Other Fields**:
