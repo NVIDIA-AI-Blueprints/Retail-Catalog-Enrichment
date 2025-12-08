@@ -93,6 +93,9 @@ function Home() {
     setModel3DError(null);
     setLocale('en-US');
     setFields({ title: '', description: '', color: '', categories: '', tags: '', price: '', brandInstructions: '' });
+    setEnableVariation1(true);
+    setEnableVariation2(true);
+    setEnable3D(true);
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
