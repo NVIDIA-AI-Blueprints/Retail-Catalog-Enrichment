@@ -2,6 +2,7 @@ import os
 import json
 import base64
 import logging
+import re
 from typing import Optional, List, Dict, Any
 
 from dotenv import load_dotenv
@@ -70,8 +71,10 @@ def _call_nemotron_enhance_vlm(
     product_section = ""
     if product_data:
         product_section = f"""
-EXISTING PRODUCT DATA (may contain errors or be incomplete):
+EXISTING PRODUCT DATA:
 {product_json}
+
+Use the VLM analysis to enrich this data. Preserve user-provided fields (title, tags) while adding visual insights.
 
 """
 
@@ -79,8 +82,7 @@ EXISTING PRODUCT DATA (may contain errors or be incomplete):
 
 VISUAL ANALYSIS (from Vision Model - always in English, direct observation of the product image):
 {vlm_json}
-{product_section}
-ALLOWED CATEGORIES (must use one or more from this list):
+{product_section} ALLOWED CATEGORIES (must use one or more from this list):
 {json.dumps(PRODUCT_CATEGORIES)}
 
 {'═' * 80}
@@ -90,10 +92,8 @@ CONTENT ENHANCEMENT & LOCALIZATION STRATEGY:
 IMPORTANT: The VLM analysis above is always in English. Your task is to enhance it and then localize to {info['language']} for {info['region']}.
 
 1. **Title** (in {info['language']} for {info['region']}):
-   {'- If existing product data provided:' if product_data else '- Enhance the VLM title with:'}
-   {'  * MUST incorporate the provided title text into the enriched output' if product_data else '  * More compelling and precise language'}
-   {'  * Enrich with visual details from VLM analysis' if product_data else '  * Focus on key product features'}
-   {'  * Create a cohesive result that includes both sources' if product_data else '  * Ensure clarity and appeal'}
+   {'- Preserve the existing title and enrich with VLM visual details' if product_data else '- Enhance the VLM title with:'}
+   {'- Keep user-provided text, add descriptive enhancements if helpful' if product_data else '  * More compelling and precise language'}
    - Translate naturally to {info['language']} using proper regional terminology: {info['context']}
    - Maintain accuracy - don't hallucinate product types
 
@@ -134,7 +134,7 @@ OUTPUT FORMAT:
 {'═' * 80}
 {f'Return the enhanced data using the EXISTING PRODUCT DATA schema/structure. Preserve all original fields and add enriched insights. Translate title and description to {info["language"]}.' if product_data else f'Return enhanced product data with the structure: {{"title": "...", "description": "...", "categories": [...], "tags": [...], "colors": [...]}}. Write title and description in {info["language"]} for {info["region"]}.'}
 
-Return ONLY valid JSON with no markdown formatting or commentary."""
+Return ONLY valid JSON. No markdown, no commentary, no comments (// or /* */)."""
 
     logger.info("[Step 1] Sending prompt to Nemotron (length: %d chars)", len(prompt))
 
@@ -158,6 +158,14 @@ Return ONLY valid JSON with no markdown formatting or commentary."""
                     break
             except Exception as e:
                 logger.warning(f"[Step 1] Failed to extract JSON from {marker}: {e}")
+    
+    first_brace = json_text.find('{')
+    last_brace = json_text.rfind('}')
+    if first_brace != -1 and last_brace != -1 and last_brace > first_brace:
+        json_text = json_text[first_brace:last_brace+1]
+    
+    json_text = re.sub(r'//.*?(?=\n|$)', '', json_text)
+    json_text = re.sub(r'/\*.*?\*/', '', json_text, flags=re.DOTALL)
 
     try:
         parsed = json.loads(json_text)
@@ -225,7 +233,7 @@ CRITICAL RULES:
    - The description must be a single string value with proper line breaks between sections
 
 3. **Apply Brand Voice** (in {info['language']} for {info['region']}):
-   - Transform title, description, categories, and tags to match brand voice/tone specified
+   - Apply brand voice/tone to title, description, categories, and tags
    - Use brand-preferred terminology and expressions
    - Maintain factual accuracy while applying brand personality
 
@@ -249,7 +257,7 @@ OUTPUT FORMAT:
 Return valid JSON with the EXACT SAME structure as the enhanced content input.
 Apply brand instructions by modifying the VALUES of existing fields, not by adding new fields.
 
-Return ONLY valid JSON with no markdown formatting or commentary."""
+Return ONLY valid JSON. No markdown, no commentary, no comments (// or /* */)."""
 
     logger.info("[Step 2] Sending prompt to Nemotron (length: %d chars)", len(prompt))
 
@@ -273,6 +281,14 @@ Return ONLY valid JSON with no markdown formatting or commentary."""
                     break
             except Exception as e:
                 logger.warning(f"[Step 2] Failed to extract JSON from {marker}: {e}")
+    
+    first_brace = json_text.find('{')
+    last_brace = json_text.rfind('}')
+    if first_brace != -1 and last_brace != -1 and last_brace > first_brace:
+        json_text = json_text[first_brace:last_brace+1]
+    
+    json_text = re.sub(r'//.*?(?=\n|$)', '', json_text)
+    json_text = re.sub(r'/\*.*?\*/', '', json_text, flags=re.DOTALL)
 
     try:
         parsed = json.loads(json_text)
@@ -381,7 +397,7 @@ Return ONLY valid JSON with the following structure:
   "tags": ["<exactly 10 descriptive English tags>"],
   "colors": ["<up to 5 primary colors in simple English color names>"]
 }}
-No extra text or commentary; only return the JSON object."""
+No extra text, no commentary, no comments (// or /* */)."""
 
     completion = client.chat.completions.create(
         model=vlm_config['model'],
@@ -395,11 +411,23 @@ No extra text or commentary; only return the JSON object."""
     text = "".join(chunk.choices[0].delta.content for chunk in completion if chunk.choices[0].delta and chunk.choices[0].delta.content)
     logger.info("VLM response received: %d chars", len(text))
 
+    json_text = text.strip()
+    for marker in ("```json", "```"):
+        if marker in json_text:
+            try:
+                start = json_text.find(marker) + len(marker)
+                end = json_text.find("```", start)
+                if end > start:
+                    json_text = json_text[start:end].strip()
+                    break
+            except Exception:
+                pass
+
     try:
-        parsed = json.loads(text)
-        return parsed if isinstance(parsed, dict) else {"title": "", "description": text, "categories": ["uncategorized"], "tags": [], "colors": []}
+        parsed = json.loads(json_text)
+        return parsed if isinstance(parsed, dict) else {"title": "", "description": json_text, "categories": ["uncategorized"], "tags": [], "colors": []}
     except Exception:
-        return {"title": "", "description": text, "categories": ["uncategorized"], "tags": [], "colors": []}
+        return {"title": "", "description": json_text, "categories": ["uncategorized"], "tags": [], "colors": []}
 
 def run_vlm_analysis(
     image_bytes: bytes,
