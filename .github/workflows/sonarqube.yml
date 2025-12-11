@@ -1,0 +1,24 @@
+name: SonarQube Analysis
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  sonarqube:
+    uses: NVIDIA-AI-Blueprints/sonarqube-workflows/.github/workflows/sonarqube-reusable-template.yml@main
+    with:
+      # Project identification
+      organization: TEGRASW
+      team: Retail
+      product: Retail-Catalog-Enrichment
+      scmRepoName: Retail-Catalog-Enrichment
+      scmRepoUrl: https://github.com/NVIDIA-AI-Blueprints/Retail-Catalog-Enrichment
+
+      # Language and testing
+      language: python
+      testCommand: pip install -e . && pip install pytest pytest-cov && pytest tests/ --cov=src --cov-report=xml
+    secrets: inherit
