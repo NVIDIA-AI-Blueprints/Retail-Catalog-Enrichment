@@ -16,7 +16,11 @@ jobs:
       team: Retail
       product: Retail-Catalog-Enrichment
       scmRepoName: Retail-Catalog-Enrichment
-      scmRepoUrl: https://github.com/NVIDIA-AI-Blueprints/Retail-Catalog-Enrichment
+      # TODO: Add scmRepoUrl once Jenkins job supports GitHub URLs
+      # scmRepoUrl: https://github.com/NVIDIA-AI-Blueprints/Retail-Catalog-Enrichment
+
+      # Project tags for tracking
+      projectTags: CreatedBy-automation,WorkflowContact-blueprintsSre
 
       # Language and testing
       language: python
