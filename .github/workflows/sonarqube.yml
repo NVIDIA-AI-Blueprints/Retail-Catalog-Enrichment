@@ -24,5 +24,6 @@ jobs:
 
       # Language and testing
       language: python
-      testCommand: pip install -e . && pip install pytest pytest-cov && pytest tests/ --cov=src --cov-report=xml
+      # testCommand not needed - workflow auto-detects uv.lock and runs:
+      # uv run pytest tests/ --cov=src --cov-report=xml
     secrets: inherit
