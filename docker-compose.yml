@@ -108,7 +108,7 @@ services:
 
   # Trellis Model - 3D Asset Generation
   trellis-nim:
-    image: nvcr.io/nim/microsoft/trellis:latest
+    image: nvcr.io/nim/microsoft/trellis:1.0.0
     container_name: nim-trellis
     ports:
       - "8004:8000"
@@ -133,7 +133,7 @@ services:
 
   # Flux Model - 2D Image Variation Generation
   flux-nim:
-    image: nvcr.io/nim/black-forest-labs/flux.1-kontext-dev:latest
+    image: nvcr.io/nim/black-forest-labs/flux.1-kontext-dev:1.0.0
     container_name: nim-flux
     ports:
       - "8003:8000"
