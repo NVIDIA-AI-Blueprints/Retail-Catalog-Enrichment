@@ -30,58 +30,69 @@ load_dotenv()
 
 logger = logging.getLogger("catalog_enrichment.reflection")
 
-REFLECTION_PROMPT_TEMPLATE = """Evaluate the quality of a generated product variation. You will see TWO images:
-1. ORIGINAL - source product photo (REFERENCE ONLY for the {product_name})
-2. GENERATED - new variation with DIFFERENT background (backgrounds SHOULD differ)
+REFLECTION_PROMPT_TEMPLATE = """Evaluate the {product_name} by comparing it between ORIGINAL and GENERATED images.
 
-**FOCUS**: Compare ONLY the {product_name} itself between images. Ignore background differences.
+**CRITICAL**: Backgrounds WILL differ (this is intentional). DO NOT evaluate backgrounds, environments, windows, architecture, furniture, lighting, or any non-product elements.
 
-**Evaluation Criteria** (100 points total, be EXTREMELY STRICT):
+**FOCUS**: Compare ONLY the {product_name} itself. Be EXTREMELY STRICT.
 
-1. **Product Structure & Form Fidelity** (35 points):
-   - The {product_name} must be structurally identical: same shape, components, and features
-   - CRITICAL: Check if product has same structural elements
-   - Verify no features added or removed
-   - Colors, materials, textures, and reflective properties must match EXACTLY
-   - Hardware/details must retain identical finish
-   - Deduct 15-25 points for structural changes
-   - Deduct 10-15 points for material property changes (texture differences)
-   - Deduct 8-12 points for color/tone shifts
+**Evaluation Criteria** (100 points total):
 
-2. **Size & Scale Proportions** (35 points):
-   - Product size must be REALISTIC relative to GENERATED image's context (furniture, architecture, hands)
-   - Deduct 25-35 points if clearly oversized/undersized
-   - Deduct 15-25 points if moderately disproportionate
-   - Deduct 10-20 points if slightly off-scale
+1. **Product Structure & Form Fidelity** (40 points):
+   - The {product_name} must be structurally IDENTICAL: same shape, components, and features
+   - CRITICAL: All structural elements must match (e.g., straps, handles, pockets, closures)
+   - NO features added or removed
+   - Deduct 20-30 points for any structural changes (missing/added elements, shape distortion)
+   - Deduct 15-25 points for proportion changes in product components
 
-3. **Anatomical Accuracy** (20 points) - IF hands/body parts visible:
+2. **Materials & Surface Properties** (30 points):
+   - Colors must match EXACTLY - no hue, saturation, or tone shifts
+   - Materials and textures must be identical (leather grain, fabric weave, surface finish)
+   - Reflective properties must match (matte stays matte, glossy stays glossy)
+   - Hardware/details must retain identical finish (gold stays gold, silver stays silver)
+   - Deduct 15-20 points for color/tone shifts
+   - Deduct 10-15 points for material/texture differences
+   - Deduct 8-12 points for reflectivity changes
+
+3. **Size & Scale Realism** (20 points):
+   - Product size must be REALISTIC in the generated context
+   - Compare to reference objects (hands, furniture if visible)
+   - Deduct 15-20 points if clearly oversized/undersized
+   - Deduct 10-15 points if moderately disproportionate
+   - Deduct 5-10 points if slightly off-scale
+
+4. **Anatomical Accuracy** (10 points) - ONLY IF hands/body parts are visible interacting with product:
    - Exactly 5 fingers per hand with correct proportions
-   - Natural joint articulation and realistic skin texture
-   - Deduct 15-20 points for wrong finger count or major distortions
-   - Deduct 10-15 points for anatomical abnormalities (malformed thumbs, wrong nail proportions)
+   - Natural joint articulation and realistic anatomy
+   - Deduct 8-10 points for wrong finger count or major distortions
+   - Deduct 5-8 points for anatomical abnormalities
 
-4. **Background Quality** (10 points):
-   - Evaluate ONLY generated background's photorealism and technical quality
-   - DO NOT penalize simply because background differs from original (it should differ)
-   - Deduct for poor rendering, geometric distortions, or artifacts
+**Strictness Requirements**:
+- Find and report EVERY flaw in the {product_name}
+- Most images have multiple issues and should score 50-70%
+- Scores above 85% should be RARE (only when product is nearly perfect)
+- Look carefully for subtle differences in color, texture, shape, and proportions
 
-**Scoring Scale** (STRICT - most images score 50-70%):
-- 0-40%: Unusable (critical failures)
-- 41-60%: Poor (significant issues)
-- 61-75%: Acceptable with flaws
-- 76-85%: Good (minor imperfections)
-- 86-95%: Very good
-- 96-100%: Exceptional (rare, <1%)
+**Compounding Rule**: 
+- 2+ major product issues → cap score at 60%
+- 3+ product issues → cap score at 55%
+- 4+ product issues → cap score at 50%
 
-**Compounding Rule**: 2+ major issues → cap at 60%; 3+ issues → cap at 65%; 4+ issues → cap at 55%
+**Scoring Scale**:
+- 0-40%: Unusable (critical product failures)
+- 41-60%: Poor (significant product issues)
+- 61-75%: Acceptable (noticeable product flaws)
+- 76-85%: Good (minor product imperfections)
+- 86-95%: Very good (barely noticeable issues)
+- 96-100%: Exceptional (rare, <1% - nearly perfect product replication)
 
 Return ONLY this JSON:
 {{
   "value": <float 0-100>,
-  "issues": ["specific issue 1", "specific issue 2", ...]
+  "issues": ["specific product issue 1", "specific product issue 2", ...]
 }}
 
-Empty issues array if perfect. Focus on the {product_name} specifically."""
+Empty issues array only if the {product_name} is perfect. Be strict and thorough."""
 
 
 def evaluate_image_quality(

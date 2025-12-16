@@ -373,47 +373,31 @@ def _call_vlm(image_bytes: bytes, content_type: str) -> Dict[str, Any]:
 
     categories_str = json.dumps(PRODUCT_CATEGORIES)
     
-    prompt_text = f"""You are a product catalog copywriter for an e-commerce platform. Create compelling catalog content for the physical product shown in the image. Be verbose and detailed.
+    prompt_text = f"""You are a product catalog copywriter. Analyze the physical product in the image and create compelling e-commerce content.
 
-Focus on the actual product visible in the image - describe the item itself, its materials, design, and features. Do not focus on contents, intended use scenarios, or lifestyle experiences.
+TASK:
+1. Describe the product itself - its materials, design, and features
+2. Include any visible brand names or product text shown on the item
+3. Write in ENGLISH - be accurate about what you see
 
-READ AND INCORPORATE VISIBLE TEXT (IF PRESENT):
-- Look for brand names, product names, or variant descriptions visible on the product or packaging (e.g., "Moisturizing", "Extra Strength", "Matte Finish")
-- Use the exact text visible to ensure accuracy
+CATEGORIES: Choose from this allowed set: {categories_str}
 
-CRITICAL: Write all content in ENGLISH. Be accurate and precise about what you see.
+TAGS: Generate exactly 10 descriptive tags (2-4 words each) for search/filtering
 
-Classify the product into one or more categories from this fixed allowed set only:
-{categories_str}
-If none apply, use ["uncategorized"].
+COLORS - Extract only PRIMARY product colors (2-3 maximum):
+- Focus on the actual material colors of the product itself
+- Include major hardware/accent colors (e.g., gold buckles on black bag)
+- IGNORE: reflections, highlights, shadows, background, lighting effects
+- Use simple color names: "red", "blue", "black", "white", "grey", "green", "yellow", "orange", "purple", "pink", "navy", "beige", "silver", "gold"
 
-Generate exactly 10 useful product tags that describe the item's characteristics, materials, style, features, or type. These should be short descriptive phrases (2-4 words each) that would help customers find this product. Use English for the tags.
-
-Extract up to 8 primary colors visible in the PRODUCT ITSELF (not from text, background, or packaging). Choose the most prominent and distinctive colors from the actual product surface, materials, and design elements that would help customers identify or search for the product. IGNORE colors from:
-- Text or logos printed/embossed on the product
-- Background scenery or surfaces the product is placed on
-- Packaging materials (unless the packaging itself IS the product)
-- Reflective or shiny surfaces
-Use simple, standard color names in English (e.g., "red", "blue", "black", "white", "brown", "grey", "green", "yellow", "orange", "purple", "pink", "navy", "beige", "cream", "silver", "gold"). If fewer than 8 distinct colors are clearly visible on the product itself, provide only the colors you can confidently identify.
-
-IMPORTANT GUIDELINES:
-- Write compelling catalog copy that sells the physical product itself
-- Highlight the product's materials, design, construction, and notable features
-- Use persuasive but accurate language focused on the tangible item
-- Avoid analytical observations like "appears to be" or "seems to be"
-- Be specific and accurate - for example, distinguish between a handbag, beach bag, tote, clutch, etc.
-- Keep all content in ENGLISH (title, description, categories, tags, colors)
-- Make tags specific and useful for search/filtering
-
-Return ONLY valid JSON with the following structure:
+Return ONLY valid JSON:
 {{
-  "title": "<compelling product name in ENGLISH describing what you see>",
-  "description": "<persuasive catalog description in ENGLISH with accurate product details>",
-  "categories": ["<one or more from the allowed English set>"],
-  "tags": ["<exactly 10 descriptive English tags>"],
-  "colors": ["<up to 8 primary colors in simple English color names>"]
-}}
-No extra text, no commentary, no comments (// or /* */)."""
+  "title": "<compelling product name>",
+  "description": "<detailed catalog description>",
+  "categories": ["<category1>", "<category2>"],
+  "tags": ["<tag1>", "<tag2>", ...],
+  "colors": ["<color1>", "<color2>"]
+}}"""
 
     completion = client.chat.completions.create(
         model=vlm_config['model'],
