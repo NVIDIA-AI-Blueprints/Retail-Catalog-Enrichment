@@ -55,6 +55,17 @@ A GenAI-powered catalog enrichment system that transforms basic product images i
 - NVIDIA NIM containers
 - HuggingFace model hosting
 
+## Minimum System Requirements
+
+### Hardware Requirements
+
+Expect that you will want the NIM microservices to be self-hosted as you progress in your catalog enrichment pipeline development. For self-hosting the project with these microservices locally deployed, the recommended system requirement is **4 H100 GPUs** 
+
+### Deployment Options
+
+- Docker 28.0+
+- Docker compose
+
 ## Quick Start
 
 ### Prerequisites
