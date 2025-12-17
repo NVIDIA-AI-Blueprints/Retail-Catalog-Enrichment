@@ -9,7 +9,7 @@ on:
 
 jobs:
   sonarqube:
-    # Using centralized SonarQube template with automatic GitHub binding for PR decoration
+    # Using centralized SonarQube template with automatic GitHub binding for PR decoration - fixed key
     uses: NVIDIA-AI-Blueprints/sonarqube-workflows/.github/workflows/sonarqube-reusable-template.yml@kt-pr-decor
     with:
       # Project identification
