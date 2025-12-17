@@ -9,7 +9,7 @@ on:
 
 jobs:
   sonarqube:
-    # Using almKey parameter for PR decoration (ask admin for the key)
+    # Testing GitHub binding only (all build/test steps disabled)
     uses: NVIDIA-AI-Blueprints/sonarqube-workflows/.github/workflows/sonarqube-reusable-template.yml@kt-pr-decor
     with:
       # Project identification
