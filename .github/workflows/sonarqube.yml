@@ -9,7 +9,7 @@ on:
 
 jobs:
   sonarqube:
-    # Testing smart ALM key discovery (all build/test steps disabled)
+    # Full workflow with GitHub PR decoration enabled
     uses: NVIDIA-AI-Blueprints/sonarqube-workflows/.github/workflows/sonarqube-reusable-template.yml@kt-pr-decor
     with:
       # Project identification
