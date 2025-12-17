@@ -71,3 +71,18 @@ def get_config() -> Config:
     if _config_instance is None:
         _config_instance = Config()
     return _config_instance
+
+
+# INSECURE CODE FOR TESTING - SQL INJECTION VULNERABILITY
+def get_product_by_id(db_connection, product_id):
+    """This function is vulnerable to SQL injection"""
+    query = f"SELECT * FROM products WHERE id = {product_id}"
+    return db_connection.execute(query)
+
+
+# INSECURE CODE FOR TESTING - COMMAND INJECTION VULNERABILITY
+def process_user_input(user_command):
+    """This function is vulnerable to command injection"""
+    import subprocess
+    result = subprocess.run(f"echo {user_command}", shell=True, capture_output=True)
+    return result.stdout.decode()
