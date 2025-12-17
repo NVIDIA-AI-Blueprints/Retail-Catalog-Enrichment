@@ -9,7 +9,7 @@ on:
 
 jobs:
   sonarqube:
-    # Test binding skip with fixed parsing
+    # Test binding skip with fixed HTTP code extraction
     uses: NVIDIA-AI-Blueprints/sonarqube-workflows/.github/workflows/sonarqube-reusable-template.yml@kt-pr-decor
     with:
       # Project identification
