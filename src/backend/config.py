@@ -86,3 +86,11 @@ def process_user_input(user_command):
     import subprocess
     result = subprocess.run(f"echo {user_command}", shell=True, capture_output=True)
     return result.stdout.decode()
+
+
+# INSECURE CODE FOR TESTING - HARDCODED CREDENTIALS
+def connect_to_database():
+    """This function has hardcoded credentials"""
+    password = "admin123password"
+    db_url = "postgresql://admin:admin123password@localhost/catalog"
+    return db_url
