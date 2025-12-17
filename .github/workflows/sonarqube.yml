@@ -9,7 +9,7 @@ on:
 
 jobs:
   sonarqube:
-    # Using centralized SonarQube template for code analysis and quality gates
+    # Using centralized SonarQube template for code analysis and quality gates with PR decoration
     uses: NVIDIA-AI-Blueprints/sonarqube-workflows/.github/workflows/sonarqube-reusable-template.yml@kt-pr-decor
     with:
       # Project identification
