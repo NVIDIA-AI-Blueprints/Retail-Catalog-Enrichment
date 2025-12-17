@@ -27,7 +27,4 @@ jobs:
       language: python
       # testCommand not needed - workflow auto-detects uv.lock and runs:
       # uv run pytest tests/ --cov=src --cov-report=xml
-
-      # GitHub PR decoration
-      almKey: BP-SRE-Support
     secrets: inherit
