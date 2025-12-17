@@ -154,18 +154,109 @@ jobs:
       - name: Run Test Code
         if: always()
         run: |   
-          # Wait for services to stabilize
-          echo "Waiting 10 minutes for services to fully stabilize..."
-          sleep 600
-          echo "✅ Wait completed"
-          
           # Check if the HTML files exist before running tests
           if [ ! -f "./deploy/1_Deploy_Catalog_Enrichment_result.html" ]; then
             echo "Warning: 1_Deploy_Catalog_Enrichment_result.html not found"
           fi
           
-          echo "Remaining containers:"
+          echo "📋 Container status:"
           docker ps -a
+
+          # Parallel NIM service readiness check
+          echo "🔍 Starting parallel check for all NIM services..."
+          
+          # Service configuration (avoiding associative arrays for compatibility)
+          SERVICE_NAMES=("LLM-NIM" "VLM-NIM" "FLUX-NIM")
+          SERVICE_PORTS=("8002" "8001" "8003")
+          SERVICE_CONTAINERS=("nim-llm" "nim-vlm" "nim-flux")
+          SERVICE_STATUS=("⏳ Waiting" "⏳ Waiting" "⏳ Waiting")
+          
+          max_wait_time=1800  # 30 minutes in seconds
+          start_time=$(date +%s)
+          check_interval=30
+          
+          # Function to print status summary
+          print_status_summary() {
+            local elapsed=$1
+            local elapsed_min=$((elapsed / 60))
+            local elapsed_sec=$((elapsed % 60))
+            echo ""
+            echo "📊 NIM Services Status Summary (${elapsed_min}m ${elapsed_sec}s elapsed):"
+            echo "─────────────────────────────────────────"
+            for i in 0 1 2; do
+              printf "  %-10s : %s\n" "${SERVICE_NAMES[$i]}" "${SERVICE_STATUS[$i]}"
+            done
+            echo "─────────────────────────────────────────"
+          }
+          
+          # Initial status display
+          print_status_summary 0
+          
+          while true; do
+            current_time=$(date +%s)
+            elapsed=$((current_time - start_time))
+            
+            # Check each service
+            all_ready=true
+            for i in 0 1 2; do
+              # Skip if already ready
+              if [ "${SERVICE_STATUS[$i]}" = "✅ Ready" ]; then
+                continue
+              fi
+              
+              port="${SERVICE_PORTS[$i]}"
+              
+              # Check if API is responding and models are loaded
+              if curl -sf http://127.0.0.1:$port/v1/models >/dev/null 2>&1; then
+                response=$(curl -s http://127.0.0.1:$port/v1/models 2>/dev/null || echo "")
+                if [ -n "$response" ] && echo "$response" | grep -q "object"; then
+                  SERVICE_STATUS[$i]="✅ Ready"
+                else
+                  SERVICE_STATUS[$i]="⏳ API responding, loading models..."
+                  all_ready=false
+                fi
+              else
+                SERVICE_STATUS[$i]="⏳ Starting up..."
+                all_ready=false
+              fi
+            done
+            
+            # Exit if all ready
+            if [ "$all_ready" = true ]; then
+              print_status_summary $elapsed
+              echo ""
+              echo "✅ All NIM services are ready!"
+              break
+            fi
+            
+            # Sleep before next check
+            sleep $check_interval
+            
+            # Check timeout after sleep
+            current_time=$(date +%s)
+            elapsed=$((current_time - start_time))
+            
+            if [ $elapsed -ge $max_wait_time ]; then
+              print_status_summary $elapsed
+              echo ""
+              echo "❌ Timeout: Services failed to become ready after 30 minutes"
+              echo ""
+              echo "📋 Container status:"
+              docker ps -a
+              echo ""
+              echo "📋 Service logs:"
+              for i in 0 1 2; do
+                if [ "${SERVICE_STATUS[$i]}" != "✅ Ready" ]; then
+                  echo "===== ${SERVICE_NAMES[$i]} (${SERVICE_CONTAINERS[$i]}) ====="
+                  docker logs --tail 30 "${SERVICE_CONTAINERS[$i]}" 2>&1 || echo "No logs available"
+                fi
+              done
+              exit 1
+            fi
+            
+            # Print status summary every 30 seconds
+            print_status_summary $elapsed
+          done
 
           # Wait for the application to be ready
           echo "Waiting for application to be ready..."
