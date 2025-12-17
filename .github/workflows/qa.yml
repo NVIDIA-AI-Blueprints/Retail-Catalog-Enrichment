@@ -99,7 +99,7 @@ jobs:
             
             # Skip cloud NIM config and container teardown cells for 1_Deploy_Catalog_Enrichment.ipynb
             if [[ "$NOTEBOOK_NAME" == "1_Deploy_Catalog_Enrichment" ]]; then
-              skip_cells "$TEMP_NOTEBOOK" 6 43
+              skip_cells "$TEMP_NOTEBOOK" 44
               
               echo "Modifying notebook for CI environment..."
               
@@ -107,11 +107,6 @@ jobs:
               echo "  - Changing cache directory to local path..."
               sed -i 's|"local_nim_cache = os.path.expanduser(\\"~/.cache/nim\\")\\n"|"local_nim_cache = os.path.join(os.getcwd(), \\".cache\\", \\"nim\\")\\n"|g' "$TEMP_NOTEBOOK"
               echo "    ✅ Modified cache directory path"
-              
-              # Modification 2: Add sleep before docker logs command
-              echo "  - Adding sleep before docker logs command..."
-              sed -i '/"# Monitor application startup\\n",/a\    "!sleep 60\\n",' "$TEMP_NOTEBOOK"
-              echo "    ✅ Added sleep 60 before docker logs command"
               
               echo "✅ All notebook modifications complete"
             fi
@@ -143,23 +138,7 @@ jobs:
           
           # Run all notebooks
           run_notebook "deploy/1_Deploy_Catalog_Enrichment.ipynb" || exit 1
-
-           echo "Docker compose logs:"
-           docker compose logs --tail 50 
-           echo "Remaining containers after notebook execution:"
-           docker ps -a
            
-           # Check for failed containers
-           echo "Checking for failed containers..."
-           FAILED_CONTAINERS=$(docker ps -a --filter "status=created" --format "{{.Names}}")
-           if [ -n "$FAILED_CONTAINERS" ]; then
-             echo "⚠️ Found containers in 'Created' state (not started):"
-             echo "$FAILED_CONTAINERS"
-             for container in $FAILED_CONTAINERS; do
-               echo "===== Logs for $container ====="
-               docker logs "$container" 2>&1 || echo "No logs available for $container"
-             done
-           fi
 
       - name: Convert results to HTML format
         if: always()
@@ -187,21 +166,6 @@ jobs:
           
           echo "Remaining containers:"
           docker ps -a
-          echo "Nginx logs:"
-          docker logs catalog-enrichment-nginx --tail 50 
-          echo "Backend logs:"
-          docker logs catalog-enrichment-backend --tail 50 
-          echo "Frontend logs:"
-          docker logs catalog-enrichment-frontend --tail 50 
-          echo "VLM logs:"
-          docker logs nim-vlm --tail 50 
-          echo "LLM logs:"
-          docker logs nim-llm --tail 50 
-          echo "Flux logs:"
-          docker logs nim-flux --tail 50 
-          echo "Flux logs:"
-          docker logs nim-trellis --tail 50 
-          nvidia-smi
 
           # Wait for the application to be ready
           echo "Waiting for application to be ready..."
