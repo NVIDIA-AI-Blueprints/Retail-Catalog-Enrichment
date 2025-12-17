@@ -170,6 +170,8 @@ jobs:
           SERVICE_PORTS=("8002" "8001" "8003")
           SERVICE_CONTAINERS=("nim-llm" "nim-vlm" "nim-flux")
           SERVICE_STATUS=("⏳ Waiting" "⏳ Waiting" "⏳ Waiting")
+          # Health check endpoints: LLM/VLM use /v1/models, FLUX uses /v1/health/ready
+          SERVICE_HEALTH_ENDPOINTS=("/v1/models" "/v1/models" "/v1/health/ready")
           
           max_wait_time=1800  # 30 minutes in seconds
           start_time=$(date +%s)
@@ -205,15 +207,29 @@ jobs:
               fi
               
               port="${SERVICE_PORTS[$i]}"
+              health_endpoint="${SERVICE_HEALTH_ENDPOINTS[$i]}"
               
-              # Check if API is responding and models are loaded
-              if curl -sf http://127.0.0.1:$port/v1/models >/dev/null 2>&1; then
-                response=$(curl -s http://127.0.0.1:$port/v1/models 2>/dev/null || echo "")
-                if [ -n "$response" ] && echo "$response" | grep -q "object"; then
-                  SERVICE_STATUS[$i]="✅ Ready"
-                else
-                  SERVICE_STATUS[$i]="⏳ API responding, loading models..."
-                  all_ready=false
+              # Check if API is responding
+              if curl -sf http://127.0.0.1:$port$health_endpoint >/dev/null 2>&1; then
+                response=$(curl -s http://127.0.0.1:$port$health_endpoint 2>/dev/null || echo "")
+                
+                # Different validation for different endpoints
+                if [ "$health_endpoint" = "/v1/models" ]; then
+                  # For LLM/VLM: check if models are loaded
+                  if [ -n "$response" ] && echo "$response" | grep -q "object"; then
+                    SERVICE_STATUS[$i]="✅ Ready"
+                  else
+                    SERVICE_STATUS[$i]="⏳ API responding, loading models..."
+                    all_ready=false
+                  fi
+                elif [ "$health_endpoint" = "/v1/health/ready" ]; then
+                  # For FLUX: check if health endpoint returns success
+                  if [ -n "$response" ]; then
+                    SERVICE_STATUS[$i]="✅ Ready"
+                  else
+                    SERVICE_STATUS[$i]="⏳ Initializing..."
+                    all_ready=false
+                  fi
                 fi
               else
                 SERVICE_STATUS[$i]="⏳ Starting up..."
