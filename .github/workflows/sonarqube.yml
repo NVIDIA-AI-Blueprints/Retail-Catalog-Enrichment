@@ -1,5 +1,7 @@
 name: SonarQube Analysis
 
+# Triggering CI to test PR decoration with updated sonarqube-workflows
+
 on:
   push:
     branches: [ main, develop ]
