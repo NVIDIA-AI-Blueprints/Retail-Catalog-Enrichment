@@ -9,7 +9,7 @@ on:
 
 jobs:
   sonarqube:
-    # Full workflow with binding existence check
+    # Debug binding check API response
     uses: NVIDIA-AI-Blueprints/sonarqube-workflows/.github/workflows/sonarqube-reusable-template.yml@kt-pr-decor
     with:
       # Project identification
