@@ -9,7 +9,7 @@ on:
 
 jobs:
   sonarqube:
-    # Testing GitHub binding configuration (scanner temporarily disabled)
+    # Testing GitHub binding configuration with debug output (scanner temporarily disabled)
     uses: NVIDIA-AI-Blueprints/sonarqube-workflows/.github/workflows/sonarqube-reusable-template.yml@kt-pr-decor
     with:
       # Project identification
