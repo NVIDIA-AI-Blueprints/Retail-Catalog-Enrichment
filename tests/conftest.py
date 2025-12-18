@@ -60,8 +60,7 @@ def sample_base64_image() -> str:
 @pytest.fixture
 def mock_env_vars(monkeypatch):
     """Set up mock environment variables."""
-    monkeypatch.setenv("NVIDIA_API_KEY", "test-api-key-12345")
-    monkeypatch.setenv("NVIDIA_API_BASE_URL", "https://test.nvidia.com/v1")
+    monkeypatch.setenv("NGC_API_KEY", "test-ngc-api-key-12345")
     monkeypatch.setenv("OUTPUT_DIR", "/tmp/test_outputs")
 
 
