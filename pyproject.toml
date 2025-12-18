@@ -24,6 +24,7 @@ dependencies = [
 packages = ["src/backend"]
 
 [tool.uv]
+managed = true
 dev-dependencies = [
   "pytest==8.4.2",
   "pytest-mock==3.14.0",
