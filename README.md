@@ -160,3 +160,5 @@ The system provides three main endpoints:
 For detailed API documentation with request/response examples, see **[API Documentation](docs/API.md)**.
 
 ## License
+
+This project will download and install additional third-party open source software projects. Review the license terms of these open source projects before use.
