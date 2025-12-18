@@ -105,8 +105,8 @@ def evaluate_image_quality(
     
     logger.info(f"Starting evaluation for '{product_name}': orig={len(original_image_bytes)}B gen={len(generated_image_bytes)}B")
     
-    if not (api_key := os.getenv("NVIDIA_API_KEY")):
-        logger.error("NVIDIA_API_KEY not set")
+    if not (api_key := os.getenv("NGC_API_KEY")):
+        logger.error("NGC_API_KEY not set")
         return None
     
     try:

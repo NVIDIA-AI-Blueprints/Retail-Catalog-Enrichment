@@ -65,9 +65,9 @@ def _call_planner_llm(title: str, description: str, categories: List[str], local
     """
     logger.info("Calling planner LLM: title_len=%d desc_len=%d cats=%s locale=%s", len(title or ""), len(description or ""), categories, locale)
 
-    api_key = os.getenv("NVIDIA_API_KEY")
+    api_key = os.getenv("NGC_API_KEY")
     if not api_key:
-        raise RuntimeError("NVIDIA_API_KEY is not set")
+        raise RuntimeError("NGC_API_KEY is not set")
 
     country = LOCALE_CONFIG.get(locale, {"country": "United States"})["country"]
     
@@ -234,9 +234,9 @@ async def _call_flux_edit(image_bytes: bytes, content_type: str, prompt: str, st
     """Call the FLUX image editing API."""
     logger.info("Calling FLUX edit: prompt_len=%d steps=%d cfg=%.2f", len(prompt), steps, cfg_scale)
     
-    api_key = os.getenv("NVIDIA_API_KEY")
+    api_key = os.getenv("NGC_API_KEY")
     if not api_key:
-        raise RuntimeError("NVIDIA_API_KEY is not set")
+        raise RuntimeError("NGC_API_KEY is not set")
 
     flux_config = get_config().get_flux_config()
 

@@ -23,7 +23,6 @@ services:
     environment:
       - NGC_API_KEY=${NGC_API_KEY}
       - HF_TOKEN=${HF_TOKEN}
-      - NVIDIA_API_KEY=${NGC_API_KEY}
     volumes:
       - ./data/outputs:/app/data/outputs
       - ./shared/config:/app/shared/config:ro

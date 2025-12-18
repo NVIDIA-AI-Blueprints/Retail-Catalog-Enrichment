@@ -50,7 +50,7 @@ cd catalog-enrichment
 
 #### Environment
 - Create `.env` at repo root:
-  - `NVIDIA_API_KEY=...`
+  - `NGC_API_KEY=...`
   - `NVIDIA_API_BASE_URL=https://integrate.api.nvidia.com/v1` (default)
 
 #### Run (with uv)

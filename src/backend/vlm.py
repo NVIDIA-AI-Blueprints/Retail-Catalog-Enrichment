@@ -72,8 +72,8 @@ def _call_nemotron_enhance_vlm(
     logger.info("[Step 1] Nemotron enhance + localize: vlm_keys=%s, product_keys=%s, locale=%s", 
                 list(vlm_output.keys()), list(product_data.keys()) if product_data else None, locale)
     
-    if not (api_key := os.getenv("NVIDIA_API_KEY")):
-        raise RuntimeError("NVIDIA_API_KEY is not set")
+    if not (api_key := os.getenv("NGC_API_KEY")):
+        raise RuntimeError("NGC_API_KEY is not set")
 
     info = LOCALE_CONFIG.get(locale, {"language": "English", "region": "United States", "country": "United States", "context": "American English"})
     llm_config = get_config().get_llm_config()
@@ -210,8 +210,8 @@ def _call_nemotron_apply_branding(
     logger.info("[Step 2] Nemotron brand application: content_keys=%s, locale=%s", 
                 list(enhanced_content.keys()), locale)
     
-    if not (api_key := os.getenv("NVIDIA_API_KEY")):
-        raise RuntimeError("NVIDIA_API_KEY is not set")
+    if not (api_key := os.getenv("NGC_API_KEY")):
+        raise RuntimeError("NGC_API_KEY is not set")
 
     info = LOCALE_CONFIG.get(locale, {"language": "English", "region": "United States", "country": "United States", "context": "American English"})
     llm_config = get_config().get_llm_config()
@@ -364,9 +364,9 @@ def _call_vlm(image_bytes: bytes, content_type: str) -> Dict[str, Any]:
     """
     logger.info("Calling VLM: bytes=%d, content_type=%s (English-only analysis)", len(image_bytes or b""), content_type)
     
-    api_key = os.getenv("NVIDIA_API_KEY")
+    api_key = os.getenv("NGC_API_KEY")
     if not api_key:
-        raise RuntimeError("NVIDIA_API_KEY is not set")
+        raise RuntimeError("NGC_API_KEY is not set")
     
     vlm_config = get_config().get_vlm_config()
     client = OpenAI(base_url=vlm_config['url'], api_key=api_key)
