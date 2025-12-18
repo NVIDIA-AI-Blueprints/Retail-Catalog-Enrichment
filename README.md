@@ -106,12 +106,42 @@ HF_TOKEN=your_huggingface_token_here
    uv pip install -e .
    ```
 
-4. **Run the backend**:
+4. **Configure NVIDIA NIM endpoints**:
+   
+   **IMPORTANT: Self-Hosted NIMs Required**
+   
+   For local development, you must self-host the following NVIDIA NIM containers:
+   - **Nemotron VLM** (vision-language model)
+   - **Nemotron LLM** (prompt planning)
+   - **FLUX** (image generation)
+   - **TRELLIS** (3D asset generation)
+   
+   Update the URLs in `shared/config/config.yaml` to point to your self-hosted NIM endpoints:
+   
+   ```yaml
+   vlm:
+     url: "http://localhost:8001/v1"  # Your VLM NIM endpoint
+     model: "nvidia/nemotron-nano-12b-v2-vl"
+   
+   llm:
+     url: "http://localhost:8002/v1"  # Your LLM NIM endpoint
+     model: "nvidia/llama-3.3-nemotron-super-49b-v1.5"
+   
+   flux:
+     url: "http://localhost:8003/v1/infer"  # Your FLUX NIM endpoint
+   
+   trellis:
+     url: "http://localhost:8004/v1/infer"  # Your TRELLIS NIM endpoint
+   ```
+   
+   See the **[Docker Deployment Guide](docs/DOCKER.md)** for instructions on deploying these NIMs.
+
+5. **Run the backend**:
    ```bash
    uvicorn --app-dir src backend.main:app --host 0.0.0.0 --port 8000 --reload
    ```
 
-5. **Run the frontend** (optional):
+6. **Run the frontend** (optional):
    ```bash
    cd src/ui
    pnpm install
@@ -120,9 +150,11 @@ HF_TOKEN=your_huggingface_token_here
 
 The frontend at `http://localhost:3000`.
 
-### Docker Deployment
+### Docker Deployment (Self-Hosted NIMs)
 
-For Docker deployment with all services (including NIM models), see the **[Docker Deployment Guide](docs/DOCKER.md)**.
+The Docker deployment includes all required self-hosted NVIDIA NIM containers (Nemotron VLM, Nemotron LLM, FLUX, and TRELLIS). The `shared/config/config.yaml` is pre-configured with the correct service URLs for Docker networking.
+
+For complete Docker deployment instructions, see the **[Docker Deployment Guide](docs/DOCKER.md)**.
 
 **Quick Docker Start:**
 
