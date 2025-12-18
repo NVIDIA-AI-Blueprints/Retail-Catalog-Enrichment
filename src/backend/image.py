@@ -111,14 +111,7 @@ CATEGORY-SPECIFIC BACKGROUNDS:
 - For "accessories": lifestyle contexts like entryways, closets, fashion displays, outdoor café tables, cobblestone streets
 - For other categories: choose contextually appropriate settings that match how the product is typically used in that country
 
-SMALL PRODUCTS & HAND MODELING:
-- For small-to-medium handheld items (e.g., small bottles, skincare products, fragrances, perfumes, cosmetics, clutches, evening purses, handbags, small structured bags, jewelry, phone accessories), you SHOULD STRONGLY CONSIDER including a realistic hand naturally holding or presenting the product
-- BAG SIZE GUIDE: Clutches, evening purses, wristlets, handbags, and small-to-medium structured bags SHOULD be held in hand for elegant presentation. ONLY large bags (oversized totes, large shopping bags, backpacks, duffel bags, luggage) should be placed on surfaces
-- The hand should be well-manicured, natural-looking, and appropriate to the cultural context (e.g., diverse skin tones, regional nail aesthetics)
-- Hand positioning should be natural and elegant, not awkward or forced - the hand should complement the product, not dominate or distract from it
-- Use phrases like "held by a natural hand", "displayed in an elegant hand", "naturally held in a graceful hand", "presented by an elegant hand", "gracefully held"
-- For glamorous items like luxury handbags, perfumes, and evening accessories, hands often create a more aspirational and lifestyle-focused presentation
-- Consider the product's selling context: luxury and lifestyle items benefit greatly from hand modeling to create emotional connection
+
 
 EXAMPLES BY COUNTRY:
 - France: "on a marble bistro table at a Parisian café, with the Eiffel Tower softly blurred in the background through the window"
