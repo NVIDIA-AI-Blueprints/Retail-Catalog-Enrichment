@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - qa-workflow
+      - main
   workflow_dispatch:
 
 concurrency:
