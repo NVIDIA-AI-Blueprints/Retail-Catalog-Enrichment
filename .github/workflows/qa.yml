@@ -323,9 +323,9 @@ jobs:
           echo "🧹 Cleaning up workflow resources..."
           # Stop and remove Docker Compose services and their images
           echo "Stopping Docker Compose services and removing images..."
-          cd Retail-Catalog-Enrichment
+          # cd Retail-Catalog-Enrichment
           docker compose -f docker-compose.yaml down --rmi all 2>/dev/null || true
-          cd ..
+          # cd ..
           echo "✅ Docker Compose services and images removed"
           
           sleep 120 # Wait for 2 minutes to ensure all containers are stopped
