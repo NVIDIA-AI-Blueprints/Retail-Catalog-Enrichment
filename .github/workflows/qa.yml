@@ -152,7 +152,7 @@ jobs:
             fi
           done
 
-      - name: Run Test Code
+      - name: Check NIM Services Status
         if: always()
         run: |   
           # Check if the HTML files exist before running tests
@@ -292,18 +292,18 @@ jobs:
 
           echo "Remaining containers after application is ready:"
           docker ps -a
-              
-          # # Run the test and capture the exit code
-          # # Use --net=host to allow test container to access services on host
-          # docker run --rm \
-          #   --net=host \
-          #   -v "$(pwd)/deploy/1_Deploy_Catalog_Enrichment_result.html:/app/input/1_Deploy_Catalog_Enrichment.html" \
-          #   -v "$(pwd):/workspace" \
-          #   nvcr.io/rw983xdqtcdp/auto_test_team/blueprint-github-test-image:latest \
-          #   pytest -m retail_shopping_assistant \
-          #   --disable-warnings \
-          #   --html=/workspace/retail-shopping-assistant_test.html \
-          #   --self-contained-html
+      - name: Run Test Code
+        run: |
+          # Use --net=host to allow test container to access services on host
+          docker run --rm \
+            --net=host \
+            -v "$(pwd):/workspace" \
+            nvcr.io/rw983xdqtcdp/auto_test_team/blueprint-github-test-image:latest \
+            pytest -m retail_catalog_enrichment \
+            --disable-warnings \
+            --html=/workspace/retail-catalog-enrichment_test.html \
+            --self-contained-html
+          echo "✅ Test code executed"
 
       - name: Upload notebook and test results as artifacts
         if: always()
@@ -312,7 +312,7 @@ jobs:
           name: nim-notebooks-results
           path: |
              deploy/1_Deploy_Catalog_Enrichment_result.html
-             retail-shopping-assistant_test.html
+             retail-catalog-enrichment_test.html
           retention-days: 14 
 
       - name: Cleanup Docker resources
@@ -320,19 +320,18 @@ jobs:
         run: |
           echo "🧹 Cleaning up workflow resources..."
           
-          # # Stop and remove Docker Compose services and their images
-          # echo "Stopping Docker Compose services and removing images..."
-          # cd retail-shopping-assistant
-          # docker compose -f docker-compose.yaml down --rmi all 2>/dev/null || true
-          # docker compose -f docker-compose-nim-local.yaml down --rmi all 2>/dev/null || true
-          # cd ..
-          # echo "✅ Docker Compose services and images removed"
+          # Stop and remove Docker Compose services and their images
+          echo "Stopping Docker Compose services and removing images..."
+          cd Retail-Catalog-Enrichment
+          docker compose -f docker-compose.yaml down --rmi all 2>/dev/null || true
+          cd ..
+          echo "✅ Docker Compose services and images removed"
           
-          # sleep 120 # Wait for 2 minutes to ensure all containers are stopped
+          sleep 120 # Wait for 2 minutes to ensure all containers are stopped
 
-          # # Check remaining containers
-          # echo "Remaining containers:"
-          # docker ps -a
+          # Check remaining containers
+          echo "Remaining containers:"
+          docker ps -a
           
           # Remove test image
           echo "Removing test image..."
