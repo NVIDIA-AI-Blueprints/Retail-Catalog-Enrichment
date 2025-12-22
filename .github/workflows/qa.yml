@@ -152,6 +152,7 @@ jobs:
             fi
           done
 
+
       - name: Check NIM Services Status
         if: always()
         run: |   
@@ -292,6 +293,7 @@ jobs:
 
           echo "Remaining containers after application is ready:"
           docker ps -a
+
       - name: Run Test Code
         run: |
           # Use --net=host to allow test container to access services on host
@@ -319,7 +321,6 @@ jobs:
         if: always()
         run: |
           echo "🧹 Cleaning up workflow resources..."
-          
           # Stop and remove Docker Compose services and their images
           echo "Stopping Docker Compose services and removing images..."
           cd Retail-Catalog-Enrichment
