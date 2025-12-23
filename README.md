@@ -10,7 +10,7 @@ A GenAI-powered catalog enrichment system that transforms basic product images i
 
 ## Architecture
 
-![Shopping Assistant Diagram](deploy/diagram.jpeg)
+![Shopping Assistant Diagram](deploy/diagram.jpg)
 
 ## Key Features
 
