@@ -41,6 +41,9 @@ LOCALE_CONFIG = {
     "fr-CA": {"language": "French", "region": "Canada", "country": "Canada", "context": "Quebec French with Canadian terminology"}
 }
 
+# Error messages
+NGC_API_KEY_NOT_SET_ERROR = "NGC_API_KEY is not set"
+
 # Allowed product categories for classification
 PRODUCT_CATEGORIES = [
     "clothing",
@@ -73,7 +76,7 @@ def _call_nemotron_enhance_vlm(
                 list(vlm_output.keys()), list(product_data.keys()) if product_data else None, locale)
     
     if not (api_key := os.getenv("NGC_API_KEY")):
-        raise RuntimeError("NGC_API_KEY is not set")
+        raise RuntimeError(NGC_API_KEY_NOT_SET_ERROR)
 
     info = LOCALE_CONFIG.get(locale, {"language": "English", "region": "United States", "country": "United States", "context": "American English"})
     llm_config = get_config().get_llm_config()
@@ -211,7 +214,7 @@ def _call_nemotron_apply_branding(
                 list(enhanced_content.keys()), locale)
     
     if not (api_key := os.getenv("NGC_API_KEY")):
-        raise RuntimeError("NGC_API_KEY is not set")
+        raise RuntimeError(NGC_API_KEY_NOT_SET_ERROR)
 
     info = LOCALE_CONFIG.get(locale, {"language": "English", "region": "United States", "country": "United States", "context": "American English"})
     llm_config = get_config().get_llm_config()
@@ -366,7 +369,7 @@ def _call_vlm(image_bytes: bytes, content_type: str) -> Dict[str, Any]:
     
     api_key = os.getenv("NGC_API_KEY")
     if not api_key:
-        raise RuntimeError("NGC_API_KEY is not set")
+        raise RuntimeError(NGC_API_KEY_NOT_SET_ERROR)
     
     vlm_config = get_config().get_vlm_config()
     client = OpenAI(base_url=vlm_config['url'], api_key=api_key)
