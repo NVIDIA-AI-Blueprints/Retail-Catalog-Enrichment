@@ -6,7 +6,7 @@
 
 </div>
 
-A GenAI-powered catalog enrichment system that transforms basic product images into comprehensive, rich catalog entries using NVIDIA's Nemotron VLM for content analysis, Nemotron LLM for intelligent prompt planning, FLUX models for generating high-quality product variations, and TRELLIS model for 3D asset generation.
+A GenAI-powered catalog enrichment system that transforms basic product images into comprehensive, rich catalog entries using NVIDIA's Nemotron VLM for content analysis, Nemotron LLM for intelligent prompt planning, FLUX Kontext model for generating high-quality product variations, and TRELLIS model for 3D asset generation.
 
 ## Architecture
 
@@ -88,6 +88,10 @@ HF_TOKEN=your_huggingface_token_here
 - NVIDIA API Key: [Get one here](https://build.nvidia.com/)
 - HuggingFace Token: [Get one here](https://huggingface.co/settings/tokens)
 
+The FLUX.1-Kontext-Dev NIM uses a model that is for non-commercial use. Contact sales@blackforestlabs.ai for commercial terms.
+
+Make sure you have accepted [https://huggingface.co/black-forest-labs/FLUX.1-Kontext-dev](https://huggingface.co/black-forest-labs/FLUX.1-Kontext-dev) and [https://huggingface.co/black-forest-labs/FLUX.1-Kontext-dev-onnx](https://huggingface.co/black-forest-labs/FLUX.1-Kontext-dev-onnx) License Agreements and Acceptable Use Policy, check if your HF token has correct permissions.
+
 ### Local Development (Without Docker)
 
 1. **Install uv** (if not already installed):
@@ -113,9 +117,9 @@ HF_TOKEN=your_huggingface_token_here
    For local development, you must self-host the following NVIDIA NIM containers:
    - **Nemotron VLM** (vision-language model)
    - **Nemotron LLM** (prompt planning)
-   - **FLUX** (image generation)
+   - **FLUX Kontext dev** (image generation)
    - **TRELLIS** (3D asset generation)
-   
+ 
    Update the URLs in `shared/config/config.yaml` to point to your self-hosted NIM endpoints:
    
    ```yaml
@@ -193,4 +197,12 @@ For detailed API documentation with request/response examples, see **[API Docume
 
 ## License
 
-This project will download and install additional third-party open source software projects. Review the license terms of these open source projects before use.
+GOVERNING TERMS: The Blueprint scripts are governed by Apache License, Version 2.0, and enables use of separate open source and proprietary software governed by their respective licenses: [NVIDIA-Nemotron-Nano-12B-v2-VL](https://catalog.ngc.nvidia.com/orgs/nim/teams/nvidia/containers/nemotron-nano-12b-v2-vl?version=1), [Llama-3.3-nemotron-super-49b-v1.5](https://catalog.ngc.nvidia.com/orgs/nim/teams/nvidia/containers/llama-3.3-nemotron-super-49b-v1.5?version=1), [FLUX.1-Kontext-Dev](https://huggingface.co/black-forest-labs/FLUX.1-Kontext-dev/blob/main/LICENSE.md), and [Microsoft TRELLIS](https://catalog.ngc.nvidia.com/orgs/nim/teams/microsoft/containers/trellis?version=1).
+
+ADDITIONAL INFORMATION: 
+FLUX.1-Kontext-Dev license: [https://huggingface.co/black-forest-labs/FLUX.1-Kontext-dev/blob/main/LICENSE.md](https://huggingface.co/black-forest-labs/FLUX.1-Kontext-dev/blob/main/LICENSE.md).
+
+Third-Party Community Consideration:
+The FLUX Kontext model is not owned or developed by NVIDIA. This model has been developed and built to a third-party’s requirements for this application and use case; see link to: black-forest-labs/FLUX.1-Kontext-dev Model Card - [https://huggingface.co/black-forest-labs/FLUX.1-Kontext-dev](https://huggingface.co/black-forest-labs/FLUX.1-Kontext-dev).
+
+This project will download and install additional third-party open source software projects. Review the license terms of these open source projects before use. 
