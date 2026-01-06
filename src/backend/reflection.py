@@ -38,14 +38,14 @@ REFLECTION_PROMPT_TEMPLATE = """Evaluate the {product_name} by comparing it betw
 
 **Evaluation Criteria** (100 points total):
 
-1. **Product Structure & Form Fidelity** (40 points):
+1. **Product Structure & Form Fidelity** (between 30-40 points):
    - The {product_name} must be structurally IDENTICAL: same shape, components, and features
    - CRITICAL: All structural elements must match (e.g., straps, handles, pockets, closures)
    - NO features added or removed
    - Deduct 20-30 points for any structural changes (missing/added elements, shape distortion)
    - Deduct 15-25 points for proportion changes in product components
 
-2. **Materials & Surface Properties** (30 points):
+2. **Materials & Surface Properties** (between 20-30 points):
    - Colors must match EXACTLY - no hue, saturation, or tone shifts
    - Materials and textures must be identical (leather grain, fabric weave, surface finish)
    - Reflective properties must match (matte stays matte, glossy stays glossy)
@@ -54,14 +54,14 @@ REFLECTION_PROMPT_TEMPLATE = """Evaluate the {product_name} by comparing it betw
    - Deduct 10-15 points for material/texture differences
    - Deduct 8-12 points for reflectivity changes
 
-3. **Size & Scale Realism** (20 points):
+3. **Size & Scale Realism** (between 15-20 points):
    - Product size must be REALISTIC in the generated context
    - Compare to reference objects (hands, furniture if visible)
    - Deduct 15-20 points if clearly oversized/undersized
    - Deduct 10-15 points if moderately disproportionate
    - Deduct 5-10 points if slightly off-scale
 
-4. **Anatomical Accuracy** (10 points) - ONLY IF hands/body parts are visible interacting with product:
+4. **Anatomical Accuracy** (between 5-10 points) - ONLY IF hands/body parts are visible interacting with product:
    - Exactly 5 fingers per hand with correct proportions
    - Natural joint articulation and realistic anatomy
    - Deduct 8-10 points for wrong finger count or major distortions
@@ -91,6 +91,8 @@ Return ONLY this JSON:
   "value": <float 0-100>,
   "issues": ["specific product issue 1", "specific product issue 2", ...]
 }}
+
+issues size should be 6 or less.
 
 Empty issues array only if the {product_name} is perfect. Be strict and thorough."""
 
@@ -142,7 +144,7 @@ def evaluate_image_quality(
                 {"role": "system", "content": "/no_think"},
                 {"role": "user", "content": content}
             ],
-            temperature=0.1,
+            temperature=0.9,
             top_p=0.9,
             max_tokens=768,
             stream=False
