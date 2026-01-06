@@ -111,21 +111,6 @@ CATEGORY-SPECIFIC BACKGROUNDS:
 - For "accessories": lifestyle contexts like entryways, closets, fashion displays, outdoor café tables, cobblestone streets
 - For other categories: choose contextually appropriate settings that match how the product is typically used in that country
 
-
-
-EXAMPLES BY COUNTRY:
-- France: "on a marble bistro table at a Parisian café, with the Eiffel Tower softly blurred in the background through the window"
-- France (with hand, perfume/small item): "held elegantly by a manicured hand against a Parisian backdrop with Haussmannian architecture visible"
-- France (with hand, handbag): "gracefully held by an elegant hand near a Parisian boutique window, with Haussmannian buildings and the Arc de Triomphe softly visible in the background"
-- Spain: "on a white-tiled balcony in Barcelona with wrought iron railings, partial view of Sagrada Familia in the distance"
-- Spain (with hand, small item): "naturally held in a graceful hand on a Spanish terrace, Mediterranean coastline softly blurred behind"
-- Japan: "on a minimalist wooden surface in a Tokyo apartment, with shoji screen and distant city skyline visible"
-- UK: "on a traditional English side table, Georgian window with a glimpse of Big Ben across the Thames"
-- UK (with hand, luxury handbag): "presented in an elegant hand on a London street, with Big Ben and Westminster softly blurred in the evening light"
-- USA: "on an industrial concrete counter in a New York loft, floor-to-ceiling windows showing the city skyline"
-- USA (with hand, perfume): "displayed in an elegant hand with Manhattan skyline visible through floor-to-ceiling windows"
-- USA (with hand, luxury handbag): "held gracefully in a manicured hand at a Chicago penthouse, city skyline glowing at golden hour through floor-to-ceiling windows"
-
 Produce ONLY a JSON object with no markdown formatting or code blocks. Required schema:
 {{"preserve_subject": "<describe the product in ENGLISH - e.g., 'luxury black and gold handbag'>", 
 "background_style": "<culturally authentic setting for {country} in ENGLISH with iconic elements - be specific and creative>", 
@@ -195,7 +180,7 @@ CRITICAL: Write EVERYTHING in ENGLISH (preserve_subject, background_style, all f
     }
 
 
-def _render_flux_prompt(plan: Dict[str, Any], locale: str = "en-US") -> str:
+def _render_flux_prompt(plan: Dict[str, Any], locale: str = "en-US", categories: Optional[List[str]] = None) -> str:
     """Render a FLUX prompt from a variation plan.
     
     NOTE: Always renders in English since FLUX only supports English.
@@ -207,15 +192,30 @@ def _render_flux_prompt(plan: Dict[str, Any], locale: str = "en-US") -> str:
     lighting = plan.get("lighting", "softbox")
     negatives = plan.get("negatives", [])
     neg_text = "; ".join(negatives) if isinstance(negatives, list) else str(negatives)
+    category_set = {c.strip().lower() for c in (categories or []) if isinstance(c, str)}
+    is_clothing = "clothing" in category_set
     
     logger.info("Rendering FLUX prompt (English-only) for locale=%s", locale)
     
     # Build English prompt for FLUX
-    prompt = f"Keep {preserve} unchanged. Replace only the background with {background}. " \
-             f"Make it hyperrealistic, ideal for an e-commerce product image. " \
-             f"Use {lighting} lighting and {camera} camera angle. " \
-             f"Maintain subject color, orientation, and material. " \
-             f"Scale the product to natural, proportional size for the environment."
+    if is_clothing:
+        prompt = (
+            f"Keep {preserve} unchanged. Clothing styling: product-only (NOT worn); no people, no mannequins, no body parts. "
+            f"Display the garment as a clean flat-lay on a tabletop or neatly hung on a simple hanger in a elegant closet/wardrobe. "
+            f"Replace only the setting/background with {background}. "
+            f"Make it hyperrealistic, ideal for an e-commerce product image. "
+            f"Use {lighting} lighting and {camera} camera angle. "
+            f"Maintain subject color, orientation, and material. "
+            f"Scale the product to natural, proportional size for the environment."
+        )
+    else:
+        prompt = (
+            f"Keep {preserve} unchanged. Replace only the background with {background}. "
+            f"Make it hyperrealistic, ideal for an e-commerce product image. "
+            f"Use {lighting} lighting and {camera} camera angle. "
+            f"Maintain subject color, orientation, and material. "
+            f"Scale the product to natural, proportional size for the environment."
+        )
     
     if neg_text:
         prompt += f" Avoid: {neg_text}"
@@ -380,7 +380,7 @@ async def generate_image_variation(
         # Step 1: Planner - Create variation plan
         logger.info("Step 1: Planning variation")
         plan = _call_planner_llm(title, description, categories, locale)
-        prompt = _render_flux_prompt(plan, locale)
+        prompt = _render_flux_prompt(plan, locale, categories=categories)
         logger.info("Planner complete: prompt_len=%d", len(prompt))
         
         # Step 2: FLUX - Generate image (async!)

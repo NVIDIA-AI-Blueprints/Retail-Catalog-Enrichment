@@ -59,7 +59,16 @@ A GenAI-powered catalog enrichment system that transforms basic product images i
 
 ### Hardware Requirements
 
-Expect that you will want the NIM microservices to be self-hosted as you progress in your catalog enrichment pipeline development. For self-hosting the project with these microservices locally deployed, the recommended system requirement is **4 H100 GPUs** 
+For self-hosting the NIM microservices locally, the following GPU requirements apply:
+
+| Model | Purpose | Minimum GPU | Recommended GPU |
+|-------|---------|-------------|-----------------|
+| Nemotron-Nano-12B-V2-VL | Vision-Language Analysis | 1× A100 | 1× H100 |
+| Llama-3.3-Nemotron-Super-49B | Prompt Planning (LLM) | 1× H100 | 1× H100 |
+| FLUX Kontext Dev | Image Generation | 1× H100 | 1× H100 |
+| Microsoft TRELLIS | 3D Asset Generation | 1× L40S | 1× L40S |
+
+**Total recommended setup**: 3× H100 + 1× L40S (or 4× H100 for uniform configuration)
 
 ### Deployment Options
 
@@ -192,6 +201,10 @@ The system provides three main endpoints:
 - `POST /vlm/analyze` - Fast VLM/LLM analysis
 - `POST /generate/variation` - Image generation with FLUX
 - `POST /generate/3d` - 3D asset generation with TRELLIS
+
+### Image Input Guidance
+
+- **Recommended image size**: For best results, use product images that are ideally **500×500 pixels or higher** (JPEG or PNG).
 
 For detailed API documentation with request/response examples, see **[API Documentation](docs/API.md)**.
 

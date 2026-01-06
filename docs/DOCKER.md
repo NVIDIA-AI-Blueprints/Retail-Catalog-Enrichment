@@ -16,10 +16,10 @@ The application consists of the following services:
 ## Prerequisites
 
 - Docker 24.0+ with Docker Compose
-- NVIDIA GPU with Docker GPU support (nvidia-docker2)
+- NVIDIA 4xH100 (80GB) GPU with Docker GPU support (nvidia-docker2)
 - NVIDIA NGC API Key
 - HuggingFace Token (for Flux model)
-- At least 4 GPUs (or adjust GPU assignments in docker-compose.yml)
+- 512GB disk space
 
 ## Setup
 
