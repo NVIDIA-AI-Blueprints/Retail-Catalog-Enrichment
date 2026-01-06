@@ -193,11 +193,8 @@ def _render_flux_prompt(plan: Dict[str, Any], locale: str = "en-US", categories:
     negatives = plan.get("negatives", [])
     neg_text = "; ".join(negatives) if isinstance(negatives, list) else str(negatives)
     category_set = {c.strip().lower() for c in (categories or []) if isinstance(c, str)}
-    is_clothing = "clothing" in category_set
-    
-    logger.info("Rendering FLUX prompt (English-only) for locale=%s", locale)
-    
-    # Build English prompt for FLUX
+    is_clothing = "clothing" in category_set   
+  
     if is_clothing:
         prompt = (
             f"Keep {preserve} unchanged. Clothing styling: product-only (NOT worn); no people, no mannequins, no body parts. "
