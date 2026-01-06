@@ -27,7 +27,7 @@ class TestRenderFluxPrompt:
     
     def test_render_complete_plan(self, sample_flux_plan):
         """Test rendering a complete FLUX plan."""
-        prompt = _render_flux_prompt(sample_flux_plan, locale="en-US")
+        prompt = _render_flux_prompt(sample_flux_plan)
         
         assert "elegant black handbag with gold hardware" in prompt.lower()
         assert "marble bistro table" in prompt.lower()
@@ -86,22 +86,6 @@ class TestRenderFluxPrompt:
         assert "the product" in prompt.lower()
         assert "hyperrealistic" in prompt.lower()
         assert isinstance(prompt, str)
-    
-    def test_render_different_locales(self):
-        """Test that prompt is in English regardless of locale."""
-        plan = {
-            "preserve_subject": "handbag",
-            "background_style": "Parisian café"
-        }
-        
-        prompt_us = _render_flux_prompt(plan, locale="en-US")
-        prompt_es = _render_flux_prompt(plan, locale="es-ES")
-        prompt_fr = _render_flux_prompt(plan, locale="fr-FR")
-        
-        # All prompts should be in English (FLUX requirement)
-        assert "handbag" in prompt_us.lower()
-        assert "handbag" in prompt_es.lower()
-        assert "handbag" in prompt_fr.lower()
 
 
 class TestExtractBase64ImageFromFluxResponse:

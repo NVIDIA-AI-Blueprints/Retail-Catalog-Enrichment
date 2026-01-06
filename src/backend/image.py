@@ -180,11 +180,11 @@ CRITICAL: Write EVERYTHING in ENGLISH (preserve_subject, background_style, all f
     }
 
 
-def _render_flux_prompt(plan: Dict[str, Any], locale: str = "en-US", categories: Optional[List[str]] = None) -> str:
+def _render_flux_prompt(plan: Dict[str, Any], categories: Optional[List[str]] = None) -> str:
     """Render a FLUX prompt from a variation plan.
     
-    NOTE: Always renders in English since FLUX only supports English.
-    The plan itself should already be in English (enforced by _call_planner_llm).
+    NOTE: Always renders in English since FLUX only supports English. The plan itself
+    should already be in English (enforced by _call_planner_llm).
     """
     preserve = plan.get("preserve_subject", "the product")
     background = plan.get("background_style", "neutral studio background")
@@ -377,7 +377,7 @@ async def generate_image_variation(
         # Step 1: Planner - Create variation plan
         logger.info("Step 1: Planning variation")
         plan = _call_planner_llm(title, description, categories, locale)
-        prompt = _render_flux_prompt(plan, locale, categories=categories)
+        prompt = _render_flux_prompt(plan, categories=categories)
         logger.info("Planner complete: prompt_len=%d", len(prompt))
         
         # Step 2: FLUX - Generate image (async!)
