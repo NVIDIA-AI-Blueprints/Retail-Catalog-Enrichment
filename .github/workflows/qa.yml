@@ -102,7 +102,7 @@ jobs:
             
             # Skip cloud NIM config and container teardown cells for 1_Deploy_Catalog_Enrichment.ipynb
             if [[ "$NOTEBOOK_NAME" == "1_Deploy_Catalog_Enrichment" ]]; then
-              skip_cells "$TEMP_NOTEBOOK" 6 47
+              skip_cells "$TEMP_NOTEBOOK" 7 48
               
               echo "Modifying notebook for CI environment..."
               
