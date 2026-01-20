@@ -8,6 +8,10 @@
 
 A GenAI-powered catalog enrichment system that transforms basic product images into comprehensive, rich catalog entries using NVIDIA's Nemotron VLM for content analysis, Nemotron LLM for intelligent prompt planning, FLUX Kontext model for generating high-quality product variations, and TRELLIS model for 3D asset generation.
 
+## Demo
+
+▶️ **[Watch the Demo Video](https://www.youtube.com/watch?v=VGXCQeRZELg)**
+
 ## Architecture
 
 ![Shopping Assistant Diagram](deploy/diagram.jpg)
