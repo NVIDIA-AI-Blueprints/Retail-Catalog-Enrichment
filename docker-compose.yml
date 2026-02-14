@@ -83,7 +83,7 @@ services:
 
   # LLM Model
   llm-nim:
-    image: nvcr.io/nim/nvidia/llama-3.3-nemotron-super-49b-v1.5:1.14
+    image: nvcr.io/nim/nvidia/nemotron-3-nano:1.7.0
     container_name: nim-llm
     ports:
       - "8002:8000"
@@ -107,7 +107,7 @@ services:
 
   # Trellis Model - 3D Asset Generation
   trellis-nim:
-    image: nvcr.io/nim/microsoft/trellis:1.0.0
+    image: nvcr.io/nim/microsoft/trellis:1.0.1
     container_name: nim-trellis
     ports:
       - "8004:8000"

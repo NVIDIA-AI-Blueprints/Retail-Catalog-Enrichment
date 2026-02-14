@@ -68,7 +68,7 @@ For self-hosting the NIM microservices locally, the following GPU requirements a
 | Model | Purpose | Minimum GPU | Recommended GPU |
 |-------|---------|-------------|-----------------|
 | Nemotron-Nano-12B-V2-VL | Vision-Language Analysis | 1× A100 | 1× H100 |
-| Llama-3.3-Nemotron-Super-49B | Prompt Planning (LLM) | 1× H100 | 1× H100 |
+| Nemotron-Nano-V3 | Prompt Planning (LLM) | 1× A100 | 1× H100 |
 | FLUX Kontext Dev | Image Generation | 1× H100 | 1× H100 |
 | Microsoft TRELLIS | 3D Asset Generation | 1× L40S | 1× L40S |
 
@@ -142,7 +142,7 @@ Make sure you have accepted [https://huggingface.co/black-forest-labs/FLUX.1-Kon
    
    llm:
      url: "http://localhost:8002/v1"  # Your LLM NIM endpoint
-     model: "nvidia/llama-3.3-nemotron-super-49b-v1.5"
+     model: "nvidia/nemotron-nano-v3"
    
    flux:
      url: "http://localhost:8003/v1/infer"  # Your FLUX NIM endpoint
@@ -214,7 +214,7 @@ For detailed API documentation with request/response examples, see **[API Docume
 
 ## License
 
-GOVERNING TERMS: The Blueprint scripts are governed by Apache License, Version 2.0, and enables use of separate open source and proprietary software governed by their respective licenses: [NVIDIA-Nemotron-Nano-12B-v2-VL](https://catalog.ngc.nvidia.com/orgs/nim/teams/nvidia/containers/nemotron-nano-12b-v2-vl?version=1), [Llama-3.3-nemotron-super-49b-v1.5](https://catalog.ngc.nvidia.com/orgs/nim/teams/nvidia/containers/llama-3.3-nemotron-super-49b-v1.5?version=1), [FLUX.1-Kontext-Dev](https://huggingface.co/black-forest-labs/FLUX.1-Kontext-dev/blob/main/LICENSE.md), and [Microsoft TRELLIS](https://catalog.ngc.nvidia.com/orgs/nim/teams/microsoft/containers/trellis?version=1).
+GOVERNING TERMS: The Blueprint scripts are governed by Apache License, Version 2.0, and enables use of separate open source and proprietary software governed by their respective licenses: [NVIDIA-Nemotron-Nano-12B-v2-VL](https://catalog.ngc.nvidia.com/orgs/nim/teams/nvidia/containers/nemotron-nano-12b-v2-vl?version=1), [Nemotron-Nano-V3](https://catalog.ngc.nvidia.com/orgs/nim/teams/nvidia/containers/nemotron-3-nano?version=1.7.0), [FLUX.1-Kontext-Dev](https://huggingface.co/black-forest-labs/FLUX.1-Kontext-dev/blob/main/LICENSE.md), and [Microsoft TRELLIS](https://catalog.ngc.nvidia.com/orgs/nim/teams/microsoft/containers/trellis?version=1).
 
 ADDITIONAL INFORMATION: 
 FLUX.1-Kontext-Dev license: [https://huggingface.co/black-forest-labs/FLUX.1-Kontext-dev/blob/main/LICENSE.md](https://huggingface.co/black-forest-labs/FLUX.1-Kontext-dev/blob/main/LICENSE.md).

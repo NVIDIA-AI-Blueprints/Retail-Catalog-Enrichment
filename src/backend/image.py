@@ -112,7 +112,7 @@ CATEGORY-SPECIFIC BACKGROUNDS:
 - For other categories: choose contextually appropriate settings that match how the product is typically used in that country
 
 Produce ONLY a JSON object with no markdown formatting or code blocks. Required schema:
-{{"preserve_subject": "<describe the product in ENGLISH - e.g., 'luxury black and gold handbag'>", 
+{{"preserve_subject": "<SHORT product name from the TITLE only, 3-8 words max in ENGLISH. Do NOT describe materials, labels, caps, certifications, or visual details - the input image is the reference. Just name the product.>", 
 "background_style": "<culturally authentic setting for {country} in ENGLISH with iconic elements - be specific and creative>", 
 "camera_angle": "<varied: overhead/eye-level/low angle/3-4 view/close-up>", 
 "lighting": "<varied and region-appropriate: natural window/golden hour/studio softbox/side light/overcast/etc>", 
@@ -120,9 +120,11 @@ Produce ONLY a JSON object with no markdown formatting or code blocks. Required 
 "negatives": ["do not alter the subject", "no text, no logos, no duplicates"], 
 "cfg_scale": <float between 2.5-4.5>, "steps": <int 25-40>, "variants": 1}}
 
-CRITICAL: Write EVERYTHING in ENGLISH (preserve_subject, background_style, all fields). Return the raw JSON object only - no ```json``` or ``` blocks. Keep the subject unchanged. Do not add extra keys or commentary. Make each background culturally rich AND visually compelling."""}
+CRITICAL: Write EVERYTHING in ENGLISH (preserve_subject, background_style, all fields). Return the raw JSON object only - no ```json``` or ``` blocks. Keep the subject unchanged. Do not add extra keys or commentary. Make each background culturally rich AND visually compelling.
+CRITICAL: preserve_subject MUST be a short product name (3-8 words) derived from the TITLE. Do NOT include physical descriptions like colors, materials, labels, cap details, or certifications. The original image already serves as the visual reference - the text only needs to IDENTIFY the product, not DESCRIBE it."""}
         ],
-        temperature=0.8, top_p=1, max_tokens=1024, stream=True
+        temperature=0.8, top_p=1, max_tokens=1024, stream=True,
+        extra_body={"reasoning_budget": 16384, "chat_template_kwargs": {"enable_thinking": False}}
     )
 
     text = "".join(chunk.choices[0].delta.content for chunk in completion if chunk.choices[0].delta and chunk.choices[0].delta.content).strip()

@@ -30,71 +30,21 @@ load_dotenv()
 
 logger = logging.getLogger("catalog_enrichment.reflection")
 
-REFLECTION_PROMPT_TEMPLATE = """Evaluate the {product_name} by comparing it between ORIGINAL and GENERATED images.
+REFLECTION_PROMPT_TEMPLATE = """Compare the {product_name} between the ORIGINAL (first image) and GENERATED (second image). Ignore backgrounds — they will differ.
 
-**CRITICAL**: Backgrounds WILL differ (this is intentional). DO NOT evaluate backgrounds, environments, windows, architecture, furniture, lighting, or any non-product elements.
+STEP 1: Is the {product_name} clearly visible and present in the GENERATED image?
+- If the product is missing, barely visible, or replaced by something else → score 0, issue: "product not present in generated image"
 
-**FOCUS**: Compare ONLY the {product_name} itself. Be EXTREMELY STRICT.
+STEP 2: If present, compare the product only:
+- Shape and structure: same silhouette, components, proportions?
+- Color and material: same hue, texture, finish?
+- Scale: realistic size relative to the scene?
+- Only report issues you can clearly see. Do not guess or speculate.
 
-**Evaluation Criteria** (100 points total):
+Score 0-100. Most images score 50-70. Above 85 is rare.
 
-1. **Product Structure & Form Fidelity** (between 30-40 points):
-   - The {product_name} must be structurally IDENTICAL: same shape, components, and features
-   - CRITICAL: All structural elements must match (e.g., straps, handles, pockets, closures)
-   - NO features added or removed
-   - Deduct 20-30 points for any structural changes (missing/added elements, shape distortion)
-   - Deduct 15-25 points for proportion changes in product components
-
-2. **Materials & Surface Properties** (between 20-30 points):
-   - Colors must match EXACTLY - no hue, saturation, or tone shifts
-   - Materials and textures must be identical (leather grain, fabric weave, surface finish)
-   - Reflective properties must match (matte stays matte, glossy stays glossy)
-   - Hardware/details must retain identical finish (gold stays gold, silver stays silver)
-   - Deduct 15-20 points for color/tone shifts
-   - Deduct 10-15 points for material/texture differences
-   - Deduct 8-12 points for reflectivity changes
-
-3. **Size & Scale Realism** (between 15-20 points):
-   - Product size must be REALISTIC in the generated context
-   - Compare to reference objects (hands, furniture if visible)
-   - Deduct 15-20 points if clearly oversized/undersized
-   - Deduct 10-15 points if moderately disproportionate
-   - Deduct 5-10 points if slightly off-scale
-
-4. **Anatomical Accuracy** (between 5-10 points) - ONLY IF hands/body parts are visible interacting with product:
-   - Exactly 5 fingers per hand with correct proportions
-   - Natural joint articulation and realistic anatomy
-   - Deduct 8-10 points for wrong finger count or major distortions
-   - Deduct 5-8 points for anatomical abnormalities
-
-**Strictness Requirements**:
-- Find and report EVERY flaw in the {product_name}
-- Most images have multiple issues and should score 50-70%
-- Scores above 85% should be RARE (only when product is nearly perfect)
-- Look carefully for subtle differences in color, texture, shape, and proportions
-
-**Compounding Rule**: 
-- 2+ major product issues → cap score at 60%
-- 3+ product issues → cap score at 55%
-- 4+ product issues → cap score at 50%
-
-**Scoring Scale**:
-- 0-40%: Unusable (critical product failures)
-- 41-60%: Poor (significant product issues)
-- 61-75%: Acceptable (noticeable product flaws)
-- 76-85%: Good (minor product imperfections)
-- 86-95%: Very good (barely noticeable issues)
-- 96-100%: Exceptional (rare, <1% - nearly perfect product replication)
-
-Return ONLY this JSON:
-{{
-  "value": <float 0-100>,
-  "issues": ["specific product issue 1", "specific product issue 2", ...]
-}}
-
-issues size should be 6 or less.
-
-Empty issues array only if the {product_name} is perfect. Be strict and thorough."""
+Return ONLY JSON:
+{{"value": <float>, "issues": ["issue1", "issue2", ...]}}"""
 
 
 def evaluate_image_quality(
@@ -144,7 +94,7 @@ def evaluate_image_quality(
                 {"role": "system", "content": "/no_think"},
                 {"role": "user", "content": content}
             ],
-            temperature=0.9,
+            temperature=0.2,
             top_p=0.9,
             max_tokens=768,
             stream=False

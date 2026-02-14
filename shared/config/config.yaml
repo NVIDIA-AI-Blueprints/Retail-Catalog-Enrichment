@@ -6,7 +6,7 @@ vlm:
 
 llm:
   url: "http://nim-llm:8000/v1"
-  model: "nvidia/llama-3.3-nemotron-super-49b-v1.5"
+  model: "nvidia/nemotron-3-nano"
 
 flux:
   url: "http://nim-flux:8000/v1/infer"

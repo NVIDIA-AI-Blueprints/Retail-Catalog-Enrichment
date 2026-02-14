@@ -47,6 +47,7 @@ NGC_API_KEY_NOT_SET_ERROR = "NGC_API_KEY is not set"
 # Allowed product categories for classification
 PRODUCT_CATEGORIES = [
     "clothing",
+    "footwear",
     "kitchen", 
     "accessories",
     "toys",
@@ -85,81 +86,32 @@ def _call_nemotron_enhance_vlm(
     vlm_json = json.dumps(vlm_output, indent=2, ensure_ascii=False)
     product_json = json.dumps(product_data, indent=2, ensure_ascii=False) if product_data else None
 
-    # Build the product data section
-    product_section = ""
-    if product_data:
-        product_section = f"""
-EXISTING PRODUCT DATA:
-{product_json}
+    product_section = f"\nEXISTING PRODUCT DATA:\n{product_json}\n" if product_data else ""
 
-Use the VLM analysis to enrich this data. Preserve user-provided fields (title, tags) while adding visual insights.
+    prompt = f"""/no_think You are a product catalog copywriter. Enhance the content below into compelling e-commerce copy in {info['language']} for {info['region']} ({info['context']}).
 
-"""
-
-    prompt = f"""/no_think You are an expert product catalog content specialist for an e-commerce platform. Your role is to create compelling, accurate catalog content.
-
-VISUAL ANALYSIS (from Vision Model - always in English, direct observation of the product image):
+VISUAL ANALYSIS (what the camera sees):
 {vlm_json}
-{product_section} ALLOWED CATEGORIES (must use one or more from this list):
-{json.dumps(PRODUCT_CATEGORIES)}
+{product_section}
+ALLOWED CATEGORIES: {json.dumps(PRODUCT_CATEGORIES)}
 
-{'═' * 80}
-CONTENT ENHANCEMENT & LOCALIZATION STRATEGY:
-{'═' * 80}
+YOUR TASK:
+- title: Write a compelling, descriptive product title. {"Use the existing title as a starting point but IMPROVE it with visual details (materials, colors, style)." if product_data else "Create a compelling product name."} Write in {info['language']}.
+- description: Write a rich, persuasive product description highlighting materials, design, and features. {"Expand well beyond the existing description using VLM visual insights." if product_data else "Focus on what makes this product appealing."} Write in {info['language']}.
+- categories: Pick from allowed list only. English. Array format.
+- tags: {"Keep all existing user tags AND add more from the visual analysis." if product_data else "Generate 10 relevant search tags."} English.
+- colors: Use the VLM colors. English.
+{f"Keep any other fields from the existing data (price, SKU, etc.) unchanged." if product_data else ""}
 
-IMPORTANT: The VLM analysis above is always in English. Your task is to enhance it and then localize to {info['language']} for {info['region']}.
-
-1. **Title** (in {info['language']} for {info['region']}):
-   {'- Preserve the existing title and enrich with VLM visual details' if product_data else '- Enhance the VLM title with:'}
-   {'- Keep user-provided text, add descriptive enhancements if helpful' if product_data else '  * More compelling and precise language'}
-   - Translate naturally to {info['language']} using proper regional terminology: {info['context']}
-   - Maintain accuracy - don't hallucinate product types
-
-2. **Description** (in {info['language']} for {info['region']}):
-   {'- If existing product data provided:' if product_data else '- Expand the VLM description with:'}
-   {'  * Preserve core messaging from existing description' if product_data else '  * Rich, flowing narrative'}
-   {'  * Enrich with VLM visual observations' if product_data else '  * Persuasive marketing language'}
-   {'  * Create unified, flowing narrative (not concatenation)' if product_data else '  * Focus on materials, design, features'}
-   - Translate naturally to {info['language']} with regional terminology
-   - Maintain factual accuracy from the VLM observation
-
-3. **Categories** (MUST be an array):
-   {'- Validate existing categories against VLM observation' if product_data else '- Use VLM categories as baseline'}
-   - MUST use categories from the allowed list above
-   - Always return as an array: "categories": ["category1", "category2"]
-   - Keep in English (not translated)
-
-4. **Tags** (CRITICAL - User Input Priority):
-   {'- MUST PRESERVE ALL user-provided tags from existing data (these are intentional user choices)' if product_data else '- Enhance VLM tags with additional relevant terms'}
-   {'- ADD relevant tags from VLM analysis that complement user tags' if product_data else ''}
-   {'- User tags take priority even if not visually obvious' if product_data else ''}
-   {'- Combine user tags + VLM tags, remove only exact duplicates' if product_data else ''}
-   - Keep in English (not translated)
-   - Make them specific and useful for search/filtering
-
-5. **Colors**:
-   - Use VLM's color analysis (most accurate from visual observation)
-   - Keep in English (not translated)
-
-{'6. **Trust Priority** (when merging existing product data):' if product_data else ''}
-{'   - TRUST visual analysis for: colors, materials, design details, visual attributes' if product_data else ''}
-{'   - PRESERVE existing data for: price, SKU, specifications, dimensions' if product_data else ''}
-{'   - ALWAYS PRESERVE user-provided tags (they may describe non-visual attributes like taste, certifications, ingredients)' if product_data else ''}
-{'   - RESOLVE conflicts by prioritizing visual evidence, EXCEPT for tags (always keep user tags)' if product_data else ''}
-
-{'═' * 80}
-OUTPUT FORMAT:
-{'═' * 80}
-{f'Return the enhanced data using the EXISTING PRODUCT DATA schema/structure. Preserve all original fields and add enriched insights. Translate title and description to {info["language"]}.' if product_data else f'Return enhanced product data with the structure: {{"title": "...", "description": "...", "categories": [...], "tags": [...], "colors": [...]}}. Write title and description in {info["language"]} for {info["region"]}.'}
-
-Return ONLY valid JSON. No markdown, no commentary, no comments (// or /* */)."""
+Return ONLY valid JSON. No markdown, no comments."""
 
     logger.info("[Step 1] Sending prompt to Nemotron (length: %d chars)", len(prompt))
 
     completion = client.chat.completions.create(
         model=llm_config['model'],
         messages=[{"role": "system", "content": "/no_think"}, {"role": "user", "content": prompt}],
-        temperature=0.5, top_p=0.9, max_tokens=2048, stream=True
+        temperature=0.5, top_p=0.9, max_tokens=2048, stream=True,
+        extra_body={"reasoning_budget": 16384, "chat_template_kwargs": {"enable_thinking": False}}
     )
 
     text = "".join(chunk.choices[0].delta.content for chunk in completion if chunk.choices[0].delta and chunk.choices[0].delta.content)
@@ -243,12 +195,15 @@ CRITICAL RULES:
    - DO NOT remove existing fields
    - Only modify the VALUES of existing fields
 
-2. **Description Field Formatting**:
-   - If brand instructions specify sections or structure for the description, incorporate them INTO the description field as formatted text
+2. **Description Field Formatting** (MANDATORY):
+   - CAREFULLY READ the brand instructions for ANY mention of sections, structure, or content types
+   - If the brand instructions mention ANY of these, you MUST create clearly labeled sections with headers in the description
+   - EVERY section or content type mentioned in the brand instructions MUST appear as a distinct, labeled section in the output - do NOT skip or merge any
+   - Each section MUST have a header followed by detailed bullet points or paragraphs
    - CRITICAL: Separate each section with double newlines (\\n\\n) for readability
-   - Each section should be on its own paragraph
    - Keep everything in the description field - DO NOT create separate JSON fields for sections
    - The description must be a single string value with proper line breaks between sections
+   - When in doubt about whether the brand instructions ask for structure, ALWAYS use structured sections rather than plain prose
 
 3. **Apply Brand Voice** (in {info['language']} for {info['region']}):
    - Apply brand voice/tone to title, description, categories, and tags
@@ -282,7 +237,8 @@ Return ONLY valid JSON. No markdown, no commentary, no comments (// or /* */).""
     completion = client.chat.completions.create(
         model=llm_config['model'],
         messages=[{"role": "system", "content": "/no_think"}, {"role": "user", "content": prompt}],
-        temperature=0.5, top_p=0.9, max_tokens=2048, stream=True
+        temperature=0.2, top_p=0.9, max_tokens=2048, stream=True,
+        extra_body={"reasoning_budget": 16384, "chat_template_kwargs": {"enable_thinking": False}}
     )
 
     text = "".join(chunk.choices[0].delta.content for chunk in completion if chunk.choices[0].delta and chunk.choices[0].delta.content)
@@ -383,23 +339,27 @@ TASK:
 2. Include any visible brand names or product text shown on the item
 3. Write in ENGLISH - be accurate about what you see
 
-CATEGORIES: Choose from this allowed set: {categories_str}
+CATEGORIES - Choose ONLY from this allowed set: {categories_str}
+- Pick 1-2 categories that GENUINELY describe the product
+- It is BETTER to pick only 1 accurate category than to force a second one that doesn't fit
+- If only one category applies, return just one: e.g., "categories": ["kitchen"]
+- Do NOT stretch or force-fit categories - if the product doesn't belong in a category, don't include it
 
 TAGS: Generate exactly 10 descriptive tags (2-4 words each) for search/filtering
 
-COLORS - Extract only PRIMARY product colors (2-3 maximum):
-- Focus on the actual material colors of the product itself
-- Include major hardware/accent colors (e.g., gold buckles on black bag)
-- IGNORE: reflections, highlights, shadows, background, lighting effects
-- Use simple color names: "red", "blue", "black", "white", "grey", "green", "yellow", "orange", "purple", "pink", "navy", "beige", "silver", "gold"
+COLORS - What colors would a customer use to describe this product? (1-2 max)
+- Include the main material color AND any visible hardware/accent colors (e.g., gold clasps, silver buckles)
+- NEVER include the background/backdrop color
+- NEVER include hidden parts (shoe soles, inner linings)
+- Use simple names: red, blue, black, white, grey, green, yellow, orange, purple, pink, navy, beige, silver, gold, tan, brown, cream, burgundy, olive
 
 Return ONLY valid JSON:
 {{
   "title": "<compelling product name>",
   "description": "<detailed catalog description>",
-  "categories": ["<category1>", "<category2>"],
+  "categories": ["<category>"],
   "tags": ["<tag1>", "<tag2>", ...],
-  "colors": ["<color1>", "<color2>"]
+  "colors": ["<color1>"]
 }}"""
 
     completion = client.chat.completions.create(
@@ -408,7 +368,7 @@ Return ONLY valid JSON:
             {"type": "image_url", "image_url": {"url": f"data:{content_type};base64,{base64.b64encode(image_bytes).decode()}"}},
             {"type": "text", "text": prompt_text}
         ]}],
-        temperature=0.9, top_p=0.9, max_tokens=1024, stream=True
+        temperature=0.3, top_p=0.9, max_tokens=1024, stream=True
     )
 
     text = "".join(chunk.choices[0].delta.content for chunk in completion if chunk.choices[0].delta and chunk.choices[0].delta.content)
