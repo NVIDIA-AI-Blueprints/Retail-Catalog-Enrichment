@@ -89,10 +89,12 @@ async def health_nims() -> JSONResponse:
                 response = await client.get(health_url)
                 if response.status_code == 200:
                     data = response.json()
-                    # Check for VLM/LLM format: {"object":"health.response","message":"Service is ready."}
-                    if data.get("object") == "health.response" and data.get("message") == "Service is ready.":
-                        logger.debug(f"{name} service is healthy (VLM/LLM format)")
-                        return "healthy"
+                    # Check for VLM/LLM format: {"object":"health.response","message":"Service is ready."} or {"object":"health.response","status":"ok"}
+                    if data.get("object") == "health.response":
+                        msg = (data.get("message") or "").lower().rstrip(".")
+                        if msg == "service is ready" or data.get("status") == "ok":
+                            logger.debug(f"{name} service is healthy (VLM/LLM format)")
+                            return "healthy"
                     # Check for FLUX/TRELLIS format: {"description":"Triton readiness check","status":"ready"}
                     if data.get("status") == "ready":
                         logger.debug(f"{name} service is healthy (Triton format)")
