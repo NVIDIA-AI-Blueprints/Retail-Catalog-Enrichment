@@ -96,8 +96,8 @@ VISUAL ANALYSIS (what the camera sees):
 ALLOWED CATEGORIES: {json.dumps(PRODUCT_CATEGORIES)}
 
 YOUR TASK:
-- title: Write a compelling, descriptive product title. {"Use the existing title as a starting point but IMPROVE it with visual details (materials, colors, style)." if product_data else "Create a compelling product name."} Write in {info['language']}.
-- description: Write a rich, persuasive product description highlighting materials, design, and features. {"Expand well beyond the existing description using VLM visual insights." if product_data else "Focus on what makes this product appealing."} Write in {info['language']}.
+- title: {"The existing title MUST be preserved — keep every word from it and only append visual details (materials, colors, style) to enrich it." if product_data else "Create a compelling product name."} Write in {info['language']}.
+- description: Write a rich, persuasive product description highlighting materials, design, and features. {"The existing description words MUST all appear in your output — expand around them with VLM visual insights." if product_data else "Focus on what makes this product appealing."} Write in {info['language']}.
 - categories: Pick from allowed list only. English. Array format.
 - tags: {"Keep all existing user tags AND add more from the visual analysis." if product_data else "Generate 10 relevant search tags."} English.
 - colors: Use the VLM colors. English.
