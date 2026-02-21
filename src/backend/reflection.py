@@ -15,7 +15,6 @@
 
 """Image quality evaluation for generated variations using VLM."""
 import os
-import json
 import base64
 import logging
 from typing import Optional, Dict, Any
@@ -25,6 +24,7 @@ from PIL import Image
 from dotenv import load_dotenv
 from openai import OpenAI
 from backend.config import get_config
+from backend.utils import parse_llm_json
 
 load_dotenv()
 
@@ -140,25 +140,21 @@ def _encode_image_to_base64(image_bytes: bytes, target_format: str = "png") -> s
 
 def _parse_quality_response(response_text: str) -> Optional[Dict[str, Any]]:
     """Parse VLM quality response, handling JSON or markdown-wrapped JSON."""
-    try:
-        text = response_text.strip()
-        
-        if "```" in text:
-            start = text.find("```json") + 7 if "```json" in text else text.find("```") + 3
-            end = text.find("```", start)
-            text = text[start:end].strip() if end > start else text
-        
-        data = json.loads(text)
-        
-        if isinstance(data, dict) and "value" in data:
-            score = max(0.0, min(100.0, float(data["value"])))
-            issues = data.get("issues", []) if isinstance(data.get("issues"), list) else []
-            return {"score": score, "issues": issues}
-        
+    data = parse_llm_json(response_text)
+    if data is None:
+        logger.warning(f"Parse failed - Response: {response_text}")
+        return None
+
+    if "value" not in data:
         logger.warning(f"Response missing 'value': {data}")
         return None
-        
-    except (json.JSONDecodeError, ValueError, TypeError) as e:
-        logger.warning(f"Parse failed: {e} - Response: {response_text}")
+
+    try:
+        score = max(0.0, min(100.0, float(data["value"])))
+    except (ValueError, TypeError) as e:
+        logger.warning(f"Invalid 'value': {e} - Response: {response_text}")
         return None
+
+    issues = data.get("issues", []) if isinstance(data.get("issues"), list) else []
+    return {"score": score, "issues": issues}
 

@@ -36,6 +36,7 @@ from PIL import Image
 from dotenv import load_dotenv
 from openai import OpenAI
 from backend.config import get_config
+from backend.utils import parse_llm_json
 from backend.reflection import evaluate_image_quality
 
 load_dotenv()
@@ -130,33 +131,11 @@ CRITICAL: preserve_subject MUST be a short product name (3-8 words) derived from
     text = "".join(chunk.choices[0].delta.content for chunk in completion if chunk.choices[0].delta and chunk.choices[0].delta.content).strip()
     logger.info("Planner LLM response received: %s", text)
     
-    json_text = text
-    if "```json" in text:
-        try:
-            start = text.find("```json") + len("```json")
-            end = text.find("```", start)
-            if end > start:
-                json_text = text[start:end].strip()
-                logger.info("Extracted JSON from markdown: %s", json_text)
-        except Exception as e:
-            logger.warning("Failed to extract JSON from markdown: %s", e)
-    elif "```" in text:
-        try:
-            start = text.find("```") + len("```")
-            end = text.find("```", start)
-            if end > start:
-                json_text = text[start:end].strip()
-                logger.info("Extracted JSON from generic code block: %s", json_text)
-        except Exception as e:
-            logger.warning("Failed to extract JSON from code block: %s", e)
-    
-    try:
-        plan = json.loads(json_text)
-        if isinstance(plan, dict):
-            logger.info("Successfully parsed planner JSON with keys: %s", list(plan.keys()))
-            return plan
-    except Exception as e:
-        logger.warning("Planner LLM returned non-JSON; using fallback plan. Parse error: %s", e)
+    parsed = parse_llm_json(text)
+    if parsed is not None:
+        logger.info("Successfully parsed planner JSON with keys: %s", list(parsed.keys()))
+        return parsed
+    logger.warning("Planner LLM returned non-JSON; using fallback plan.")
     
     # Randomized fallback options for variety
     backgrounds = [
