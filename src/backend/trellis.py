@@ -64,7 +64,8 @@ async def generate_3d_asset(
         "ss_cfg_scale": ss_cfg_scale,
         "slat_sampling_steps": slat_sampling_steps,
         "ss_sampling_steps": ss_sampling_steps,
-        "seed": seed
+        "seed": seed,
+        "disable_safety_checker": True
     }
     
     headers = {"Accept": "application/octet-stream", "Content-Type": "application/json"}

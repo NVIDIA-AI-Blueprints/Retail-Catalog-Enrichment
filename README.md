@@ -37,10 +37,8 @@ A GenAI-powered catalog enrichment system that transforms basic product images i
 ## Tech Stack
 
 **Backend:**
-- FastAPI + Uvicorn (ASGI server)
+- FastAPI + Uvicorn
 - Python 3.11+
-- OpenAI client (NVIDIA endpoint)
-- PIL (Pillow) for image processing
 
 **Frontend:**
 - Next.js 15 with React 19
@@ -90,11 +88,10 @@ For self-hosting the NIM microservices locally, the following GPU requirements a
 
 ### Environment Setup
 
-Create a `.env` file in the project root:
+Copy the example env file and fill in your keys:
 
 ```bash
-NGC_API_KEY=your_nvidia_api_key_here
-HF_TOKEN=your_huggingface_token_here
+cp .env.example .env
 ```
 
 **Getting API Keys:**

@@ -17,12 +17,12 @@ import os
 import json
 import base64
 import logging
-import re
 from typing import Optional, List, Dict, Any
 
 from dotenv import load_dotenv
 from openai import OpenAI
 from backend.config import get_config
+from backend.utils import parse_llm_json
 
 load_dotenv()
 
@@ -117,34 +117,11 @@ Return ONLY valid JSON. No markdown, no comments."""
     text = "".join(chunk.choices[0].delta.content for chunk in completion if chunk.choices[0].delta and chunk.choices[0].delta.content)
     logger.info("[Step 1] Nemotron response received: %d chars", len(text))
 
-    json_text = text.strip()
-    for marker in ("```json", "```"):
-        if marker in json_text:
-            try:
-                start = json_text.find(marker) + len(marker)
-                end = json_text.find("```", start)
-                if end > start:
-                    json_text = json_text[start:end].strip()
-                    break
-            except Exception as e:
-                logger.warning(f"[Step 1] Failed to extract JSON from {marker}: {e}")
-    
-    first_brace = json_text.find('{')
-    last_brace = json_text.rfind('}')
-    if first_brace != -1 and last_brace != -1 and last_brace > first_brace:
-        json_text = json_text[first_brace:last_brace+1]
-    
-    json_text = re.sub(r'//.*?(?=\n|$)', '', json_text)
-    json_text = re.sub(r'/\*.*?\*/', '', json_text, flags=re.DOTALL)
-
-    try:
-        parsed = json.loads(json_text)
-        if isinstance(parsed, dict):
-            logger.info("[Step 1] Enhancement successful: enhanced_keys=%s", list(parsed.keys()))
-            return parsed
-    except Exception as e:
-        logger.warning(f"[Step 1] JSON parse error: {e}, using VLM output")
-    
+    parsed = parse_llm_json(text, extract_braces=True, strip_comments=True)
+    if parsed is not None:
+        logger.info("[Step 1] Enhancement successful: enhanced_keys=%s", list(parsed.keys()))
+        return parsed
+    logger.warning("[Step 1] JSON parse failed, using VLM output")
     return vlm_output
 
 
@@ -244,34 +221,11 @@ Return ONLY valid JSON. No markdown, no commentary, no comments (// or /* */).""
     text = "".join(chunk.choices[0].delta.content for chunk in completion if chunk.choices[0].delta and chunk.choices[0].delta.content)
     logger.info("[Step 2] Nemotron response received: %d chars", len(text))
 
-    json_text = text.strip()
-    for marker in ("```json", "```"):
-        if marker in json_text:
-            try:
-                start = json_text.find(marker) + len(marker)
-                end = json_text.find("```", start)
-                if end > start:
-                    json_text = json_text[start:end].strip()
-                    break
-            except Exception as e:
-                logger.warning(f"[Step 2] Failed to extract JSON from {marker}: {e}")
-    
-    first_brace = json_text.find('{')
-    last_brace = json_text.rfind('}')
-    if first_brace != -1 and last_brace != -1 and last_brace > first_brace:
-        json_text = json_text[first_brace:last_brace+1]
-    
-    json_text = re.sub(r'//.*?(?=\n|$)', '', json_text)
-    json_text = re.sub(r'/\*.*?\*/', '', json_text, flags=re.DOTALL)
-
-    try:
-        parsed = json.loads(json_text)
-        if isinstance(parsed, dict):
-            logger.info("[Step 2] Brand alignment successful: keys=%s", list(parsed.keys()))
-            return parsed
-    except Exception as e:
-        logger.warning(f"[Step 2] JSON parse error: {e}, returning Step 1 content unchanged")
-    
+    parsed = parse_llm_json(text, extract_braces=True, strip_comments=True)
+    if parsed is not None:
+        logger.info("[Step 2] Brand alignment successful: keys=%s", list(parsed.keys()))
+        return parsed
+    logger.warning("[Step 2] JSON parse failed, returning Step 1 content unchanged")
     return enhanced_content
 
 
@@ -374,23 +328,10 @@ Return ONLY valid JSON:
     text = "".join(chunk.choices[0].delta.content for chunk in completion if chunk.choices[0].delta and chunk.choices[0].delta.content)
     logger.info("VLM response received: %d chars", len(text))
 
-    json_text = text.strip()
-    for marker in ("```json", "```"):
-        if marker in json_text:
-            try:
-                start = json_text.find(marker) + len(marker)
-                end = json_text.find("```", start)
-                if end > start:
-                    json_text = json_text[start:end].strip()
-                    break
-            except Exception:
-                pass
-
-    try:
-        parsed = json.loads(json_text)
-        return parsed if isinstance(parsed, dict) else {"title": "", "description": json_text, "categories": ["uncategorized"], "tags": [], "colors": []}
-    except Exception:
-        return {"title": "", "description": json_text, "categories": ["uncategorized"], "tags": [], "colors": []}
+    parsed = parse_llm_json(text)
+    if parsed is not None:
+        return parsed
+    return {"title": "", "description": text.strip(), "categories": ["uncategorized"], "tags": [], "colors": []}
 
 def run_vlm_analysis(
     image_bytes: bytes,
