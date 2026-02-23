@@ -1,5 +1,7 @@
 name: SonarQube Analysis
 
+# Triggering CI to test PR decoration with updated sonarqube-workflows
+
 on:
   push:
     branches: [ main, develop ]
@@ -9,7 +11,7 @@ on:
 
 jobs:
   sonarqube:
-    uses: NVIDIA-AI-Blueprints/sonarqube-workflows/.github/workflows/sonarqube-reusable-template.yml@main
+    uses: NVIDIA-AI-Blueprints/sonarqube-workflows/.github/workflows/sonarqube-reusable-template.yml@kt-pr-decor
     with:
       # Project identification
       organization: TEGRASW
