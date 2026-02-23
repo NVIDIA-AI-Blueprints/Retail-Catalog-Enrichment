@@ -11,12 +11,12 @@ dependencies = [
   "uvicorn[standard]==0.38.0",
   "starlette==0.49.3",
   "fastapi==0.121.0",
-  "python-multipart==0.0.20",
+  "python-multipart==0.0.22",
   "openai==2.7.1",
   "python-dotenv==1.2.1",
   "requests==2.32.5",
   "httpx==0.28.1",
-  "pillow==12.0.0",
+  "pillow==12.1.1",
   "pyyaml==6.0.3",
 ]
 
@@ -25,6 +25,9 @@ packages = ["src/backend"]
 
 [tool.uv]
 managed = true
+constraint-dependencies = [
+  "urllib3>=2.6.3",
+]
 dev-dependencies = [
   "pytest==8.4.2",
   "pytest-mock==3.14.0",
