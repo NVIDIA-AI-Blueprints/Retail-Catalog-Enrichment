@@ -233,7 +233,11 @@ class PolicyLibrary:
                 conn.execute("DELETE FROM policy_documents")
                 conn.commit()
         if self._storage_dir.exists():
-            shutil.rmtree(self._storage_dir)
+            for child in self._storage_dir.iterdir():
+                if child.is_dir():
+                    shutil.rmtree(child)
+                else:
+                    child.unlink()
         self._storage_dir.mkdir(parents=True, exist_ok=True)
         self._db_path.parent.mkdir(parents=True, exist_ok=True)
         self.initialize()
