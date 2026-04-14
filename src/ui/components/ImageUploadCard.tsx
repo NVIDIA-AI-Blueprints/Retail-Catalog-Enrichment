@@ -33,6 +33,7 @@ export function ImageUploadCard({
 }: Props) {
   const [isHovered, setIsHovered] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
+  const [isImageHovered, setIsImageHovered] = useState(false);
 
   const handleDragOver = (e: React.DragEvent) => {
     onDragOver(e);
@@ -71,29 +72,57 @@ export function ImageUploadCard({
           </div>
         ) : uploadedImage ? (
           <>
-            <div 
-              className="relative rounded-lg overflow-hidden nvidia-green-border" 
-              style={{ 
+            <div
+              className="relative rounded-lg overflow-hidden nvidia-green-border"
+              style={{
                 minHeight: '400px',
                 backgroundColor: 'var(--color-gray-1000)',
                 borderWidth: '2px',
                 display: 'flex',
                 alignItems: 'center',
-                justifyContent: 'center'
+                justifyContent: 'center',
+                cursor: isAnalyzingFields || isGeneratingImage ? 'default' : 'pointer',
               }}
+              onClick={() => {
+                if (!isAnalyzingFields && !isGeneratingImage) onFileSelect();
+              }}
+              onMouseEnter={() => setIsImageHovered(true)}
+              onMouseLeave={() => setIsImageHovered(false)}
             >
-              <img 
-                src={uploadedImage} 
-                alt="Uploaded preview" 
-                style={{ 
-                  maxWidth: '100%', 
+              <img
+                src={uploadedImage}
+                alt="Uploaded preview"
+                style={{
+                  maxWidth: '100%',
                   maxHeight: '400px',
                   width: 'auto',
                   height: 'auto',
                   objectFit: 'contain',
-                  display: 'block'
+                  display: 'block',
+                  transition: 'opacity 0.2s',
+                  opacity: isImageHovered && !isAnalyzingFields && !isGeneratingImage ? 0.6 : 1,
                 }}
               />
+              {isImageHovered && !isAnalyzingFields && !isGeneratingImage && (
+                <div
+                  style={{
+                    position: 'absolute',
+                    inset: 0,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    pointerEvents: 'none',
+                  }}
+                >
+                  <svg width="32" height="32" fill="none" viewBox="0 0 24 24" stroke="#76B900">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                  </svg>
+                  <Text kind="body/semibold/sm" style={{ color: '#76B900', marginTop: '8px' }}>
+                    Click to replace image
+                  </Text>
+                </div>
+              )}
             </div>
             
             <Flex gap="3" align="center">

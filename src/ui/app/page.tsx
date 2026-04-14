@@ -58,6 +58,14 @@ function Home() {
       return;
     }
 
+    // Clear image-dependent results when replacing, but preserve settings
+    setAugmentedData(null);
+    setGeneratedImages([null, null]);
+    setQualityScores([null, null]);
+    setQualityIssues([null, null]);
+    setGenerated3DModel(null);
+    setModel3DError(null);
+
     setIsUploading(true);
     setUploadedFile(file);
 
@@ -343,6 +351,7 @@ function Home() {
               onChange={(e) => {
                 const file = e.target.files?.[0];
                 if (file) handleFileUpload(file);
+                if (fileInputRef.current) fileInputRef.current.value = '';
               }}
               style={{ display: 'none' }}
             />
