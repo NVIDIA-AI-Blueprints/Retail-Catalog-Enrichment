@@ -112,6 +112,16 @@ def sample_enhanced_product() -> Dict[str, Any]:
 
 
 @pytest.fixture
+def sample_faqs_response() -> list:
+    """Sample FAQ generation response."""
+    return [
+        {"question": "What material is this handbag made of?", "answer": "Premium leather construction with gold-tone hardware accents."},
+        {"question": "What occasions is this bag suitable for?", "answer": "Perfect for evening events, formal occasions, and upscale dining."},
+        {"question": "What are the main colors?", "answer": "Black with gold accents."}
+    ]
+
+
+@pytest.fixture
 def sample_flux_plan() -> Dict[str, Any]:
     """Sample FLUX variation plan."""
     return {

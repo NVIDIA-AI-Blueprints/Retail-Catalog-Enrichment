@@ -25,6 +25,7 @@ from backend.vlm import (
     _call_vlm,
     _call_nemotron_enhance_vlm,
     _call_nemotron_apply_branding,
+    _call_nemotron_generate_faqs,
     _call_nemotron_enhance,
     extract_vlm_observation,
     build_enriched_vlm_result,
@@ -394,6 +395,121 @@ class TestCallNemotronApplyBranding:
         
         # Should have same keys as input
         assert set(result.keys()) == set(sample_enhanced_product.keys())
+
+
+class TestCallNemotronGenerateFaqs:
+    """Tests for _call_nemotron_generate_faqs function."""
+
+    @patch('backend.vlm.OpenAI')
+    @patch('backend.vlm.get_config')
+    def test_generate_faqs_success(self, mock_get_config, mock_openai_class, sample_vlm_response, sample_faqs_response, mock_env_vars):
+        """Test successful FAQ generation with valid JSON array."""
+        mock_config = Mock()
+        mock_config.get_llm_config.return_value = {'url': 'http://test:8000/v1', 'model': 'test-llm-model'}
+        mock_get_config.return_value = mock_config
+
+        mock_client = Mock()
+        mock_openai_class.return_value = mock_client
+
+        mock_chunk = Mock()
+        mock_delta = Mock()
+        mock_delta.content = json.dumps(sample_faqs_response)
+        mock_choice = Mock()
+        mock_choice.delta = mock_delta
+        mock_chunk.choices = [mock_choice]
+        mock_client.chat.completions.create.return_value = [mock_chunk]
+
+        result = _call_nemotron_generate_faqs(sample_vlm_response, "en-US")
+
+        assert isinstance(result, list)
+        assert len(result) == 3
+        assert all("question" in faq and "answer" in faq for faq in result)
+        mock_client.chat.completions.create.assert_called_once()
+
+    @patch('backend.vlm.OpenAI')
+    @patch('backend.vlm.get_config')
+    def test_generate_faqs_empty_on_parse_failure(self, mock_get_config, mock_openai_class, sample_vlm_response, mock_env_vars):
+        """Test that non-JSON response returns empty list."""
+        mock_config = Mock()
+        mock_config.get_llm_config.return_value = {'url': 'http://test:8000/v1', 'model': 'test-llm-model'}
+        mock_get_config.return_value = mock_config
+
+        mock_client = Mock()
+        mock_openai_class.return_value = mock_client
+
+        mock_chunk = Mock()
+        mock_delta = Mock()
+        mock_delta.content = "This is not valid JSON at all"
+        mock_choice = Mock()
+        mock_choice.delta = mock_delta
+        mock_chunk.choices = [mock_choice]
+        mock_client.chat.completions.create.return_value = [mock_chunk]
+
+        result = _call_nemotron_generate_faqs(sample_vlm_response, "en-US")
+
+        assert result == []
+
+    @patch('backend.vlm.OpenAI')
+    @patch('backend.vlm.get_config')
+    def test_generate_faqs_with_markdown_wrapped_response(self, mock_get_config, mock_openai_class, sample_vlm_response, sample_faqs_response, mock_env_vars):
+        """Test extraction of FAQs from markdown-fenced JSON."""
+        mock_config = Mock()
+        mock_config.get_llm_config.return_value = {'url': 'http://test:8000/v1', 'model': 'test-llm-model'}
+        mock_get_config.return_value = mock_config
+
+        mock_client = Mock()
+        mock_openai_class.return_value = mock_client
+
+        wrapped_content = f"```json\n{json.dumps(sample_faqs_response)}\n```"
+        mock_chunk = Mock()
+        mock_delta = Mock()
+        mock_delta.content = wrapped_content
+        mock_choice = Mock()
+        mock_choice.delta = mock_delta
+        mock_chunk.choices = [mock_choice]
+        mock_client.chat.completions.create.return_value = [mock_chunk]
+
+        result = _call_nemotron_generate_faqs(sample_vlm_response, "en-US")
+
+        assert isinstance(result, list)
+        assert len(result) == 3
+        assert result[0]["question"] == sample_faqs_response[0]["question"]
+
+    @patch('backend.vlm.OpenAI')
+    @patch('backend.vlm.get_config')
+    def test_generate_faqs_with_locale(self, mock_get_config, mock_openai_class, sample_vlm_response, sample_faqs_response, mock_env_vars):
+        """Test FAQ generation with non-English locale."""
+        mock_config = Mock()
+        mock_config.get_llm_config.return_value = {'url': 'http://test:8000/v1', 'model': 'test-llm-model'}
+        mock_get_config.return_value = mock_config
+
+        mock_client = Mock()
+        mock_openai_class.return_value = mock_client
+
+        mock_chunk = Mock()
+        mock_delta = Mock()
+        mock_delta.content = json.dumps(sample_faqs_response)
+        mock_choice = Mock()
+        mock_choice.delta = mock_delta
+        mock_chunk.choices = [mock_choice]
+        mock_client.chat.completions.create.return_value = [mock_chunk]
+
+        result = _call_nemotron_generate_faqs(sample_vlm_response, "es-ES")
+
+        assert isinstance(result, list)
+        assert len(result) == 3
+        # Verify the prompt included Spanish locale context
+        call_args = mock_client.chat.completions.create.call_args
+        prompt = call_args.kwargs["messages"][1]["content"]
+        assert "Spanish" in prompt
+        assert "Spain" in prompt
+
+    def test_generate_faqs_raises_without_api_key(self, sample_vlm_response, monkeypatch):
+        """Test RuntimeError when NGC_API_KEY is not set."""
+        monkeypatch.delenv("NGC_API_KEY", raising=False)
+
+        with pytest.raises(RuntimeError, match="NGC_API_KEY is not set"):
+            _call_nemotron_generate_faqs(sample_vlm_response, "en-US")
 
 
 class TestCallNemotronEnhance:

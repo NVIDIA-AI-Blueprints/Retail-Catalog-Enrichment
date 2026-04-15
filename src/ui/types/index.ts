@@ -42,6 +42,11 @@ export interface PolicyUploadResult {
   processed: boolean;
 }
 
+export interface FAQ {
+  question: string;
+  answer: string;
+}
+
 export interface AugmentedData {
   title: string;
   description: string;
@@ -49,6 +54,7 @@ export interface AugmentedData {
   tags: string[];
   categories?: string[];
   policyDecision?: PolicyDecision;
+  faqs?: FAQ[];
 }
 
 export interface ImageMetadata {

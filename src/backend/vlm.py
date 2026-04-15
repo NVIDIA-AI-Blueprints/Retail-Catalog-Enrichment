@@ -309,6 +309,91 @@ Return ONLY valid JSON. No markdown, no commentary, no comments (// or /* */).""
     return enhanced_content
 
 
+def _call_nemotron_generate_faqs(
+    vlm_observation: Dict[str, Any],
+    locale: str = "en-US"
+) -> list:
+    """Generate 3-5 product FAQs from VLM observation using Nemotron.
+
+    Runs in parallel with enrichment to add zero latency. On any parse
+    failure the function returns an empty list so the caller can proceed
+    without FAQs.
+    """
+    logger.info("[FAQ] Generating FAQs: vlm_keys=%s, locale=%s", list(vlm_observation.keys()), locale)
+
+    if not (api_key := os.getenv("NGC_API_KEY")):
+        raise RuntimeError(NGC_API_KEY_NOT_SET_ERROR)
+
+    info = LOCALE_CONFIG.get(locale, {"language": "English", "region": "United States", "country": "United States", "context": "American English"})
+    llm_config = get_config().get_llm_config()
+    client = OpenAI(base_url=llm_config['url'], api_key=api_key)
+
+    observation_json = json.dumps(vlm_observation, indent=2, ensure_ascii=False)
+
+    prompt = f"""/no_think You are a retail product FAQ specialist. Generate 3 to 5 frequently asked questions and answers for the product described below.
+
+PRODUCT VISUAL ANALYSIS:
+{observation_json}
+
+TARGET LANGUAGE / REGION: {info['language']} ({info['region']})
+{info['context']}
+
+RULES:
+- Generate between 3 and 5 FAQs.
+- Each FAQ must have a "question" and an "answer" field.
+- Questions should cover practical topics a shopper would ask: materials, care instructions, sizing, use cases, compatibility, durability.
+- Answers must be helpful, concise (1-3 sentences), and factual.
+- ONLY reference attributes visible in the product analysis above. Do NOT fabricate specifications (weight, wattage, capacity, dimensions) unless they appear in the analysis.
+- Write questions and answers in {info['language']} appropriate for {info['region']}.
+
+OUTPUT FORMAT:
+Return ONLY a valid JSON array. No markdown, no commentary.
+Example: [{{"question": "...", "answer": "..."}}, ...]"""
+
+    logger.info("[FAQ] Sending prompt to Nemotron (length: %d chars)", len(prompt))
+
+    completion = client.chat.completions.create(
+        model=llm_config['model'],
+        messages=[{"role": "system", "content": "/no_think"}, {"role": "user", "content": prompt}],
+        temperature=0.1, top_p=0.9, max_tokens=2048, stream=True,
+        extra_body={"reasoning_budget": 16384, "chat_template_kwargs": {"enable_thinking": False}}
+    )
+
+    text = "".join(
+        chunk.choices[0].delta.content
+        for chunk in completion
+        if chunk.choices[0].delta and chunk.choices[0].delta.content
+    )
+    logger.info("[FAQ] Nemotron response received: %d chars", len(text))
+
+    # Parse JSON array (inline — parse_llm_json only handles dicts)
+    try:
+        cleaned = text.strip()
+        for marker in ("```json", "```"):
+            if marker in cleaned:
+                start = cleaned.find(marker) + len(marker)
+                end = cleaned.find("```", start)
+                if end > start:
+                    cleaned = cleaned[start:end].strip()
+                    break
+        first_bracket = cleaned.find("[")
+        last_bracket = cleaned.rfind("]")
+        if first_bracket != -1 and last_bracket > first_bracket:
+            cleaned = cleaned[first_bracket : last_bracket + 1]
+        parsed = json.loads(cleaned)
+        if isinstance(parsed, list) and all(
+            isinstance(f, dict) and "question" in f and "answer" in f
+            for f in parsed
+        ):
+            logger.info("[FAQ] Generated %d FAQs", len(parsed))
+            return parsed
+        logger.warning("[FAQ] Parsed JSON has unexpected structure, returning empty list")
+        return []
+    except (json.JSONDecodeError, ValueError) as exc:
+        logger.warning("[FAQ] JSON parse failed (%s), returning empty list", exc)
+        return []
+
+
 def _call_nemotron_enhance(
     vlm_output: Dict[str, Any], 
     product_data: Optional[Dict[str, Any]] = None,

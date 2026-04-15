@@ -205,7 +205,8 @@ function Home() {
         colors: analyzeData.colors || [],
         tags: analyzeData.tags || [],
         categories: analyzeData.categories || [],
-        policyDecision: analyzeData.policyDecision
+        policyDecision: analyzeData.policyDecision,
+        faqs: analyzeData.faqs || []
       });
       setIsAnalyzingFields(false);
 
