@@ -1,5 +1,5 @@
-import { Card, Stack, Text, Flex, FormField, TextInput, TextArea } from '@/kui-foundations-react-external';
-import { ProductFields, AugmentedData, PolicyDecision } from '@/types';
+import { Card, Stack, Text, Flex, FormField, TextInput, TextArea, Tabs, Accordion } from '@/kui-foundations-react-external';
+import { ProductFields, AugmentedData, PolicyDecision, FAQ } from '@/types';
 import { ProcessingSteps } from './ProcessingSteps';
 
 function PolicyComplianceCard({ decision }: { decision: PolicyDecision }) {
@@ -99,6 +99,39 @@ function PolicyComplianceCard({ decision }: { decision: PolicyDecision }) {
   );
 }
 
+function FaqTabContent({ faqs }: { faqs?: FAQ[] }) {
+  if (!faqs || faqs.length === 0) {
+    return (
+      <div style={{ padding: '24px', textAlign: 'center' }}>
+        <Text kind="body/regular/md" className="text-secondary">
+          No FAQs generated yet. Run analysis to generate product FAQs.
+        </Text>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ paddingTop: '16px' }}>
+      <Accordion
+        multiple
+        items={faqs.map((faq, index) => ({
+          slotTrigger: (
+            <Text kind="body/semibold/md" className="text-primary">
+              {faq.question}
+            </Text>
+          ),
+          slotContent: (
+            <Text kind="body/regular/md" className="text-primary" style={{ whiteSpace: 'pre-line', lineHeight: 1.6 }}>
+              {faq.answer}
+            </Text>
+          ),
+          value: String(index)
+        }))}
+      />
+    </div>
+  );
+}
+
 interface Props {
   fields: ProductFields;
   augmentedData: AugmentedData | null;
@@ -110,6 +143,135 @@ interface Props {
 export function FieldsCard({ fields, augmentedData, isAnalyzing, isGenerating, onFieldChange }: Props) {
   const disabled = isAnalyzing || isGenerating;
 
+  const detailsContent = (
+    <Stack gap="4">
+      {augmentedData?.policyDecision && (
+        <PolicyComplianceCard decision={augmentedData.policyDecision} />
+      )}
+
+      <div>
+        <FormField slotLabel="Title">
+          {(args: any) => (
+            <TextInput
+              {...args}
+              placeholder=""
+              size="medium"
+              value={fields.title}
+              onChange={(e: any) => onFieldChange('title', e.target.value)}
+              disabled={disabled}
+            />
+          )}
+        </FormField>
+        {augmentedData && (
+          <div className="mt-2 p-3 rounded-lg border border-base bg-surface-sunken">
+            <Stack gap="2">
+              <Text kind="body/semibold/md" className="nvidia-green-text">Augmented:</Text>
+              <Text kind="body/regular/md" className="text-primary">{augmentedData.title}</Text>
+            </Stack>
+          </div>
+        )}
+      </div>
+
+      <div>
+        <FormField slotLabel="Description">
+          {(args: any) => (
+            <TextArea
+              {...args}
+              placeholder=""
+              size="medium"
+              resizeable="manual"
+              value={fields.description}
+              onChange={(e: any) => onFieldChange('description', e.target.value)}
+              disabled={disabled}
+              attributes={{
+                TextAreaElement: { rows: 3 }
+              }}
+            />
+          )}
+        </FormField>
+        {augmentedData && (
+          <div className="mt-2 p-3 rounded-lg border border-base bg-surface-sunken">
+            <Stack gap="2">
+              <Text kind="body/semibold/md" className="nvidia-green-text">Augmented:</Text>
+              <Text kind="body/regular/md" className="text-primary" style={{ whiteSpace: 'pre-line' }}>
+                {augmentedData.description}
+              </Text>
+            </Stack>
+          </div>
+        )}
+      </div>
+
+      <div>
+        <FormField slotLabel="Colors">
+          {(args: any) => (
+            <TextInput
+              {...args}
+              placeholder=""
+              size="medium"
+              value={fields.color}
+              onChange={(e: any) => onFieldChange('color', e.target.value)}
+              disabled={disabled}
+            />
+          )}
+        </FormField>
+        {augmentedData && augmentedData.colors.length > 0 && (
+          <div className="mt-2 p-3 rounded-lg border border-base bg-surface-sunken">
+            <Stack gap="2">
+              <Text kind="body/semibold/md" className="nvidia-green-text">Augmented:</Text>
+              <Text kind="body/regular/md" className="text-primary">{augmentedData.colors.join(', ')}</Text>
+            </Stack>
+          </div>
+        )}
+      </div>
+
+      <div>
+        <FormField slotLabel="Categories">
+          {(args: any) => (
+            <TextInput
+              {...args}
+              placeholder=""
+              size="medium"
+              value={fields.categories}
+              onChange={(e: any) => onFieldChange('categories', e.target.value)}
+              disabled={disabled}
+            />
+          )}
+        </FormField>
+        {augmentedData?.categories && augmentedData.categories.length > 0 && (
+          <div className="mt-2 p-3 rounded-lg border border-base bg-surface-sunken">
+            <Stack gap="2">
+              <Text kind="body/semibold/md" className="nvidia-green-text">Augmented:</Text>
+              <Text kind="body/regular/md" className="text-primary">{augmentedData.categories.join(', ')}</Text>
+            </Stack>
+          </div>
+        )}
+      </div>
+
+      <div>
+        <FormField slotLabel="Tags">
+          {(args: any) => (
+            <TextInput
+              {...args}
+              placeholder=""
+              size="medium"
+              value={fields.tags}
+              onChange={(e: any) => onFieldChange('tags', e.target.value)}
+              disabled={disabled}
+            />
+          )}
+        </FormField>
+        {augmentedData && augmentedData.tags.length > 0 && (
+          <div className="mt-2 p-3 rounded-lg border border-base bg-surface-sunken">
+            <Stack gap="2">
+              <Text kind="body/semibold/md" className="nvidia-green-text">Augmented:</Text>
+              <Text kind="body/regular/md" className="text-primary">{augmentedData.tags.join(', ')}</Text>
+            </Stack>
+          </div>
+        )}
+      </div>
+    </Stack>
+  );
+
   return (
     <Card>
       <Stack gap="6">
@@ -120,132 +282,21 @@ export function FieldsCard({ fields, augmentedData, isAnalyzing, isGenerating, o
             <ProcessingSteps isAnalyzing={isAnalyzing} hasAugmentedData={!!augmentedData} />
           </div>
         ) : (
-          <Stack gap="4">
-            {augmentedData?.policyDecision && (
-              <PolicyComplianceCard decision={augmentedData.policyDecision} />
-            )}
-
-            <div>
-              <FormField slotLabel="Title">
-                {(args: any) => (
-                  <TextInput 
-                    {...args}
-                    placeholder=""
-                    size="medium"
-                    value={fields.title}
-                    onChange={(e: any) => onFieldChange('title', e.target.value)}
-                    disabled={disabled}
-                  />
-                )}
-              </FormField>
-              {augmentedData && (
-                <div className="mt-2 p-3 rounded-lg border border-base bg-surface-sunken">
-                  <Stack gap="2">
-                    <Text kind="body/semibold/md" className="nvidia-green-text">Augmented:</Text>
-                    <Text kind="body/regular/md" className="text-primary">{augmentedData.title}</Text>
-                  </Stack>
-                </div>
-              )}
-            </div>
-
-            <div>
-              <FormField slotLabel="Description">
-                {(args: any) => (
-                  <TextArea 
-                    {...args}
-                    placeholder=""
-                    size="medium"
-                    resizeable="manual"
-                    value={fields.description}
-                    onChange={(e: any) => onFieldChange('description', e.target.value)}
-                    disabled={disabled}
-                    attributes={{
-                      TextAreaElement: { rows: 3 }
-                    }}
-                  />
-                )}
-              </FormField>
-              {augmentedData && (
-                <div className="mt-2 p-3 rounded-lg border border-base bg-surface-sunken">
-                  <Stack gap="2">
-                    <Text kind="body/semibold/md" className="nvidia-green-text">Augmented:</Text>
-                    <Text kind="body/regular/md" className="text-primary" style={{ whiteSpace: 'pre-line' }}>
-                      {augmentedData.description}
-                    </Text>
-                  </Stack>
-                </div>
-              )}
-            </div>
-
-            <div>
-              <FormField slotLabel="Colors">
-                {(args: any) => (
-                  <TextInput 
-                    {...args}
-                    placeholder=""
-                    size="medium"
-                    value={fields.color}
-                    onChange={(e: any) => onFieldChange('color', e.target.value)}
-                    disabled={disabled}
-                  />
-                )}
-              </FormField>
-              {augmentedData && augmentedData.colors.length > 0 && (
-                <div className="mt-2 p-3 rounded-lg border border-base bg-surface-sunken">
-                  <Stack gap="2">
-                    <Text kind="body/semibold/md" className="nvidia-green-text">Augmented:</Text>
-                    <Text kind="body/regular/md" className="text-primary">{augmentedData.colors.join(', ')}</Text>
-                  </Stack>
-                </div>
-              )}
-            </div>
-
-            <div>
-              <FormField slotLabel="Categories">
-                {(args: any) => (
-                  <TextInput 
-                    {...args}
-                    placeholder=""
-                    size="medium"
-                    value={fields.categories}
-                    onChange={(e: any) => onFieldChange('categories', e.target.value)}
-                    disabled={disabled}
-                  />
-                )}
-              </FormField>
-              {augmentedData?.categories && augmentedData.categories.length > 0 && (
-                <div className="mt-2 p-3 rounded-lg border border-base bg-surface-sunken">
-                  <Stack gap="2">
-                    <Text kind="body/semibold/md" className="nvidia-green-text">Augmented:</Text>
-                    <Text kind="body/regular/md" className="text-primary">{augmentedData.categories.join(', ')}</Text>
-                  </Stack>
-                </div>
-              )}
-            </div>
-
-            <div>
-              <FormField slotLabel="Tags">
-                {(args: any) => (
-                  <TextInput 
-                    {...args}
-                    placeholder=""
-                    size="medium"
-                    value={fields.tags}
-                    onChange={(e: any) => onFieldChange('tags', e.target.value)}
-                    disabled={disabled}
-                  />
-                )}
-              </FormField>
-              {augmentedData && augmentedData.tags.length > 0 && (
-                <div className="mt-2 p-3 rounded-lg border border-base bg-surface-sunken">
-                  <Stack gap="2">
-                    <Text kind="body/semibold/md" className="nvidia-green-text">Augmented:</Text>
-                    <Text kind="body/regular/md" className="text-primary">{augmentedData.tags.join(', ')}</Text>
-                  </Stack>
-                </div>
-              )}
-            </div>
-          </Stack>
+          <Tabs
+            kind="secondary"
+            items={[
+              {
+                children: "Details",
+                value: "details",
+                slotContent: <div style={{ width: '100%' }}>{detailsContent}</div>
+              },
+              {
+                children: "FAQs",
+                value: "faqs",
+                slotContent: <div style={{ width: '100%' }}><FaqTabContent faqs={augmentedData?.faqs} /></div>
+              }
+            ]}
+          />
         )}
       </Stack>
     </Card>

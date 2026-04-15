@@ -33,7 +33,8 @@ export async function analyzeImage({ file, locale, productData, brandInstruction
   const data = await response.json();
   return {
     ...data,
-    policyDecision: data.policy_decision
+    policyDecision: data.policy_decision,
+    faqs: data.faqs || []
   };
 }
 

@@ -28,7 +28,7 @@ from openai import APIConnectionError
 
 from backend.policy import evaluate_policy_compliance
 from backend.policy_library import PolicyLibrary
-from backend.vlm import extract_vlm_observation, build_enriched_vlm_result
+from backend.vlm import extract_vlm_observation, build_enriched_vlm_result, _call_nemotron_generate_faqs
 from backend.image import generate_image_variation
 from backend.trellis import generate_3d_asset
 from backend.config import get_config
@@ -195,7 +195,12 @@ async def vlm_analyze(
                 "colors": vlm_observation.get("colors", []),
             },
         )
-        result, policy_contexts = await asyncio.gather(enrichment_task, retrieval_task)
+        faq_task = asyncio.to_thread(
+            _call_nemotron_generate_faqs,
+            vlm_observation,
+            locale,
+        )
+        result, policy_contexts, faqs = await asyncio.gather(enrichment_task, retrieval_task, faq_task)
         if policy_contexts:
             logger.info("Policy retrieval returned %d candidate policy record(s); running compliance evaluation.", len(policy_contexts))
             product_snapshot = {
@@ -250,6 +255,8 @@ async def vlm_analyze(
             payload["enhanced_product"] = result["enhanced_product"]
         if result.get("policy_decision"):
             payload["policy_decision"] = result["policy_decision"]
+        if faqs:
+            payload["faqs"] = faqs
         
         logger.info(f"/vlm/analyze success: title_len={len(payload['title'])} desc_len={len(payload['description'])} locale={locale}")
         return JSONResponse(payload)
