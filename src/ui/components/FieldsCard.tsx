@@ -1,4 +1,4 @@
-import { Card, Stack, Text, Flex, FormField, TextInput, TextArea, Tabs, Accordion } from '@/kui-foundations-react-external';
+import { Card, Stack, Text, Flex, FormField, TextInput, TextArea, Tabs, Accordion, Spinner } from '@/kui-foundations-react-external';
 import { ProductFields, AugmentedData, PolicyDecision, FAQ } from '@/types';
 import { ProcessingSteps } from './ProcessingSteps';
 
@@ -99,7 +99,20 @@ function PolicyComplianceCard({ decision }: { decision: PolicyDecision }) {
   );
 }
 
-function FaqTabContent({ faqs }: { faqs?: FAQ[] }) {
+function FaqTabContent({ faqs, isLoading }: { faqs?: FAQ[]; isLoading?: boolean }) {
+  if (isLoading) {
+    return (
+      <div style={{ padding: '40px', textAlign: 'center' }}>
+        <Stack gap="4" align="center">
+          <Spinner size="large" />
+          <Text kind="body/regular/md" className="text-secondary">
+            Generating FAQs...
+          </Text>
+        </Stack>
+      </div>
+    );
+  }
+
   if (!faqs || faqs.length === 0) {
     return (
       <div style={{ padding: '24px', textAlign: 'center' }}>
@@ -137,10 +150,11 @@ interface Props {
   augmentedData: AugmentedData | null;
   isAnalyzing: boolean;
   isGenerating: boolean;
+  isLoadingFaqs?: boolean;
   onFieldChange: (field: keyof ProductFields, value: string) => void;
 }
 
-export function FieldsCard({ fields, augmentedData, isAnalyzing, isGenerating, onFieldChange }: Props) {
+export function FieldsCard({ fields, augmentedData, isAnalyzing, isGenerating, isLoadingFaqs, onFieldChange }: Props) {
   const disabled = isAnalyzing || isGenerating;
 
   const detailsContent = (
@@ -293,7 +307,7 @@ export function FieldsCard({ fields, augmentedData, isAnalyzing, isGenerating, o
               {
                 children: "FAQs",
                 value: "faqs",
-                slotContent: <div style={{ width: '100%' }}><FaqTabContent faqs={augmentedData?.faqs} /></div>
+                slotContent: <div style={{ width: '100%' }}><FaqTabContent faqs={augmentedData?.faqs} isLoading={isLoadingFaqs} /></div>
               }
             ]}
           />

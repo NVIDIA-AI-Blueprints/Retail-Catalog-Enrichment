@@ -25,7 +25,9 @@ A GenAI-powered catalog enrichment system that transforms basic product images i
 - **Cultural Image Generation**: Create culturally-appropriate product backgrounds (Spanish courtyards, Mexican family spaces, British formal settings)
 - **Quality Evaluation**: Automated VLM-based quality assessment of generated images with detailed scoring
 - **3D Asset Generation**: Transform 2D product images into interactive 3D GLB models using Microsoft TRELLIS
-- **Modular API**: Separate endpoints for VLM analysis, image generation, and 3D asset generation
+- **Product FAQ Generation**: Automatically generate 3-5 product FAQs from enriched catalog data
+- **Policy Compliance**: Upload policy PDFs and automatically check product listings against them using RAG + Milvus
+- **Modular API**: Separate endpoints for VLM analysis, FAQ generation, image generation, and 3D asset generation
 
 ## Documentation
 

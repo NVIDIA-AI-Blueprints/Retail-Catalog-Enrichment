@@ -129,6 +129,25 @@ A GenAI-powered catalog enrichment system that transforms basic product images i
 - Support automated filtering or flagging of low-quality generated images
 - Ensure background differences from original are not penalized (backgrounds should differ)
 
+### FR-10: Product FAQ Generation
+- Generate 3-5 frequently asked questions and answers for each product
+- FAQs are derived from the final enriched catalog data (after VLM analysis, user data merge, and branding)
+- Questions cover practical shopper topics: materials, care instructions, sizing, use cases, compatibility, durability
+- Answers are concise (1-3 sentences), factual, and grounded in the enriched product data
+- Support locale-aware FAQ generation across all 10 supported regional locales
+- Separate `/vlm/faqs` endpoint allows asynchronous generation — details display immediately while FAQs load in the background
+- UI displays FAQs in a dedicated tab with collapsible accordion items
+
+### FR-11: Policy Compliance Checking
+- Accept PDF policy documents through a persistent policy library (`/policies` endpoint)
+- Parse and normalize uploaded PDFs into structured policy summaries
+- Embed normalized policy records using NVIDIA embeddings and store in Milvus vector database
+- During product analysis, perform semantic retrieval of relevant policy records
+- Run compliance classification against enriched product data and retrieved policy records
+- Return pass/fail status with matched policies, rule details, reasons, evidence, and warnings
+- Support deduplication of repeated policy uploads by content hash
+- Display compliance results in the UI with visual pass/fail indicators
+
 ## Technical Requirements
 
 ### TR-1: Model Integration
@@ -230,6 +249,16 @@ A GenAI-powered catalog enrichment system that transforms basic product images i
 **I want to** receive automated quality assessments with detailed scoring and issue detection for generated product images  
 **So that** I can quickly identify and filter out low-quality variations without manual review, ensuring only high-quality assets enter my catalog
 
+### US-8: Product FAQ Generation
+**As a** e-commerce content manager  
+**I want to** automatically generate frequently asked questions and answers for each product based on its enriched catalog data  
+**So that** I can populate product FAQ sections without manual copywriting, improving the customer shopping experience
+
+### US-9: Policy Compliance Checking
+**As a** catalog compliance officer  
+**I want to** upload policy PDFs and have the system automatically check enriched product listings against those policies  
+**So that** I can ensure all catalog entries comply with marketplace regulations and internal guidelines before publishing
+
 ## Success Criteria
 
 - **Processing Time**: <1 minute per product for complete enrichment (including quality assessment)
@@ -256,6 +285,8 @@ A GenAI-powered catalog enrichment system that transforms basic product images i
 - [ ] FR-7: Social Media Content Integration
 - [x] ~~FR-8: Brand Voice & Taxonomy Customization~~ *(Complete with brand_instructions parameter support)*
 - [x] ~~FR-9: Automated Quality Assessment for Generated Images~~ *(VLM-based reflection module integrated into image generation pipeline)*
+- [x] ~~FR-10: Product FAQ Generation~~ *(Separate /vlm/faqs endpoint with async loading, Kaizen Tabs + Accordion UI)*
+- [x] ~~FR-11: Policy Compliance Checking~~ *(PDF policy library with Milvus embeddings, semantic retrieval, compliance classification)*
 
 - [ ] TR-1: Model Integration
   - [x] ~~NVIDIA Nemotron VLM API integration~~

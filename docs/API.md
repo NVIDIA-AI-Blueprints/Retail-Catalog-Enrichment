@@ -36,8 +36,9 @@ Health check endpoint for monitoring service status.
 The API provides a modular approach for optimal performance and flexibility:
 
 **1) Fast VLM Analysis (POST `/vlm/analyze`)** - Get product fields quickly
-**2) Image Generation (POST `/generate/variation`)** - Generate 2D variations on demand  
-**3) 3D Asset Generation (POST `/generate/3d`)** - Generate 3D models on demand
+**2) FAQ Generation (POST `/vlm/faqs`)** - Generate product FAQs from enriched data
+**3) Image Generation (POST `/generate/variation`)** - Generate 2D variations on demand  
+**4) 3D Asset Generation (POST `/generate/3d`)** - Generate 3D models on demand
 
 **Benefits of this approach:**
 - Display product information immediately to users
@@ -273,7 +274,75 @@ curl -X POST \
 
 ---
 
-## 3️⃣ Image Generation: `/generate/variation`
+## 3️⃣ FAQ Generation: `/vlm/faqs`
+
+Generate 3-5 frequently asked questions and answers for a product based on its enriched catalog data. Designed to be called after `/vlm/analyze` completes, using the enriched result as input.
+
+**Endpoint**: `POST /vlm/faqs`
+**Content-Type**: `multipart/form-data`
+
+### Request Parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `title` | string | No | Product title from VLM analysis |
+| `description` | string | No | Product description from VLM analysis |
+| `categories` | JSON string | No | Categories array (default: `[]`) |
+| `tags` | JSON string | No | Tags array (default: `[]`) |
+| `colors` | JSON string | No | Colors array (default: `[]`) |
+| `locale` | string | No | Regional locale code (default: `en-US`) |
+
+### Response Schema
+
+```json
+{
+  "faqs": [
+    {
+      "question": "string",
+      "answer": "string"
+    }
+  ]
+}
+```
+
+### Usage Example
+
+```bash
+# Call after /vlm/analyze to generate FAQs from enriched data
+curl -X POST \
+  -F "title=Craftsman 20V Cordless Lawn Mower" \
+  -F "description=A cordless lawn mower featuring a black and red design..." \
+  -F 'categories=["electronics"]' \
+  -F 'tags=["cordless","lawn mower","Craftsman"]' \
+  -F 'colors=["black","red"]' \
+  -F "locale=en-US" \
+  http://localhost:8000/vlm/faqs
+```
+
+### Example Response
+
+```json
+{
+  "faqs": [
+    {
+      "question": "What type of battery does this mower use?",
+      "answer": "This mower operates on a 20V cordless battery system, providing the flexibility to mow without a power cord."
+    },
+    {
+      "question": "Does this mower come with a grass collection bag?",
+      "answer": "Yes, it includes a rear-mounted grass collection bag for convenient clippings management."
+    },
+    {
+      "question": "What are the main colors of this mower?",
+      "answer": "The mower features a black and red color scheme with prominent Craftsman branding."
+    }
+  ]
+}
+```
+
+---
+
+## 4️⃣ Image Generation: `/generate/variation`
 
 Generate culturally-appropriate product variations using FLUX models based on VLM analysis results.
 
@@ -334,7 +403,7 @@ curl -X POST \
 
 ---
 
-## 4️⃣ 3D Asset Generation: `/generate/3d`
+## 5️⃣ 3D Asset Generation: `/generate/3d`
 
 Generate interactive 3D GLB models from 2D product images using Microsoft's TRELLIS model.
 

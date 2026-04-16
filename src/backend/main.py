@@ -176,7 +176,7 @@ async def vlm_analyze(
         image_bytes, content_type = validation_result
         
         logger.info(f"Running VLM analysis: locale={locale} mode={'augmentation' if product_json else 'generation'}")
-        vlm_observation = await asyncio.to_thread(extract_vlm_observation, image_bytes, content_type)
+        vlm_observation = await asyncio.to_thread(extract_vlm_observation, image_bytes, content_type, locale)
 
         enrichment_task = asyncio.to_thread(
             build_enriched_vlm_result,
@@ -195,12 +195,7 @@ async def vlm_analyze(
                 "colors": vlm_observation.get("colors", []),
             },
         )
-        faq_task = asyncio.to_thread(
-            _call_nemotron_generate_faqs,
-            vlm_observation,
-            locale,
-        )
-        result, policy_contexts, faqs = await asyncio.gather(enrichment_task, retrieval_task, faq_task)
+        result, policy_contexts = await asyncio.gather(enrichment_task, retrieval_task)
         if policy_contexts:
             logger.info("Policy retrieval returned %d candidate policy record(s); running compliance evaluation.", len(policy_contexts))
             product_snapshot = {
@@ -250,13 +245,11 @@ async def vlm_analyze(
             "colors": result.get("colors", []),
             "locale": locale
         }
-        
+
         if result.get("enhanced_product"):
             payload["enhanced_product"] = result["enhanced_product"]
         if result.get("policy_decision"):
             payload["policy_decision"] = result["policy_decision"]
-        if faqs:
-            payload["faqs"] = faqs
         
         logger.info(f"/vlm/analyze success: title_len={len(payload['title'])} desc_len={len(payload['description'])} locale={locale}")
         return JSONResponse(payload)
@@ -268,6 +261,40 @@ async def vlm_analyze(
         }, status_code=503)
     except Exception as exc:
         logger.exception(f"/vlm/analyze exception: {exc}")
+        return JSONResponse({"detail": str(exc)}, status_code=500)
+
+
+@app.post("/vlm/faqs")
+async def vlm_faqs(
+    title: str = Form(""),
+    description: str = Form(""),
+    categories: str = Form("[]"),
+    tags: str = Form("[]"),
+    colors: str = Form("[]"),
+    locale: str = Form("en-US"),
+) -> JSONResponse:
+    """Generate FAQs from enriched product data. Called after /vlm/analyze completes."""
+    try:
+        if locale not in VALID_LOCALES:
+            logger.error(f"/vlm/faqs error: invalid locale={locale}")
+            return JSONResponse({"detail": f"Invalid locale. Supported locales: {sorted(VALID_LOCALES)}"}, status_code=400)
+
+        enriched = {
+            "title": title,
+            "description": description,
+            "categories": json.loads(categories),
+            "tags": json.loads(tags),
+            "colors": json.loads(colors),
+        }
+        faqs = await asyncio.to_thread(_call_nemotron_generate_faqs, enriched, locale)
+        return JSONResponse({"faqs": faqs})
+    except (APIConnectionError, httpx.ConnectError) as exc:
+        logger.exception("/vlm/faqs connection error: %s", exc)
+        return JSONResponse({
+            "detail": "Unable to connect to the NIM endpoint. Please verify that the NVIDIA NIM container is running."
+        }, status_code=503)
+    except Exception as exc:
+        logger.exception("/vlm/faqs exception: %s", exc)
         return JSONResponse({"detail": str(exc)}, status_code=500)
 
 

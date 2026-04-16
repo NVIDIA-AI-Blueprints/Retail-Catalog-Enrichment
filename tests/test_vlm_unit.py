@@ -23,6 +23,7 @@ import pytest
 from unittest.mock import Mock, patch, MagicMock
 from backend.vlm import (
     _call_vlm,
+    _call_nemotron_structure_vlm,
     _call_nemotron_enhance_vlm,
     _call_nemotron_apply_branding,
     _call_nemotron_generate_faqs,
@@ -34,109 +35,173 @@ from backend.vlm import (
 
 
 class TestCallVLM:
-    """Tests for _call_vlm function with mocked OpenAI client."""
-    
+    """Tests for _call_vlm function with mocked VLM + structuring."""
+
+    @patch('backend.vlm._call_nemotron_structure_vlm')
     @patch('backend.vlm.OpenAI')
     @patch('backend.vlm.get_config')
-    def test_call_vlm_success_with_valid_json(self, mock_get_config, mock_openai_class, sample_image_bytes, sample_vlm_response, mock_env_vars):
-        """Test successful VLM call with valid JSON response."""
-        # Mock config
+    def test_call_vlm_passes_free_text_to_structuring(self, mock_get_config, mock_openai_class, mock_structure, sample_image_bytes, sample_vlm_response, mock_env_vars):
+        """Test that VLM free text is passed to the structuring LLM call."""
         mock_config = Mock()
-        mock_config.get_vlm_config.return_value = {
-            'url': 'http://test:8000/v1',
-            'model': 'test-model'
-        }
+        mock_config.get_vlm_config.return_value = {'url': 'http://test:8000/v1', 'model': 'test-model'}
         mock_get_config.return_value = mock_config
-        
-        # Mock OpenAI client
+
         mock_client = Mock()
         mock_openai_class.return_value = mock_client
-        
-        # Mock streaming response
+
+        vlm_free_text = "A black and red Craftsman lawn mower with 2XV20 printed on the deck."
         mock_chunk = Mock()
         mock_delta = Mock()
-        mock_delta.content = json.dumps(sample_vlm_response)
+        mock_delta.content = vlm_free_text
         mock_choice = Mock()
         mock_choice.delta = mock_delta
         mock_chunk.choices = [mock_choice]
-        
         mock_client.chat.completions.create.return_value = [mock_chunk]
-        
-        # Call function
-        result = _call_vlm(sample_image_bytes, "image/png")
-        
-        # Assertions
-        assert isinstance(result, dict)
-        assert result["title"] == sample_vlm_response["title"]
-        assert result["description"] == sample_vlm_response["description"]
-        assert result["categories"] == sample_vlm_response["categories"]
-        assert "tags" in result
-        assert "colors" in result
-    
+
+        mock_structure.return_value = sample_vlm_response
+
+        result = _call_vlm(sample_image_bytes, "image/png", "en-US")
+
+        mock_structure.assert_called_once_with(vlm_free_text, "en-US")
+        assert result == sample_vlm_response
+
+    @patch('backend.vlm._call_nemotron_structure_vlm')
     @patch('backend.vlm.OpenAI')
     @patch('backend.vlm.get_config')
-    def test_call_vlm_with_invalid_json_fallback(self, mock_get_config, mock_openai_class, sample_image_bytes, mock_env_vars):
-        """Test VLM call with non-JSON response uses fallback."""
-        # Mock config
+    def test_call_vlm_uses_short_prompt(self, mock_get_config, mock_openai_class, mock_structure, sample_image_bytes, sample_vlm_response, mock_env_vars):
+        """Test that the VLM prompt is short (not the old ~35 line prompt)."""
         mock_config = Mock()
-        mock_config.get_vlm_config.return_value = {
-            'url': 'http://test:8000/v1',
-            'model': 'test-model'
-        }
+        mock_config.get_vlm_config.return_value = {'url': 'http://test:8000/v1', 'model': 'test-model'}
         mock_get_config.return_value = mock_config
-        
-        # Mock OpenAI client with non-JSON response
+
         mock_client = Mock()
         mock_openai_class.return_value = mock_client
-        
+
         mock_chunk = Mock()
         mock_delta = Mock()
-        mock_delta.content = "This is not valid JSON"
+        mock_delta.content = "A product description"
         mock_choice = Mock()
         mock_choice.delta = mock_delta
         mock_chunk.choices = [mock_choice]
-        
         mock_client.chat.completions.create.return_value = [mock_chunk]
-        
-        # Call function
-        result = _call_vlm(sample_image_bytes, "image/png")
-        
-        # Should return fallback structure
-        assert isinstance(result, dict)
-        assert result["title"] == ""
-        assert result["description"] == "This is not valid JSON"
-        assert result["categories"] == ["uncategorized"]
-        assert result["tags"] == []
-        assert result["colors"] == []
-    
+        mock_structure.return_value = sample_vlm_response
+
+        _call_vlm(sample_image_bytes, "image/png")
+
+        call_args = mock_client.chat.completions.create.call_args
+        messages = call_args.kwargs["messages"]
+        prompt_text = messages[0]["content"][1]["text"]
+        assert len(prompt_text) < 200
+
+    @patch('backend.vlm._call_nemotron_structure_vlm')
     @patch('backend.vlm.OpenAI')
     @patch('backend.vlm.get_config')
-    def test_call_vlm_with_different_image_types(self, mock_get_config, mock_openai_class, sample_jpeg_bytes, sample_vlm_response, mock_env_vars):
+    def test_call_vlm_with_different_image_types(self, mock_get_config, mock_openai_class, mock_structure, sample_jpeg_bytes, sample_vlm_response, mock_env_vars):
         """Test VLM call with different image content types."""
-        # Mock config
         mock_config = Mock()
-        mock_config.get_vlm_config.return_value = {
-            'url': 'http://test:8000/v1',
-            'model': 'test-model'
-        }
+        mock_config.get_vlm_config.return_value = {'url': 'http://test:8000/v1', 'model': 'test-model'}
         mock_get_config.return_value = mock_config
-        
-        # Mock OpenAI client
+
         mock_client = Mock()
         mock_openai_class.return_value = mock_client
-        
+
         mock_chunk = Mock()
         mock_delta = Mock()
-        mock_delta.content = json.dumps(sample_vlm_response)
+        mock_delta.content = "A product"
         mock_choice = Mock()
         mock_choice.delta = mock_delta
         mock_chunk.choices = [mock_choice]
-        
         mock_client.chat.completions.create.return_value = [mock_chunk]
-        
-        # Test with JPEG
+        mock_structure.return_value = sample_vlm_response
+
         result = _call_vlm(sample_jpeg_bytes, "image/jpeg")
         assert isinstance(result, dict)
+
+
+class TestCallNemotronStructureVlm:
+    """Tests for _call_nemotron_structure_vlm function."""
+
+    @patch('backend.vlm.OpenAI')
+    @patch('backend.vlm.get_config')
+    def test_structure_success(self, mock_get_config, mock_openai_class, sample_vlm_response, mock_env_vars):
+        """Test successful structuring of free text into JSON."""
+        mock_config = Mock()
+        mock_config.get_llm_config.return_value = {'url': 'http://test:8000/v1', 'model': 'test-llm-model'}
+        mock_get_config.return_value = mock_config
+
+        mock_client = Mock()
+        mock_openai_class.return_value = mock_client
+
+        mock_chunk = Mock()
+        mock_delta = Mock()
+        mock_delta.content = json.dumps(sample_vlm_response)
+        mock_choice = Mock()
+        mock_choice.delta = mock_delta
+        mock_chunk.choices = [mock_choice]
+        mock_client.chat.completions.create.return_value = [mock_chunk]
+
+        result = _call_nemotron_structure_vlm("A black handbag with gold accents.")
+
+        assert isinstance(result, dict)
+        assert result["title"] == sample_vlm_response["title"]
+        assert "description" in result
+
+    @patch('backend.vlm.OpenAI')
+    @patch('backend.vlm.get_config')
+    def test_structure_fallback_on_parse_failure(self, mock_get_config, mock_openai_class, mock_env_vars):
+        """Test fallback to raw text when LLM returns unparseable output."""
+        mock_config = Mock()
+        mock_config.get_llm_config.return_value = {'url': 'http://test:8000/v1', 'model': 'test-llm-model'}
+        mock_get_config.return_value = mock_config
+
+        mock_client = Mock()
+        mock_openai_class.return_value = mock_client
+
+        mock_chunk = Mock()
+        mock_delta = Mock()
+        mock_delta.content = "Not valid JSON at all"
+        mock_choice = Mock()
+        mock_choice.delta = mock_delta
+        mock_chunk.choices = [mock_choice]
+        mock_client.chat.completions.create.return_value = [mock_chunk]
+
+        vlm_text = "A red lawn mower with Craftsman branding."
+        result = _call_nemotron_structure_vlm(vlm_text)
+
+        assert result["title"] == ""
+        assert result["description"] == vlm_text
+        assert result["categories"] == ["uncategorized"]
+
+    @patch('backend.vlm.OpenAI')
+    @patch('backend.vlm.get_config')
+    def test_structure_extracts_from_markdown(self, mock_get_config, mock_openai_class, sample_vlm_response, mock_env_vars):
+        """Test extraction from markdown-fenced JSON."""
+        mock_config = Mock()
+        mock_config.get_llm_config.return_value = {'url': 'http://test:8000/v1', 'model': 'test-llm-model'}
+        mock_get_config.return_value = mock_config
+
+        mock_client = Mock()
+        mock_openai_class.return_value = mock_client
+
+        wrapped = f"```json\n{json.dumps(sample_vlm_response)}\n```"
+        mock_chunk = Mock()
+        mock_delta = Mock()
+        mock_delta.content = wrapped
+        mock_choice = Mock()
+        mock_choice.delta = mock_delta
+        mock_chunk.choices = [mock_choice]
+        mock_client.chat.completions.create.return_value = [mock_chunk]
+
+        result = _call_nemotron_structure_vlm("A handbag.")
+
+        assert result["title"] == sample_vlm_response["title"]
+
+    def test_structure_raises_without_api_key(self, monkeypatch):
+        """Test RuntimeError when NGC_API_KEY is not set."""
+        monkeypatch.delenv("NGC_API_KEY", raising=False)
+
+        with pytest.raises(RuntimeError, match="NGC_API_KEY is not set"):
+            _call_nemotron_structure_vlm("Some text")
 
 
 class TestCallNemotronEnhanceVLM:
@@ -514,36 +579,69 @@ class TestCallNemotronGenerateFaqs:
 
 class TestCallNemotronEnhance:
     """Tests for _call_nemotron_enhance orchestration function."""
-    
+
     @patch('backend.vlm._call_nemotron_apply_branding')
     @patch('backend.vlm._call_nemotron_enhance_vlm')
-    def test_enhance_without_brand_instructions(self, mock_enhance_vlm, mock_apply_branding, sample_vlm_response):
-        """Test enhancement pipeline without brand instructions (Step 2 skipped)."""
-        enhanced_data = {"title": "Enhanced", "description": "Enhanced"}
-        mock_enhance_vlm.return_value = enhanced_data
-        
+    def test_enhance_skips_step1_without_product_data(self, mock_enhance_vlm, mock_apply_branding, sample_vlm_response):
+        """Test that Step 1 is skipped when no product_data — VLM output used directly."""
         result = _call_nemotron_enhance(sample_vlm_response, None, "en-US", None)
-        
-        # Step 1 should be called
-        mock_enhance_vlm.assert_called_once()
+
+        # Step 1 should be SKIPPED (no product data to merge)
+        mock_enhance_vlm.assert_not_called()
         # Step 2 should NOT be called
         mock_apply_branding.assert_not_called()
-        assert result == enhanced_data
-    
+        assert result == sample_vlm_response
+
     @patch('backend.vlm._call_nemotron_apply_branding')
     @patch('backend.vlm._call_nemotron_enhance_vlm')
-    def test_enhance_with_brand_instructions(self, mock_enhance_vlm, mock_apply_branding, sample_vlm_response):
-        """Test enhancement pipeline with brand instructions (both steps)."""
-        enhanced_data = {"title": "Enhanced", "description": "Enhanced"}
+    def test_enhance_with_brand_instructions_skips_step1(self, mock_enhance_vlm, mock_apply_branding, sample_vlm_response):
+        """Test that Step 1 is skipped but Step 2 runs on raw VLM output when only brand instructions provided."""
         branded_data = {"title": "Branded", "description": "Branded"}
-        
-        mock_enhance_vlm.return_value = enhanced_data
         mock_apply_branding.return_value = branded_data
-        
+
         brand_instructions = "Use playful tone"
         result = _call_nemotron_enhance(sample_vlm_response, None, "en-US", brand_instructions)
-        
-        # Both steps should be called
+
+        # Step 1 should be SKIPPED (no product data)
+        mock_enhance_vlm.assert_not_called()
+        # Step 2 should run on raw VLM output
+        mock_apply_branding.assert_called_once_with(sample_vlm_response, brand_instructions, "en-US")
+        assert result == branded_data
+
+    @patch('backend.vlm._call_nemotron_filter_user_data')
+    @patch('backend.vlm._call_nemotron_apply_branding')
+    @patch('backend.vlm._call_nemotron_enhance_vlm')
+    def test_enhance_runs_step1_with_product_data(self, mock_enhance_vlm, mock_apply_branding, mock_filter, sample_vlm_response, sample_product_data):
+        """Test that Step 1 runs when product_data is provided."""
+        enhanced_data = {"title": "Enhanced", "description": "Enhanced"}
+        mock_filter.return_value = sample_product_data
+        mock_enhance_vlm.return_value = enhanced_data
+
+        result = _call_nemotron_enhance(sample_vlm_response, sample_product_data, "en-US", None)
+
+        # Pre-filter and Step 1 should run
+        mock_filter.assert_called_once()
+        mock_enhance_vlm.assert_called_once()
+        # Step 2 should NOT run
+        mock_apply_branding.assert_not_called()
+        assert result == enhanced_data
+
+    @patch('backend.vlm._call_nemotron_filter_user_data')
+    @patch('backend.vlm._call_nemotron_apply_branding')
+    @patch('backend.vlm._call_nemotron_enhance_vlm')
+    def test_enhance_runs_full_pipeline_with_product_data_and_brand(self, mock_enhance_vlm, mock_apply_branding, mock_filter, sample_vlm_response, sample_product_data):
+        """Test full pipeline (Step 1 + Step 2) when both product_data and brand_instructions provided."""
+        enhanced_data = {"title": "Enhanced", "description": "Enhanced"}
+        branded_data = {"title": "Branded", "description": "Branded"}
+        mock_filter.return_value = sample_product_data
+        mock_enhance_vlm.return_value = enhanced_data
+        mock_apply_branding.return_value = branded_data
+
+        brand_instructions = "Use playful tone"
+        result = _call_nemotron_enhance(sample_vlm_response, sample_product_data, "en-US", brand_instructions)
+
+        # All steps should run
+        mock_filter.assert_called_once()
         mock_enhance_vlm.assert_called_once()
         mock_apply_branding.assert_called_once_with(enhanced_data, brand_instructions, "en-US")
         assert result == branded_data
@@ -658,10 +756,10 @@ class TestSplitVLMFlow:
     def test_extract_vlm_observation_returns_raw_vlm_output(self, mock_call_vlm, sample_image_bytes, sample_vlm_response):
         mock_call_vlm.return_value = sample_vlm_response
 
-        result = extract_vlm_observation(sample_image_bytes, "image/png")
+        result = extract_vlm_observation(sample_image_bytes, "image/png", "en-US")
 
         assert result == sample_vlm_response
-        mock_call_vlm.assert_called_once_with(sample_image_bytes, "image/png")
+        mock_call_vlm.assert_called_once_with(sample_image_bytes, "image/png", "en-US")
 
     @patch('backend.vlm._call_nemotron_enhance')
     def test_build_enriched_vlm_result_uses_existing_vlm_observation(self, mock_enhance, sample_vlm_response):
