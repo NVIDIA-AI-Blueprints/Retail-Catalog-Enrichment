@@ -33,9 +33,40 @@ export async function analyzeImage({ file, locale, productData, brandInstruction
   const data = await response.json();
   return {
     ...data,
-    policyDecision: data.policy_decision,
-    faqs: data.faqs || []
+    policyDecision: data.policy_decision
   };
+}
+
+interface GenerateFaqsParams {
+  title: string;
+  description: string;
+  categories: string[];
+  tags: string[];
+  colors: string[];
+  locale: string;
+}
+
+export async function generateFaqs(params: GenerateFaqsParams): Promise<{ question: string; answer: string }[]> {
+  const formData = new FormData();
+  formData.append('title', params.title);
+  formData.append('description', params.description);
+  formData.append('categories', JSON.stringify(params.categories));
+  formData.append('tags', JSON.stringify(params.tags));
+  formData.append('colors', JSON.stringify(params.colors));
+  formData.append('locale', params.locale);
+
+  const response = await fetch(`${API_BASE}/vlm/faqs`, {
+    method: 'POST',
+    body: formData
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.detail || 'Failed to generate FAQs');
+  }
+
+  const data = await response.json();
+  return data.faqs || [];
 }
 
 export async function listPolicies(): Promise<PolicyDocument[]> {

@@ -56,7 +56,8 @@ PRODUCT_CATEGORIES = [
     "office",
     "fragrance",
     "skincare",
-    "bags"
+    "bags",
+    "outdoor"
 ]
 
 def _call_nemotron_filter_user_data(
@@ -154,11 +155,11 @@ def _call_nemotron_enhance_vlm(
     existing_desc = product_data.get("description", "") if product_data else ""
 
     title_instruction = (
-        f'The user provided this title: "{existing_title}". Every word from it MUST appear in the final title. Merge them naturally with visual details from the analysis to create a single compelling product name.'
+        f'The user provided this title: "{existing_title}". Use it as the BASE and enrich it with visual details (color, shape, design) from the analysis. Keep all user words unless printed label text on the product clearly contradicts them.'
         if existing_title else "Create a compelling product name."
     )
     desc_instruction = (
-        f'The user provided this description: "{existing_desc}". All its words MUST appear in your output — expand around them with visual insights.'
+        f'The user provided this description: "{existing_desc}". Use it as the BASE and expand it with visual details from the analysis. Keep all user terms unless printed label text on the product clearly contradicts them.'
         if existing_desc else "Focus on what makes this product appealing."
     )
 
@@ -172,12 +173,14 @@ VISUAL ANALYSIS (what the camera sees):
 ALLOWED CATEGORIES: {json.dumps(PRODUCT_CATEGORIES)}
 
 STRICT RULES:
-1. NEVER invent or fabricate specific numbers (wattage, capacity, weight, dimensions, HP, voltage, speed counts) on your own. Only use numbers that appear in the VISUAL ANALYSIS or the user-provided title/description above.
-2. Numbers from the user-provided title MUST be preserved — they are trusted input, not hallucinations.
+1. NEVER invent or fabricate details on your own. Only use facts from the VISUAL ANALYSIS or the EXISTING PRODUCT DATA above.
+2. Printed text readable on the product (brand names, product names, dosages, model numbers) is ground truth. Drop user words that contradict printed label text.
+3. Material descriptions from the visual analysis are visual guesses — the camera cannot verify composition. Always use the user's material term when provided.
+4. The VISUAL ANALYSIS is authoritative for appearance (colors, shape, design) and printed text. The EXISTING PRODUCT DATA is authoritative for material composition and internal specs.
 
 YOUR TASK:
 - title: {title_instruction} Write in {info['language']}.
-- description: Write a rich, persuasive product description highlighting materials, design, and features. Only mention specifications that appear in the visual analysis above. {desc_instruction} Write in {info['language']}.
+- description: Write a rich, persuasive product description. Merge visual details with user-provided information. {desc_instruction} Write in {info['language']}.
 - categories: Pick from allowed list only. English. Array format.
 - tags: {"Keep all existing user tags AND add more from the visual analysis." if product_data else "Generate 10 relevant search tags."} English.
 - colors: Use the VLM colors. English.
@@ -252,20 +255,15 @@ CRITICAL RULES:
    - DO NOT remove existing fields
    - Only modify the VALUES of existing fields
 
-2. **Description Field Formatting** (MANDATORY):
-   - CAREFULLY READ the brand instructions for ANY mention of sections, structure, or content types
-   - If the brand instructions mention ANY of these, you MUST create clearly labeled sections with headers in the description
-   - EVERY section or content type mentioned in the brand instructions MUST appear as a distinct, labeled section in the output - do NOT skip or merge any
-   - Each section MUST have a header followed by detailed bullet points or paragraphs
-   - CRITICAL: Separate each section with double newlines (\\n\\n) for readability
-   - Keep everything in the description field - DO NOT create separate JSON fields for sections
-   - The description must be a single string value with proper line breaks between sections
-   - When in doubt about whether the brand instructions ask for structure, ALWAYS use structured sections rather than plain prose
+2. **Description Field Formatting**:
+   - Follow the brand instructions for format and structure — if they ask for paragraphs, write paragraphs; if they ask for sections or bullet points, use sections and bullet points
+   - Keep everything in the description field as a single string value
+   - Separate sections or paragraphs with double newlines (\\n\\n) for readability
 
 3. **Apply Brand Voice** (in {info['language']} for {info['region']}):
    - Apply brand voice/tone to title, description, categories, and tags
    - Use brand-preferred terminology and expressions
-   - Maintain factual accuracy while applying brand personality
+   - Do NOT add ingredients, specifications, or features not present in the enhanced content above. Only rephrase and style what is already there
 
 4. **Categories**:
    - Validate against the allowed categories list above
@@ -310,16 +308,16 @@ Return ONLY valid JSON. No markdown, no commentary, no comments (// or /* */).""
 
 
 def _call_nemotron_generate_faqs(
-    vlm_observation: Dict[str, Any],
+    enriched_result: Dict[str, Any],
     locale: str = "en-US"
 ) -> list:
-    """Generate 3-5 product FAQs from VLM observation using Nemotron.
+    """Generate 3-5 product FAQs from the final enriched catalog result.
 
-    Runs in parallel with enrichment to add zero latency. On any parse
-    failure the function returns an empty list so the caller can proceed
-    without FAQs.
+    Runs after enrichment so FAQs reflect the final merged output (VLM +
+    user data + branding). On any parse failure returns an empty list.
     """
-    logger.info("[FAQ] Generating FAQs: vlm_keys=%s, locale=%s", list(vlm_observation.keys()), locale)
+    logger.info("[FAQ] Generating FAQs: keys=%s, locale=%s",
+                list(enriched_result.keys()), locale)
 
     if not (api_key := os.getenv("NGC_API_KEY")):
         raise RuntimeError(NGC_API_KEY_NOT_SET_ERROR)
@@ -328,12 +326,12 @@ def _call_nemotron_generate_faqs(
     llm_config = get_config().get_llm_config()
     client = OpenAI(base_url=llm_config['url'], api_key=api_key)
 
-    observation_json = json.dumps(vlm_observation, indent=2, ensure_ascii=False)
+    product_json = json.dumps(enriched_result, indent=2, ensure_ascii=False)
 
     prompt = f"""/no_think You are a retail product FAQ specialist. Generate 3 to 5 frequently asked questions and answers for the product described below.
 
-PRODUCT VISUAL ANALYSIS:
-{observation_json}
+PRODUCT:
+{product_json}
 
 TARGET LANGUAGE / REGION: {info['language']} ({info['region']})
 {info['context']}
@@ -343,7 +341,7 @@ RULES:
 - Each FAQ must have a "question" and an "answer" field.
 - Questions should cover practical topics a shopper would ask: materials, care instructions, sizing, use cases, compatibility, durability.
 - Answers must be helpful, concise (1-3 sentences), and factual.
-- ONLY reference attributes visible in the product analysis above. Do NOT fabricate specifications (weight, wattage, capacity, dimensions) unless they appear in the analysis.
+- ONLY reference details present in the product data above. Do NOT fabricate specifications.
 - Write questions and answers in {info['language']} appropriate for {info['region']}.
 
 OUTPUT FORMAT:
@@ -406,10 +404,11 @@ def _call_nemotron_enhance(
     Pre-filter (conditional - only if product_data provided):
         - Removes irrelevant terms from user-provided data using category-aware LLM filter
 
-    Step 1: Content enhancement + localization (always runs):
+    Step 1: Content enhancement + localization (conditional - only if product_data provided):
         - Merges pre-filtered product_data with VLM output
         - Applies anti-hallucination rules (no fabricated specs)
         - Localizes to target language/region
+        - When no product_data, VLM output is used directly
 
     Step 2: Brand alignment (conditional - only if brand_instructions provided):
         - Applies brand voice, tone, taxonomy
@@ -424,9 +423,17 @@ def _call_nemotron_enhance(
         logger.info("Pre-filter complete: title_before=%s, title_after=%s",
                     repr(product_data.get("title", "")), repr(filtered_product_data.get("title", "")))
 
-    # Step 1: Enhance VLM output and localize to target language (single call for efficiency)
-    enhanced = _call_nemotron_enhance_vlm(vlm_output, filtered_product_data, locale)
-    logger.info("Step 1 complete (enhanced + localized to %s): enhanced_keys=%s", locale, list(enhanced.keys()))
+    # Step 1: Only run enhancement when there is user data with actual content to merge
+    has_content = filtered_product_data and any(
+        v for k, v in filtered_product_data.items()
+        if isinstance(v, str) and v.strip()
+    )
+    if has_content:
+        enhanced = _call_nemotron_enhance_vlm(vlm_output, filtered_product_data, locale)
+        logger.info("Step 1 complete (enhanced + localized to %s): enhanced_keys=%s", locale, list(enhanced.keys()))
+    else:
+        enhanced = vlm_output
+        logger.info("Step 1 skipped: no product_data with content — using VLM output directly")
 
     # Step 2: Apply brand instructions if provided
     if brand_instructions:
@@ -438,59 +445,23 @@ def _call_nemotron_enhance(
     logger.info("Nemotron enhancement pipeline complete: final_keys=%s", list(enhanced.keys()))
     return enhanced
 
-def _call_vlm(image_bytes: bytes, content_type: str) -> Dict[str, Any]:
-    """Call VLM to analyze product image.
-    
-    NOTE: Always analyzes in ENGLISH regardless of target locale.
-    This prevents hallucinations that occur when VLMs work in non-English languages.
-    Localization is handled separately by the LLM in a subsequent step.
+def _call_vlm(image_bytes: bytes, content_type: str, locale: str = "en-US") -> Dict[str, Any]:
+    """Call VLM to analyze product image, then structure the output via LLM.
+
+    Uses a short VLM prompt to minimize hallucinations (longer prompts degrade
+    quality on this model class), then passes the free-text observation to
+    _call_nemotron_structure_vlm() for JSON structuring and localization.
     """
-    logger.info("Calling VLM: bytes=%d, content_type=%s (English-only analysis)", len(image_bytes or b""), content_type)
-    
+    logger.info("Calling VLM: bytes=%d, content_type=%s, locale=%s", len(image_bytes or b""), content_type, locale)
+
     api_key = os.getenv("NGC_API_KEY")
     if not api_key:
         raise RuntimeError(NGC_API_KEY_NOT_SET_ERROR)
-    
+
     vlm_config = get_config().get_vlm_config()
     client = OpenAI(base_url=vlm_config['url'], api_key=api_key)
 
-    categories_str = json.dumps(PRODUCT_CATEGORIES)
-    
-    prompt_text = f"""You are a product visual analyst. Analyze ONLY what is physically visible in the image. Be strictly factual.
-
-CRITICAL RULES:
-- ONLY describe what you can physically SEE in the image.
-- Do NOT infer or guess technical specifications (wattage, capacity, weight, dimensions, HP, voltage) unless the exact number is clearly printed and readable on the product label.
-- Do NOT fill in details from brand knowledge or training data — if a spec is not visible, do not mention it.
-- If you can read text on the product (brand names, labels, buttons), report exactly what is written.
-
-TASK:
-1. Describe the product's visible appearance - shape, colors, materials, design elements
-2. Transcribe any visible text on the product: brand names, labels, button names, measurements printed on the item
-3. Write in ENGLISH - be accurate about what you see, not what you know about the brand
-
-CATEGORIES - Choose ONLY from this allowed set: {categories_str}
-- Pick 1-2 categories that GENUINELY describe the product
-- It is BETTER to pick only 1 accurate category than to force a second one that doesn't fit
-- If only one category applies, return just one: e.g., "categories": ["kitchen"]
-- Do NOT stretch or force-fit categories - if the product doesn't belong in a category, don't include it
-
-TAGS: Generate exactly 10 descriptive tags (2-4 words each) for search/filtering
-
-COLORS - What colors would a customer use to describe this product? (1-2 max)
-- Include the main material color AND any visible hardware/accent colors (e.g., gold clasps, silver buckles)
-- NEVER include the background/backdrop color
-- NEVER include hidden parts (shoe soles, inner linings)
-- Use simple names: red, blue, black, white, grey, green, yellow, orange, purple, pink, navy, beige, silver, gold, tan, brown, cream, burgundy, olive
-
-Return ONLY valid JSON:
-{{
-  "title": "<compelling product name>",
-  "description": "<detailed catalog description>",
-  "categories": ["<category>"],
-  "tags": ["<tag1>", "<tag2>", ...],
-  "colors": ["<color1>"]
-}}"""
+    prompt_text = "Describe this product in detail: appearance, shape, colors, materials, visible text, brand names, labels, and any distinctive design features."
 
     completion = client.chat.completions.create(
         model=vlm_config['model'],
@@ -498,26 +469,80 @@ Return ONLY valid JSON:
             {"type": "image_url", "image_url": {"url": f"data:{content_type};base64,{base64.b64encode(image_bytes).decode()}"}},
             {"type": "text", "text": prompt_text}
         ]}],
-        temperature=0.1, top_p=0.9, max_tokens=1024, stream=True
+        temperature=0.1, top_p=0.9, max_tokens=4096, stream=True
     )
 
     text = "".join(chunk.choices[0].delta.content for chunk in completion if chunk.choices[0].delta and chunk.choices[0].delta.content)
-    logger.info("VLM response received: %d chars", len(text))
+    logger.info("VLM free-text response received: %d chars", len(text))
 
-    parsed = parse_llm_json(text)
+    return _call_nemotron_structure_vlm(text.strip(), locale)
+
+
+def _call_nemotron_structure_vlm(vlm_text: str, locale: str = "en-US") -> Dict[str, Any]:
+    """Structure and enhance free-text VLM output into e-commerce catalog JSON.
+
+    Rewrites the VLM observation into polished catalog copy while staying
+    faithful to the facts described. Localizes to the target language/region.
+    """
+    logger.info("[Structure] Structuring VLM text: %d chars, locale=%s", len(vlm_text), locale)
+
+    if not (api_key := os.getenv("NGC_API_KEY")):
+        raise RuntimeError(NGC_API_KEY_NOT_SET_ERROR)
+
+    info = LOCALE_CONFIG.get(locale, {"language": "English", "region": "United States", "country": "United States", "context": "American English"})
+    llm_config = get_config().get_llm_config()
+    client = OpenAI(base_url=llm_config['url'], api_key=api_key)
+
+    categories_str = json.dumps(PRODUCT_CATEGORIES)
+
+    prompt = f"""/no_think Convert the visual description below into e-commerce product catalog fields. Write in polished, professional catalog language in {info['language']} for {info['region']} ({info['context']}). Do NOT invent features, materials, or specifications not mentioned in the description.
+
+VISUAL DESCRIPTION:
+{vlm_text}
+
+ALLOWED CATEGORIES: {categories_str}
+
+RULES:
+- title: Compelling product name using only details from the description. Write in {info['language']}.
+- description: Write as customer-facing e-commerce catalog copy in {info['language']}. Highlight the product's appeal, materials, design, and features. Do NOT describe the label or packaging text placement (no "brand name is displayed on", "text reads", "prominently displayed", "printed in white"). Instead, naturally incorporate brand and product names into the copy.
+- categories: Pick 1-2 from the allowed list. Use "uncategorized" if none fit. English.
+- tags: 10 search tags derived from the text. English.
+- colors: 1-2 product colors mentioned in the text. English.
+
+Return ONLY valid JSON:
+{{"title": "...", "description": "...", "categories": [...], "tags": [...], "colors": [...]}}"""
+
+    completion = client.chat.completions.create(
+        model=llm_config['model'],
+        messages=[{"role": "system", "content": "/no_think"}, {"role": "user", "content": prompt}],
+        temperature=0.1, top_p=0.9, max_tokens=2048, stream=True,
+        extra_body={"reasoning_budget": 16384, "chat_template_kwargs": {"enable_thinking": False}}
+    )
+
+    text = "".join(
+        chunk.choices[0].delta.content
+        for chunk in completion
+        if chunk.choices[0].delta and chunk.choices[0].delta.content
+    )
+    logger.info("[Structure] LLM response received: %d chars", len(text))
+
+    parsed = parse_llm_json(text, extract_braces=True, strip_comments=True)
     if parsed is not None:
+        logger.info("[Structure] Structured successfully: keys=%s", list(parsed.keys()))
         return parsed
-    return {"title": "", "description": text.strip(), "categories": ["uncategorized"], "tags": [], "colors": []}
+
+    logger.warning("[Structure] JSON parse failed, returning raw text as description")
+    return {"title": "", "description": vlm_text, "categories": ["uncategorized"], "tags": [], "colors": []}
 
 
-def extract_vlm_observation(image_bytes: bytes, content_type: str) -> Dict[str, Any]:
+def extract_vlm_observation(image_bytes: bytes, content_type: str, locale: str = "en-US") -> Dict[str, Any]:
     """Run only the raw VLM observation step."""
     if not image_bytes:
         raise ValueError("image_bytes is required")
     if not isinstance(content_type, str) or not content_type.startswith("image/"):
         raise ValueError("content_type must be an image/* MIME type")
 
-    vlm_result = _call_vlm(image_bytes, content_type)
+    vlm_result = _call_vlm(image_bytes, content_type, locale)
     logger.info(
         "VLM analysis complete (English): title_len=%d desc_len=%d categories=%s",
         len(vlm_result.get("title", "")),
@@ -580,5 +605,5 @@ def run_vlm_analysis(
         Dict with title, description, categories, tags, colors, and enhanced_product (if augmentation)
     """
     logger.info("Running VLM analysis: locale=%s mode=%s brand_instructions=%s", locale, "augmentation" if product_data else "generation", bool(brand_instructions))
-    vlm_result = extract_vlm_observation(image_bytes, content_type)
+    vlm_result = extract_vlm_observation(image_bytes, content_type, locale)
     return build_enriched_vlm_result(vlm_result, locale, product_data, brand_instructions)

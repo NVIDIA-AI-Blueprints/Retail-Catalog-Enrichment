@@ -9,7 +9,7 @@ import { FieldsCard } from '@/components/FieldsCard';
 import { AdvancedOptionsCard } from '@/components/AdvancedOptionsCard';
 import { GeneratedVariationsSection } from '@/components/GeneratedVariationsSection';
 import { ProductFields, AugmentedData, PolicyDocument, PolicyUploadResult, SUPPORTED_LOCALES } from '@/types';
-import { analyzeImage, clearPolicies, generateImageVariation, generate3DModel, listPolicies, prepareProductData, uploadPolicies } from '@/lib/api';
+import { analyzeImage, generateFaqs, clearPolicies, generateImageVariation, generate3DModel, listPolicies, prepareProductData, uploadPolicies } from '@/lib/api';
 
 
 function Home() {
@@ -33,6 +33,7 @@ function Home() {
     brandInstructions: ''
   });
   const [augmentedData, setAugmentedData] = useState<AugmentedData | null>(null);
+  const [isLoadingFaqs, setIsLoadingFaqs] = useState(false);
   const [generatedImages, setGeneratedImages] = useState<(string | null)[]>([null, null]);
   const [qualityScores, setQualityScores] = useState<(number | null)[]>([null, null]);
   const [qualityIssues, setQualityIssues] = useState<(string[] | null)[]>([null, null]);
@@ -97,6 +98,7 @@ function Home() {
     setUploadedImage(null);
     setUploadedFile(null);
     setAugmentedData(null);
+    setIsLoadingFaqs(false);
     setGeneratedImages([null, null]);
     setQualityScores([null, null]);
     setQualityIssues([null, null]);
@@ -199,16 +201,33 @@ function Home() {
         brandInstructions: fields.brandInstructions
       });
       
-      setAugmentedData({
+      const enrichedData = {
         title: analyzeData.title || '',
         description: analyzeData.description || '',
         colors: analyzeData.colors || [],
         tags: analyzeData.tags || [],
         categories: analyzeData.categories || [],
         policyDecision: analyzeData.policyDecision,
-        faqs: analyzeData.faqs || []
-      });
+      };
+      setAugmentedData(enrichedData);
       setIsAnalyzingFields(false);
+
+      // Fire FAQ generation in the background — details are already visible
+      setIsLoadingFaqs(true);
+      generateFaqs({
+        title: enrichedData.title,
+        description: enrichedData.description,
+        categories: enrichedData.categories || [],
+        tags: enrichedData.tags,
+        colors: enrichedData.colors,
+        locale,
+      }).then((faqs) => {
+        setAugmentedData(prev => prev ? { ...prev, faqs } : prev);
+      }).catch((err) => {
+        console.error('Error generating FAQs:', err);
+      }).finally(() => {
+        setIsLoadingFaqs(false);
+      });
 
       setIsGeneratingImage(true);
       
@@ -388,6 +407,7 @@ function Home() {
                 augmentedData={augmentedData}
                 isAnalyzing={isAnalyzingFields}
                 isGenerating={isGeneratingImage}
+                isLoadingFaqs={isLoadingFaqs}
                 onFieldChange={(field, value) => setFields(prev => ({ ...prev, [field]: value }))}
               />
             </div>

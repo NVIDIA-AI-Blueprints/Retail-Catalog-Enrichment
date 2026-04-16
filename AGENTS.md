@@ -322,17 +322,22 @@ Given the catalog enrichment focus, pay special attention to:
    - Ensure new code follows established patterns
    - Include appropriate error handling and logging
 
-3. **Documentation**
+3. **LLM Prompt Rules**
+   - **NEVER hardcode specific product examples in prompts.** Rules must be generic and work across all products. For example, do NOT write rules like `"when the user says 'synthetic leather' and the camera sees 'leather', use the user's term"` — instead write `"when there is a conflict, prefer the user's terms for materials and specs"`.
+   - Prompts are consumed by millions of products — every rule must generalize.
+   - If a specific scenario fails, fix the underlying rule, not just the example.
+
+4. **Documentation**
    - Update relevant documentation when making changes
    - Include examples in API documentation
    - Keep this AGENTS.md file current as the project evolves
 
-4. **Communication**
+5. **Communication**
    - Ask for clarification when requirements are ambiguous
    - Suggest improvements to architecture and processes
    - Flag potential security or performance concerns
 
-5. **Incremental Development**
+6. **Incremental Development**
    - Start with simple, working solutions
    - Iterate and improve based on feedback
    - Consider backwards compatibility when making changes
