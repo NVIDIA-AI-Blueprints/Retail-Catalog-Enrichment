@@ -159,6 +159,17 @@ A GenAI-powered catalog enrichment system that transforms basic product images i
 - Support deduplication of repeated policy uploads by content hash
 - Display compliance results in the UI with visual pass/fail indicators
 
+### FR-13: Protocol Schema Export (ACP & UCP)
+- Generate ACP (Agentic Commerce Protocol) and UCP (Unified Commerce Protocol) schema instances from enriched product data
+- Use LLM to extract structured attributes (brand, material, age_group, gender, product_details, product_highlights, short_title, google_product_category) from enriched title and description
+- Merge LLM-extracted fields with enriched data and deterministic defaults (availability, condition, adult, is_bundle) into full schema templates
+- ACP schema covers product, pricing, FAQs, agent actions, fulfillment, campaigns, certifications, energy efficiency, bundling, marketplace, and metadata
+- UCP schema follows Google Merchant Center Product Data Specification across all 9 sections (basic product data, price/availability, product category, identifiers, detailed description, shopping campaigns, marketplaces, destinations, shipping/returns)
+- UCP uses `structured_title` and `structured_description` with `digital_source_type: "trained_algorithmic_media"` for AI-generated content
+- Single `/protocols/generate` endpoint calls LLM once and returns both schemas
+- UI displays schemas in a Protocols tab with ACP/UCP sub-tabs, syntax-highlighted JSON, and copy-to-clipboard
+- Schema generation fires in the background after FAQ generation completes, ensuring FAQs are included in both schemas
+
 ## Technical Requirements
 
 ### TR-1: Model Integration
@@ -304,6 +315,7 @@ A GenAI-powered catalog enrichment system that transforms basic product images i
 - [x] ~~FR-10: Product FAQ Generation~~ *(Separate /vlm/faqs endpoint with async loading, Kaizen Tabs + Accordion UI)*
 - [x] ~~FR-11: Policy Compliance Checking~~ *(PDF policy library with Milvus embeddings, semantic retrieval, compliance classification)*
 - [x] ~~FR-12: Product Manual PDF Enhancement for FAQs~~ *(Stateless targeted RAG via /vlm/manual/extract, dynamic query generation, up to 10 manual-enriched FAQs)*
+- [x] ~~FR-13: Protocol Schema Export (ACP & UCP)~~ *(Single /protocols/generate endpoint with LLM field extraction, syntax-highlighted UI with ACP/UCP sub-tabs)*
 
 - [ ] TR-1: Model Integration
   - [x] ~~NVIDIA Nemotron VLM API integration~~

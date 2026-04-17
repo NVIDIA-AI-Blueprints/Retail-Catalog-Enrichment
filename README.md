@@ -27,7 +27,8 @@ A GenAI-powered catalog enrichment system that transforms basic product images i
 - **3D Asset Generation**: Transform 2D product images into interactive 3D GLB models using Microsoft TRELLIS
 - **Product FAQ Generation**: Automatically generate product FAQs from enriched catalog data, with optional product manual PDF upload for richer FAQs (up to 10) via stateless targeted RAG
 - **Policy Compliance**: Upload policy PDFs and automatically check product listings against them using RAG + Milvus
-- **Modular API**: Separate endpoints for VLM analysis, FAQ generation, image generation, and 3D asset generation
+- **Protocol Schema Export**: Export enriched product data as ACP (Agentic Commerce Protocol) and UCP (Unified Commerce Protocol) compliant schemas with LLM-extracted structured attributes
+- **Modular API**: Separate endpoints for VLM analysis, FAQ generation, image generation, 3D asset generation, and protocol schema export
 
 ## Documentation
 
@@ -220,13 +221,14 @@ For complete Docker deployment instructions, see the **[Docker Deployment Guide]
 
 ## API Endpoints
 
-The system provides three main endpoints:
+The system provides the following endpoints:
 
 - `POST /vlm/analyze` - Fast VLM/LLM analysis
 - `POST /vlm/faqs` - Product FAQ generation (supports optional manual knowledge)
 - `POST /vlm/manual/extract` - Extract knowledge from a product manual PDF for FAQ enrichment
 - `POST /generate/variation` - Image generation with FLUX
 - `POST /generate/3d` - 3D asset generation with TRELLIS
+- `POST /protocols/generate` - ACP & UCP protocol schema generation
 
 ### Image Input Guidance
 

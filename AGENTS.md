@@ -24,6 +24,7 @@ This document provides guidelines and instructions for AI assistants working on 
 - ✅ **Automated Quality Assessment** - VLM-based reflection for generated images (FR-9 completed)
 - ✅ **Product FAQ Generation** - FAQs from enriched data with optional product manual PDF enhancement (FR-10, FR-12 completed)
 - ✅ **Policy Compliance** - PDF policy library with Milvus RAG and compliance classification (FR-11 completed)
+- ✅ **Protocol Schema Export** - ACP and UCP schema generation with LLM-extracted structured fields (FR-13 completed)
 - ⚠️ **In Development** - 3D Asset Generation (backend complete) and Video Generation in progress
 
 ### Key Goals
@@ -131,6 +132,22 @@ uvicorn --app-dir src backend.main:app --host 0.0.0.0 --port 8000 --reload
   - Stateless: all vectors freed after response, no server-side storage
   - LLM generates 5-8 product-type-specific queries from title + categories (not description)
   - Retrieves relevant chunks per query via in-memory cosine similarity
+
+**Protocol Schema Generation:**
+- POST `/protocols/generate`
+  - Request: `multipart/form-data` with fields:
+    - `title` (string, optional): Enriched product title
+    - `description` (string, optional): Enriched product description
+    - `categories` (JSON string, optional): Categories array
+    - `tags` (JSON string, optional): Tags array
+    - `colors` (JSON string, optional): Colors array
+    - `faqs` (JSON string, optional): FAQs array from `/vlm/faqs`
+    - `locale` (string, optional): Regional locale code (default: "en-US")
+  - Response: `{ "acp": { ... }, "ucp": { ... } }`
+  - Calls LLM once to extract brand, material, age_group, gender, product_details, product_highlights, short_title, google_product_category
+  - Merges LLM-extracted fields + enriched data + deterministic defaults into both ACP and UCP schemas
+  - ACP: agent-oriented schema with product, pricing, FAQs, agent_actions, fulfillment, campaigns
+  - UCP: Google Merchant Center-derived schema with structured_title/description using `trained_algorithmic_media`
 
 **3D Asset Generation:**
 - POST `/generate/3d`

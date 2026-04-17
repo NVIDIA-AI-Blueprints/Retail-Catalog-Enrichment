@@ -1,6 +1,8 @@
 import { Card, Stack, Text, Flex, FormField, TextInput, TextArea, Tabs, Accordion, Spinner } from '@/kui-foundations-react-external';
 import { ProductFields, AugmentedData, PolicyDecision, FAQ } from '@/types';
+import type { ProtocolSchemas } from '@/lib/api';
 import { ProcessingSteps } from './ProcessingSteps';
+import { ProtocolsTabContent } from './ProtocolsTabContent';
 
 function PolicyComplianceCard({ decision }: { decision: PolicyDecision }) {
   const isFail = decision.status === 'fail';
@@ -103,12 +105,7 @@ function FaqTabContent({ faqs, isLoading }: { faqs?: FAQ[]; isLoading?: boolean 
   if (isLoading) {
     return (
       <div style={{ padding: '40px', textAlign: 'center' }}>
-        <Stack gap="4" align="center">
-          <Spinner size="large" description="Generating FAQs..." />
-          <Text kind="body/regular/md" className="text-secondary">
-            Generating FAQs...
-          </Text>
-        </Stack>
+        <Spinner size="large" description="Generating FAQs..." />
       </div>
     );
   }
@@ -151,10 +148,12 @@ interface Props {
   isAnalyzing: boolean;
   isGenerating: boolean;
   isLoadingFaqs?: boolean;
+  protocolSchemas?: ProtocolSchemas | null;
+  isLoadingProtocols?: boolean;
   onFieldChange: (field: keyof ProductFields, value: string) => void;
 }
 
-export function FieldsCard({ fields, augmentedData, isAnalyzing, isGenerating, isLoadingFaqs, onFieldChange }: Props) {
+export function FieldsCard({ fields, augmentedData, isAnalyzing, isGenerating, isLoadingFaqs, protocolSchemas, isLoadingProtocols, onFieldChange }: Props) {
   const disabled = isAnalyzing || isGenerating;
 
   const detailsContent = (
@@ -308,6 +307,11 @@ export function FieldsCard({ fields, augmentedData, isAnalyzing, isGenerating, i
                 children: "FAQs",
                 value: "faqs",
                 slotContent: <div style={{ width: '100%' }}><FaqTabContent faqs={augmentedData?.faqs} isLoading={isLoadingFaqs} /></div>
+              },
+              {
+                children: "Protocols",
+                value: "protocols",
+                slotContent: <div style={{ width: '100%' }}><ProtocolsTabContent protocolSchemas={protocolSchemas} isLoading={isLoadingProtocols} /></div>
               }
             ]}
           />

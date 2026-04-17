@@ -248,6 +248,46 @@ export function prepareProductData(fields: ProductFields) {
   return Object.keys(data).length > 0 ? data : null;
 }
 
+interface GenerateProtocolSchemasParams {
+  title: string;
+  description: string;
+  categories: string[];
+  tags: string[];
+  colors: string[];
+  faqs?: { question: string; answer: string }[];
+  locale: string;
+}
+
+export interface ProtocolSchemas {
+  acp: object;
+  ucp: object;
+}
+
+export async function generateProtocolSchemas(params: GenerateProtocolSchemasParams): Promise<ProtocolSchemas> {
+  const formData = new FormData();
+  formData.append('title', params.title);
+  formData.append('description', params.description);
+  formData.append('categories', JSON.stringify(params.categories));
+  formData.append('tags', JSON.stringify(params.tags));
+  formData.append('colors', JSON.stringify(params.colors));
+  formData.append('locale', params.locale);
+  if (params.faqs) {
+    formData.append('faqs', JSON.stringify(params.faqs));
+  }
+
+  const response = await fetch(`${API_BASE}/protocols/generate`, {
+    method: 'POST',
+    body: formData,
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.detail || 'Failed to generate protocol schemas');
+  }
+
+  return response.json();
+}
+
 export async function checkNIMHealth(): Promise<NIMHealthStatus> {
   try {
     const response = await fetch(`${API_BASE}/health/nims`, {
