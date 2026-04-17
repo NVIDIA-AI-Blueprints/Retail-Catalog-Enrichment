@@ -104,7 +104,7 @@ function FaqTabContent({ faqs, isLoading }: { faqs?: FAQ[]; isLoading?: boolean 
     return (
       <div style={{ padding: '40px', textAlign: 'center' }}>
         <Stack gap="4" align="center">
-          <Spinner size="large" />
+          <Spinner size="large" description="Generating FAQs..." />
           <Text kind="body/regular/md" className="text-secondary">
             Generating FAQs...
           </Text>
