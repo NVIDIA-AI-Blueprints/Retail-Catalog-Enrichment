@@ -439,6 +439,77 @@ Example: [{{"question": "...", "answer": "..."}}, ...]"""
         return []
 
 
+def _call_nemotron_extract_schema_fields(
+    enriched_result: Dict[str, Any],
+    locale: str = "en-US",
+) -> Dict[str, Any]:
+    """Extract structured product attributes from enriched data for protocol schemas.
+
+    Uses the LLM to infer fields like brand, material, age_group, etc.
+    from the product title and description. Returns a dict of extracted
+    fields that can be merged into ACP/UCP schema templates.
+    """
+    logger.info("[Schema] Extracting structured fields for protocol schemas, locale=%s", locale)
+
+    if not (api_key := os.getenv("NGC_API_KEY")):
+        raise RuntimeError(NGC_API_KEY_NOT_SET_ERROR)
+
+    info = LOCALE_CONFIG.get(locale, {"language": "English", "region": "United States", "country": "United States", "context": "American English"})
+    llm_config = get_config().get_llm_config()
+    client = OpenAI(base_url=llm_config['url'], api_key=api_key)
+
+    product_json = json.dumps(enriched_result, indent=2, ensure_ascii=False)
+
+    prompt = f"""/no_think You are a retail product data specialist. Analyze the product data below and extract structured attributes for commerce protocol schemas.
+
+PRODUCT:
+{product_json}
+
+TARGET LANGUAGE / REGION: {info['language']} ({info['region']})
+
+Extract the following fields from the product title, description, and tags. Return ONLY what can be confidently determined from the data. Use null for anything that cannot be determined.
+
+FIELDS TO EXTRACT:
+- "brand": The brand or manufacturer name (e.g., "Nature Made", "Nike", "Samsung")
+- "condition": Product condition — must be one of: "new", "refurbished", "used". Default to "new" for retail products.
+- "material": Primary material if mentioned (e.g., "leather", "cotton", "plastic")
+- "age_group": Target age — must be one of: "newborn", "infant", "toddler", "kids", "adult". Use null if not determinable.
+- "gender": Target gender — must be one of: "male", "female", "unisex". Use null if not determinable.
+- "short_title": A condensed version of the title, max 65 characters
+- "google_product_category": A Google product taxonomy path (e.g., "Health > Vitamins & Supplements > Fish Oil")
+- "product_details": An array of key product specifications extracted from the description. Each item must have "attribute_name" and "attribute_value" fields. Extract specific, measurable attributes (quantities, weights, certifications, ratings, etc.)
+- "product_highlights": An array of 3-5 concise selling points (max 150 chars each) that go beyond the tags
+
+OUTPUT FORMAT:
+Return ONLY a valid JSON object. No markdown, no commentary.
+Example: {{"brand": "...", "condition": "new", "material": null, "age_group": "adult", "gender": "unisex", "short_title": "...", "google_product_category": "...", "product_details": [{{"attribute_name": "...", "attribute_value": "..."}}], "product_highlights": ["...", "..."]}}"""
+
+    completion = client.chat.completions.create(
+        model=llm_config['model'],
+        messages=[{"role": "system", "content": "/no_think"}, {"role": "user", "content": prompt}],
+        temperature=0.1, top_p=0.9, max_tokens=2048, stream=True,
+        extra_body={"reasoning_budget": 16384, "chat_template_kwargs": {"enable_thinking": False}}
+    )
+
+    text = "".join(
+        chunk.choices[0].delta.content
+        for chunk in completion
+        if chunk.choices[0].delta and chunk.choices[0].delta.content
+    )
+    logger.info("[Schema] Nemotron response received: %d chars", len(text))
+
+    try:
+        parsed = parse_llm_json(text)
+        if isinstance(parsed, dict):
+            logger.info("[Schema] Extracted fields: %s", list(parsed.keys()))
+            return parsed
+        logger.warning("[Schema] Parsed JSON is not a dict, returning empty")
+        return {}
+    except Exception as exc:
+        logger.warning("[Schema] JSON parse failed (%s), returning empty dict", exc)
+        return {}
+
+
 def _call_nemotron_enhance(
     vlm_output: Dict[str, Any], 
     product_data: Optional[Dict[str, Any]] = None,

@@ -573,6 +573,95 @@ curl -X POST \
 
 ---
 
+## 6️⃣ Protocol Schema Generation: `/protocols/generate`
+
+Generate ACP (Agentic Commerce Protocol) and UCP (Unified Commerce Protocol) schema instances from enriched product data. Uses an LLM call to extract structured attributes (brand, material, product details, etc.) from the enriched title and description, then merges them into both schema templates.
+
+**`POST /protocols/generate`**
+
+Content-Type: `multipart/form-data`
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `title` | string | No | Enriched product title |
+| `description` | string | No | Enriched product description |
+| `categories` | JSON string | No | Categories array (default: `[]`) |
+| `tags` | JSON string | No | Tags array (default: `[]`) |
+| `colors` | JSON string | No | Colors array (default: `[]`) |
+| `faqs` | JSON string | No | FAQs array (default: `[]`) |
+| `locale` | string | No | Regional locale code (default: `en-US`) |
+
+### Response Schema
+
+```json
+{
+  "acp": {
+    "product": {
+      "id": null,
+      "title": "Nature Made Fish Oil Softgels...",
+      "description": "Support your heart health...",
+      "brand": "Nature Made",
+      "attributes": { "colors": ["brown", "yellow"], "material": null, "condition": "new", ... },
+      "categories": ["health", "supplements"],
+      "tags": ["fish oil", "omega-3", ...],
+      "images": { ... },
+      "identifiers": { "gtin": null, "mpn": null, "sku": null },
+      "dimensions": { ... },
+      "details": [{ "attribute_name": "Omega-3 Content", "attribute_value": "360 mg" }, ...],
+      "highlights": ["Supports heart health", ...]
+    },
+    "pricing": { "availability": "in_stock", "price": null, ... },
+    "faqs": [{ "question": "...", "answer": "..." }, ...],
+    "agent_actions": { "discoverable": true, "buyable": true, "returnable": true, ... },
+    "fulfillment": { ... },
+    "campaigns": { "short_title": "Nature Made Fish Oil 300ct", ... },
+    "certifications": [],
+    "energy_efficiency": { ... },
+    "bundling": { ... },
+    "marketplace": { ... },
+    "metadata": { "enrichment_source": "nvidia-catalog-enrichment", ... }
+  },
+  "ucp": {
+    "structured_title": { "digital_source_type": "trained_algorithmic_media", "content": "..." },
+    "structured_description": { "digital_source_type": "trained_algorithmic_media", "content": "..." },
+    "brand": "Nature Made",
+    "color": "brown / yellow",
+    "condition": "new",
+    "product_type": "health > supplements",
+    "google_product_category": "Health > Vitamins & Supplements > Fish Oil",
+    "product_detail": [{ "attribute_name": "...", "attribute_value": "..." }],
+    "product_highlight": ["..."],
+    "faqs": [{ "question": "...", "answer": "..." }],
+    "price": { "amount": null, "currency": null },
+    "shipping": [],
+    ...
+  }
+}
+```
+
+### Usage Example
+
+```bash
+curl -X POST \
+  -F "title=Nature Made Fish Oil Softgels, 1200 mg, 300 Count" \
+  -F "description=Support your heart health with Omega-3 fatty acids." \
+  -F 'categories=["health","supplements"]' \
+  -F 'tags=["fish oil","omega-3","heart health"]' \
+  -F 'colors=["brown","yellow"]' \
+  -F 'faqs=[{"question":"Is it mercury-free?","answer":"Yes, purified to remove mercury."}]' \
+  -F "locale=en-US" \
+  http://localhost:8000/protocols/generate
+```
+
+**Notes:**
+- Calls the LLM once to extract structured fields (brand, material, age_group, gender, short_title, google_product_category, product_details, product_highlights), then builds both schemas from the same extraction
+- ACP schema includes agent actions, fulfillment, and campaigns sections for agentic commerce
+- UCP schema follows the Google Merchant Center Product Data Specification with `structured_title`/`structured_description` using `digital_source_type: "trained_algorithmic_media"` for AI-generated content
+- Fields not derivable from enriched data are set to `null` for the consumer to fill in
+- Deterministic defaults: `availability` = `"in_stock"`, `condition` = `"new"`, `adult` = `false`, `is_bundle` = `false`
+
+---
+
 ## Supported Locales
 
 The API supports 10 regional locales for language and cultural context:

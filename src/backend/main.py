@@ -29,7 +29,7 @@ from openai import APIConnectionError
 from backend.policy import evaluate_policy_compliance
 from backend.policy_library import PolicyLibrary
 from backend.product_manual import process_manual_pdf, generate_manual_queries, extract_manual_knowledge
-from backend.vlm import extract_vlm_observation, build_enriched_vlm_result, _call_nemotron_generate_faqs
+from backend.vlm import extract_vlm_observation, build_enriched_vlm_result, _call_nemotron_generate_faqs, _call_nemotron_extract_schema_fields
 from backend.image import generate_image_variation
 from backend.trellis import generate_3d_asset
 from backend.config import get_config
@@ -662,4 +662,326 @@ async def generate_3d(
         }, status_code=exc.response.status_code)
     except Exception as exc:
         logger.exception(f"/generate/3d exception: {exc}")
+        return JSONResponse({"detail": str(exc)}, status_code=500)
+
+
+# ---------------------------------------------------------------------------
+# Protocol schema endpoints
+# ---------------------------------------------------------------------------
+
+def _empty_money():
+    return {"amount": None, "currency": None}
+
+
+def _empty_measurement():
+    return {"value": None, "unit": None}
+
+
+def _build_acp_schema(enriched: dict, faqs: list, extracted: dict) -> dict:
+    """Build an ACP schema instance, merging enriched data with LLM-extracted fields."""
+    details = extracted.get("product_details", [])
+    highlights = extracted.get("product_highlights", [])
+
+    return {
+        "product": {
+            "id": None,
+            "title": enriched.get("title", ""),
+            "description": enriched.get("description", ""),
+            "brand": extracted.get("brand"),
+            "attributes": {
+                "colors": enriched.get("colors", []),
+                "material": extracted.get("material"),
+                "size": None,
+                "weight": _empty_measurement(),
+                "condition": extracted.get("condition", "new"),
+                "age_group": extracted.get("age_group"),
+                "gender": extracted.get("gender"),
+                "pattern": None,
+            },
+            "categories": enriched.get("categories", []),
+            "tags": enriched.get("tags", []),
+            "images": {
+                "primary": None,
+                "additional": [],
+                "lifestyle": None,
+                "video": None,
+                "virtual_model_3d": None,
+            },
+            "identifiers": {
+                "gtin": None,
+                "mpn": None,
+                "sku": None,
+            },
+            "dimensions": {
+                "length": _empty_measurement(),
+                "width": _empty_measurement(),
+                "height": _empty_measurement(),
+                "weight": _empty_measurement(),
+            },
+            "details": details if isinstance(details, list) else [],
+            "highlights": highlights if isinstance(highlights, list) else [],
+        },
+        "pricing": {
+            "currency": None,
+            "price": None,
+            "sale_price": None,
+            "sale_price_effective_date": None,
+            "cost_of_goods_sold": None,
+            "availability": "in_stock",
+            "availability_date": None,
+            "expiration_date": None,
+            "installment": {
+                "months": None,
+                "amount": _empty_money(),
+                "downpayment": _empty_money(),
+                "credit_type": None,
+            },
+            "subscription_cost": {
+                "period": None,
+                "period_length": None,
+                "amount": _empty_money(),
+            },
+            "unit_pricing": {
+                "measure": _empty_measurement(),
+                "base_measure": _empty_measurement(),
+            },
+            "loyalty_program": [],
+            "auto_pricing_min_price": None,
+            "maximum_retail_price": None,
+        },
+        "faqs": [{"question": f["question"], "answer": f["answer"]} for f in faqs],
+        "agent_actions": {
+            "discoverable": True,
+            "buyable": True,
+            "returnable": True,
+            "comparable": True,
+            "subscribable": False,
+        },
+        "fulfillment": {
+            "shipping": {
+                "eligible": None,
+                "weight": _empty_measurement(),
+                "length": _empty_measurement(),
+                "width": _empty_measurement(),
+                "height": _empty_measurement(),
+                "label": None,
+                "ships_from_country": None,
+                "min_handling_time": None,
+                "max_handling_time": None,
+                "transit_business_days": [],
+                "handling_business_days": [],
+                "free_shipping_threshold": [],
+                "rules": [],
+                "carrier_rules": [],
+            },
+            "pickup_eligible": None,
+            "digital_delivery": None,
+            "handling_cutoff_time": [],
+            "minimum_order_value": [],
+            "return_policy_label": None,
+        },
+        "campaigns": {
+            "ads_redirect": None,
+            "custom_labels": [None, None, None, None, None],
+            "promotion_ids": [],
+            "short_title": extracted.get("short_title"),
+            "excluded_destinations": [],
+            "included_destinations": [],
+            "shopping_ads_excluded_countries": [],
+            "pause": None,
+        },
+        "certifications": [],
+        "energy_efficiency": {
+            "class": None,
+            "min_class": None,
+            "max_class": None,
+        },
+        "bundling": {
+            "multipack": None,
+            "is_bundle": False,
+        },
+        "marketplace": {
+            "external_seller_id": None,
+        },
+        "metadata": {
+            "locale": None,
+            "enrichment_source": "nvidia-catalog-enrichment",
+            "generated_at": None,
+        },
+    }
+
+
+def _build_ucp_schema(enriched: dict, faqs: list, extracted: dict) -> dict:
+    """Build a UCP schema instance, merging enriched data with LLM-extracted fields."""
+    colors = enriched.get("colors", [])
+    categories = enriched.get("categories", [])
+    tags = enriched.get("tags", [])
+    details = extracted.get("product_details", [])
+    highlights = extracted.get("product_highlights", tags)
+
+    return {
+        # ── Basic product data ──
+        "id": None,
+        "title": None,
+        "structured_title": {
+            "digital_source_type": "trained_algorithmic_media",
+            "content": enriched.get("title", ""),
+        },
+        "description": None,
+        "structured_description": {
+            "digital_source_type": "trained_algorithmic_media",
+            "content": enriched.get("description", ""),
+        },
+        "link": None,
+        "image_link": None,
+        "additional_image_link": [],
+        "video_link": None,
+        "virtual_model_link": None,
+        "mobile_link": None,
+
+        # ── Price and availability ──
+        "availability": "in_stock",
+        "availability_date": None,
+        "cost_of_goods_sold": _empty_money(),
+        "expiration_date": None,
+        "price": _empty_money(),
+        "sale_price": _empty_money(),
+        "sale_price_effective_date": None,
+        "unit_pricing_measure": _empty_measurement(),
+        "unit_pricing_base_measure": _empty_measurement(),
+        "installment": {
+            "months": None,
+            "amount": _empty_money(),
+            "downpayment": _empty_money(),
+            "credit_type": None,
+        },
+        "subscription_cost": {
+            "period": None,
+            "period_length": None,
+            "amount": _empty_money(),
+        },
+        "loyalty_program": [],
+        "auto_pricing_min_price": _empty_money(),
+        "maximum_retail_price": _empty_money(),
+
+        # ── Product category ──
+        "google_product_category": extracted.get("google_product_category"),
+        "product_type": " > ".join(categories) if categories else None,
+
+        # ── Product identifiers ──
+        "brand": extracted.get("brand"),
+        "gtin": None,
+        "mpn": None,
+        "identifier_exists": False,
+
+        # ── Detailed product description ──
+        "condition": extracted.get("condition", "new"),
+        "adult": False,
+        "multipack": None,
+        "is_bundle": False,
+        "certification": [],
+        "energy_efficiency_class": None,
+        "min_energy_efficiency_class": None,
+        "max_energy_efficiency": None,
+        "age_group": extracted.get("age_group"),
+        "color": " / ".join(colors) if colors else None,
+        "gender": extracted.get("gender"),
+        "material": extracted.get("material"),
+        "pattern": None,
+        "size": None,
+        "size_type": [],
+        "size_system": None,
+        "item_group_id": None,
+        "product_length": _empty_measurement(),
+        "product_width": _empty_measurement(),
+        "product_height": _empty_measurement(),
+        "product_weight": _empty_measurement(),
+        "product_detail": details if isinstance(details, list) else [],
+        "product_highlight": highlights if isinstance(highlights, list) else [],
+        "faqs": [{"question": f["question"], "answer": f["answer"]} for f in faqs],
+
+        # ── Shopping campaigns and other configurations ──
+        "ads_redirect": None,
+        "custom_label_0": None,
+        "custom_label_1": None,
+        "custom_label_2": None,
+        "custom_label_3": None,
+        "custom_label_4": None,
+        "promotion_id": [],
+        "lifestyle_image_link": None,
+        "short_title": extracted.get("short_title"),
+
+        # ── Marketplaces ──
+        "external_seller_id": None,
+
+        # ── Destinations ──
+        "excluded_destination": [],
+        "included_destination": [],
+        "shopping_ads_excluded_country": [],
+        "pause": None,
+
+        # ── Shipping and returns ──
+        "shipping": [],
+        "carrier_shipping": [],
+        "handling_cutoff_time": [],
+        "minimum_order_value": [],
+        "shipping_label": None,
+        "shipping_weight": _empty_measurement(),
+        "shipping_length": _empty_measurement(),
+        "shipping_width": _empty_measurement(),
+        "shipping_height": _empty_measurement(),
+        "ships_from_country": None,
+        "max_handling_time": None,
+        "min_handling_time": None,
+        "shipping_transit_business_days": [],
+        "shipping_handling_business_days": [],
+        "free_shipping_threshold": [],
+        "return_policy_label": None,
+    }
+
+
+@app.post("/protocols/generate")
+async def protocols_generate(
+    title: str = Form(""),
+    description: str = Form(""),
+    categories: str = Form("[]"),
+    tags: str = Form("[]"),
+    colors: str = Form("[]"),
+    faqs: str = Form("[]"),
+    locale: str = Form("en-US"),
+) -> JSONResponse:
+    """Generate both ACP and UCP schemas from enriched product data.
+
+    Calls the LLM once to extract structured fields (brand, material,
+    product_details, etc.), then builds both schemas from the same
+    extraction. Returns ``{"acp": {...}, "ucp": {...}}``.
+    """
+    try:
+        enriched = {
+            "title": title,
+            "description": description,
+            "categories": json.loads(categories),
+            "tags": json.loads(tags),
+            "colors": json.loads(colors),
+        }
+        parsed_faqs = json.loads(faqs)
+
+        extracted = await asyncio.to_thread(
+            _call_nemotron_extract_schema_fields, enriched, locale
+        )
+
+        acp = _build_acp_schema(enriched, parsed_faqs, extracted)
+        ucp = _build_ucp_schema(enriched, parsed_faqs, extracted)
+
+        return JSONResponse({"acp": acp, "ucp": ucp})
+    except (APIConnectionError, httpx.ConnectError) as exc:
+        logger.exception("/protocols/generate connection error: %s", exc)
+        return JSONResponse({
+            "detail": "Unable to connect to the NIM endpoint. Please verify that the NVIDIA NIM container is running."
+        }, status_code=503)
+    except json.JSONDecodeError as exc:
+        logger.error("/protocols/generate JSON parse error: %s", exc)
+        return JSONResponse({"detail": "Invalid JSON in request fields."}, status_code=400)
+    except Exception as exc:
+        logger.exception("/protocols/generate exception: %s", exc)
         return JSONResponse({"detail": str(exc)}, status_code=500)

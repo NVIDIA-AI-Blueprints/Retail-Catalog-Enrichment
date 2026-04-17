@@ -9,7 +9,8 @@ import { FieldsCard } from '@/components/FieldsCard';
 import { AdvancedOptionsCard } from '@/components/AdvancedOptionsCard';
 import { GeneratedVariationsSection } from '@/components/GeneratedVariationsSection';
 import { ProductFields, AugmentedData, PolicyDocument, PolicyUploadResult, ManualKnowledge, SUPPORTED_LOCALES } from '@/types';
-import { analyzeImage, generateFaqs, clearPolicies, generateImageVariation, generate3DModel, listPolicies, prepareProductData, uploadPolicies, extractManualKnowledge } from '@/lib/api';
+import { analyzeImage, generateFaqs, generateProtocolSchemas, clearPolicies, generateImageVariation, generate3DModel, listPolicies, prepareProductData, uploadPolicies, extractManualKnowledge } from '@/lib/api';
+import type { ProtocolSchemas } from '@/lib/api';
 
 
 function Home() {
@@ -34,6 +35,8 @@ function Home() {
   });
   const [augmentedData, setAugmentedData] = useState<AugmentedData | null>(null);
   const [isLoadingFaqs, setIsLoadingFaqs] = useState(false);
+  const [protocolSchemas, setProtocolSchemas] = useState<ProtocolSchemas | null>(null);
+  const [isLoadingProtocols, setIsLoadingProtocols] = useState(false);
   const [generatedImages, setGeneratedImages] = useState<(string | null)[]>([null, null]);
   const [qualityScores, setQualityScores] = useState<(number | null)[]>([null, null]);
   const [qualityIssues, setQualityIssues] = useState<(string[] | null)[]>([null, null]);
@@ -67,6 +70,7 @@ function Home() {
 
     // Clear image-dependent results when replacing, but preserve settings
     setAugmentedData(null);
+    setProtocolSchemas(null);
     setGeneratedImages([null, null]);
     setQualityScores([null, null]);
     setQualityIssues([null, null]);
@@ -105,6 +109,8 @@ function Home() {
     setUploadedFile(null);
     setAugmentedData(null);
     setIsLoadingFaqs(false);
+    setProtocolSchemas(null);
+    setIsLoadingProtocols(false);
     setGeneratedImages([null, null]);
     setQualityScores([null, null]);
     setQualityIssues([null, null]);
@@ -235,6 +241,7 @@ function Home() {
     if (!uploadedFile) return;
 
     setAugmentedData(null);
+    setProtocolSchemas(null);
     setGeneratedImages([null, null]);
     setQualityScores([null, null]);
     setQualityIssues([null, null]);
@@ -263,8 +270,10 @@ function Home() {
       setAugmentedData(enrichedData);
       setIsAnalyzingFields(false);
 
-      // Fire FAQ generation in the background — details are already visible
+      // Fire FAQ generation in the background, then chain protocol schema
+      // generation so FAQs are included in both ACP and UCP schemas.
       setIsLoadingFaqs(true);
+      setIsLoadingProtocols(true);
       generateFaqs({
         title: enrichedData.title,
         description: enrichedData.description,
@@ -275,10 +284,25 @@ function Home() {
         manualKnowledge: manualKnowledge || undefined,
       }).then((faqs) => {
         setAugmentedData(prev => prev ? { ...prev, faqs } : prev);
-      }).catch((err) => {
-        console.error('Error generating FAQs:', err);
-      }).finally(() => {
         setIsLoadingFaqs(false);
+
+        // Chain protocol generation with FAQs included
+        return generateProtocolSchemas({
+          title: enrichedData.title,
+          description: enrichedData.description,
+          categories: enrichedData.categories || [],
+          tags: enrichedData.tags,
+          colors: enrichedData.colors,
+          faqs,
+          locale,
+        });
+      }).then((schemas) => {
+        if (schemas) setProtocolSchemas(schemas);
+      }).catch((err) => {
+        console.error('Error generating FAQs/protocol schemas:', err);
+        setIsLoadingFaqs(false);
+      }).finally(() => {
+        setIsLoadingProtocols(false);
       });
 
       setIsGeneratingImage(true);
@@ -469,6 +493,8 @@ function Home() {
                 isAnalyzing={isAnalyzingFields}
                 isGenerating={isGeneratingImage}
                 isLoadingFaqs={isLoadingFaqs}
+                protocolSchemas={protocolSchemas}
+                isLoadingProtocols={isLoadingProtocols}
                 onFieldChange={(field, value) => setFields(prev => ({ ...prev, [field]: value }))}
               />
             </div>
