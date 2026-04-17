@@ -1,4 +1,4 @@
-import { ProductFields, AugmentedData, NIMHealthStatus, PolicyDocument, PolicyUploadResult } from '../types';
+import { ProductFields, AugmentedData, NIMHealthStatus, PolicyDocument, PolicyUploadResult, ManualKnowledge, ManualExtractResult } from '../types';
 
 const API_BASE = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
 
@@ -44,6 +44,7 @@ interface GenerateFaqsParams {
   tags: string[];
   colors: string[];
   locale: string;
+  manualKnowledge?: ManualKnowledge;
 }
 
 export async function generateFaqs(params: GenerateFaqsParams): Promise<{ question: string; answer: string }[]> {
@@ -54,6 +55,9 @@ export async function generateFaqs(params: GenerateFaqsParams): Promise<{ questi
   formData.append('tags', JSON.stringify(params.tags));
   formData.append('colors', JSON.stringify(params.colors));
   formData.append('locale', params.locale);
+  if (params.manualKnowledge) {
+    formData.append('manual_knowledge', JSON.stringify(params.manualKnowledge));
+  }
 
   const response = await fetch(`${API_BASE}/vlm/faqs`, {
     method: 'POST',
@@ -67,6 +71,31 @@ export async function generateFaqs(params: GenerateFaqsParams): Promise<{ questi
 
   const data = await response.json();
   return data.faqs || [];
+}
+
+export async function extractManualKnowledge(
+  file: File,
+  title: string,
+  categories: string[],
+  locale: string,
+): Promise<ManualExtractResult> {
+  const formData = new FormData();
+  formData.append('file', file);
+  formData.append('title', title);
+  formData.append('categories', JSON.stringify(categories));
+  formData.append('locale', locale);
+
+  const response = await fetch(`${API_BASE}/vlm/manual/extract`, {
+    method: 'POST',
+    body: formData,
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.detail || 'Failed to extract manual knowledge');
+  }
+
+  return response.json();
 }
 
 export async function listPolicies(): Promise<PolicyDocument[]> {

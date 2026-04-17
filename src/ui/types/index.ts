@@ -47,6 +47,14 @@ export interface FAQ {
   answer: string;
 }
 
+export type ManualKnowledge = Record<string, string>;
+
+export interface ManualExtractResult {
+  filename: string;
+  chunk_count: number;
+  knowledge: ManualKnowledge;
+}
+
 export interface AugmentedData {
   title: string;
   description: string;
