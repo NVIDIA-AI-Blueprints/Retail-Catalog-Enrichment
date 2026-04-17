@@ -20,6 +20,7 @@ dependencies = [
   "pymilvus==2.5.10",
   "pyyaml==6.0.3",
   "pypdf==6.1.1",
+  "numpy>=1.26.0",
 ]
 
 [tool.hatch.build.targets.wheel]

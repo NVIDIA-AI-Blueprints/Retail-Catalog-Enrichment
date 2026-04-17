@@ -307,17 +307,37 @@ Return ONLY valid JSON. No markdown, no commentary, no comments (// or /* */).""
     return enhanced_content
 
 
+def _format_manual_knowledge(knowledge: Dict[str, str]) -> str:
+    """Format extracted manual knowledge into a prompt section."""
+    lines = ["PRODUCT MANUAL KNOWLEDGE:",
+             "The following information was extracted from the official product manual.\n"]
+    for topic, content in knowledge.items():
+        label = topic.replace("_", " ").title()
+        if content and content.strip():
+            lines.append(f"[{label}]")
+            lines.append(content.strip())
+            lines.append("")
+    return "\n".join(lines)
+
+
 def _call_nemotron_generate_faqs(
     enriched_result: Dict[str, Any],
-    locale: str = "en-US"
+    locale: str = "en-US",
+    manual_knowledge: Optional[Dict[str, str]] = None,
 ) -> list:
-    """Generate 3-5 product FAQs from the final enriched catalog result.
+    """Generate product FAQs from the final enriched catalog result.
 
-    Runs after enrichment so FAQs reflect the final merged output (VLM +
-    user data + branding). On any parse failure returns an empty list.
+    Without *manual_knowledge*: generates 3-5 basic FAQs from the product
+    data alone (title, description, tags, etc.).
+
+    With *manual_knowledge*: generates up to 10 richer FAQs that draw from
+    both the product data **and** the extracted manual content.  The prompt
+    instructs the LLM to avoid duplicating what the description already
+    covers, so FAQs surface genuinely new details from the manual.
     """
-    logger.info("[FAQ] Generating FAQs: keys=%s, locale=%s",
-                list(enriched_result.keys()), locale)
+    has_manual = bool(manual_knowledge and any(v.strip() for v in manual_knowledge.values()))
+    logger.info("[FAQ] Generating FAQs: keys=%s, locale=%s, has_manual=%s",
+                list(enriched_result.keys()), locale, has_manual)
 
     if not (api_key := os.getenv("NGC_API_KEY")):
         raise RuntimeError(NGC_API_KEY_NOT_SET_ERROR)
@@ -328,7 +348,33 @@ def _call_nemotron_generate_faqs(
 
     product_json = json.dumps(enriched_result, indent=2, ensure_ascii=False)
 
-    prompt = f"""/no_think You are a retail product FAQ specialist. Generate 3 to 5 frequently asked questions and answers for the product described below.
+    if has_manual:
+        manual_section = _format_manual_knowledge(manual_knowledge)
+        prompt = f"""/no_think You are a retail product FAQ specialist. Generate up to 10 frequently asked questions and answers for the product described below. You have access to both the product listing AND extracted knowledge from the official product manual.
+
+PRODUCT:
+{product_json}
+
+{manual_section}
+
+TARGET LANGUAGE / REGION: {info['language']} ({info['region']})
+{info['context']}
+
+RULES:
+- Generate between 5 and 10 FAQs.
+- Each FAQ must have a "question" and an "answer" field.
+- The product description already covers certain details. Generate FAQs about information FROM THE MANUAL that adds to or expands on the description. Do NOT create questions whose answers are fully contained in the description.
+- Prioritize topics where the manual provides specific, detailed information (measurements, ratings, temperatures, durations, capacities, certifications).
+- When the manual knowledge provides precise data, include those specifics in the answer.
+- Answers must be helpful, concise (1-3 sentences), and factual.
+- ONLY reference details present in the product data or manual knowledge above. Do NOT fabricate specifications.
+- Write questions and answers in {info['language']} appropriate for {info['region']}.
+
+OUTPUT FORMAT:
+Return ONLY a valid JSON array. No markdown, no commentary.
+Example: [{{"question": "...", "answer": "..."}}, ...]"""
+    else:
+        prompt = f"""/no_think You are a retail product FAQ specialist. Generate 3 to 5 frequently asked questions and answers for the product described below.
 
 PRODUCT:
 {product_json}
@@ -348,12 +394,13 @@ OUTPUT FORMAT:
 Return ONLY a valid JSON array. No markdown, no commentary.
 Example: [{{"question": "...", "answer": "..."}}, ...]"""
 
-    logger.info("[FAQ] Sending prompt to Nemotron (length: %d chars)", len(prompt))
+    max_tokens = 4096 if has_manual else 2048
+    logger.info("[FAQ] Sending prompt to Nemotron (length: %d chars, max_tokens: %d)", len(prompt), max_tokens)
 
     completion = client.chat.completions.create(
         model=llm_config['model'],
         messages=[{"role": "system", "content": "/no_think"}, {"role": "user", "content": prompt}],
-        temperature=0.1, top_p=0.9, max_tokens=2048, stream=True,
+        temperature=0.1, top_p=0.9, max_tokens=max_tokens, stream=True,
         extra_body={"reasoning_budget": 16384, "chat_template_kwargs": {"enable_thinking": False}}
     )
 

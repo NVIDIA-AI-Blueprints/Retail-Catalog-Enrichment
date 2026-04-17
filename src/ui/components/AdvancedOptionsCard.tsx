@@ -49,23 +49,37 @@ interface Props {
   enable3D: boolean;
   isAnalyzingFields: boolean;
   isGeneratingImage: boolean;
+  manualFilename: string | null;
+  manualChunkCount: number | null;
+  isUploadingManual: boolean;
+  manualUploadError: string | null;
   onBrandInstructionsChange: (value: string) => void;
   onPolicyFileSelect: () => void;
   onClearPolicyLibrary: () => void;
+  onManualFileSelect: () => void;
+  onClearManual: () => void;
   onEnableVariation1Change: (value: boolean) => void;
   onEnableVariation2Change: (value: boolean) => void;
   onEnable3DChange: (value: boolean) => void;
 }
 
-function PolicyUploadProgress() {
+const MANUAL_UPLOAD_STAGES = [
+  'Uploading PDF',
+  'Extracting text',
+  'Building embeddings',
+  'Generating queries',
+  'Retrieving knowledge',
+] as const;
+
+function StagedUploadProgress({ stages }: { stages: readonly string[] }) {
   const [stageIndex, setStageIndex] = useState(0);
 
   useEffect(() => {
     const interval = setInterval(() => {
-      setStageIndex((prev) => (prev + 1) % UPLOAD_STAGES.length);
+      setStageIndex((prev) => (prev + 1) % stages.length);
     }, 2400);
     return () => clearInterval(interval);
-  }, []);
+  }, [stages.length]);
 
   return (
     <div
@@ -87,21 +101,21 @@ function PolicyUploadProgress() {
           borderRadius: '50%',
           border: '2.5px solid rgba(118, 185, 0, 0.15)',
           borderTopColor: '#76B900',
-          animation: 'policy-spin 0.8s linear infinite',
+          animation: 'upload-spin 0.8s linear infinite',
           flexShrink: 0,
         }}
       />
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
           <Text kind="body/semibold/sm" style={{ color: '#76B900' }}>
-            {UPLOAD_STAGES[stageIndex]}
+            {stages[stageIndex]}
           </Text>
-          <span style={{ color: 'rgba(118, 185, 0, 0.6)', fontSize: '12px', animation: 'policy-dots 1.4s steps(4, end) infinite' }}>
+          <span style={{ color: 'rgba(118, 185, 0, 0.6)', fontSize: '12px', animation: 'upload-dots 1.4s steps(4, end) infinite' }}>
             ...
           </span>
         </div>
         <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-          {UPLOAD_STAGES.map((label, i) => (
+          {stages.map((label, i) => (
             <div
               key={label}
               style={{
@@ -116,10 +130,10 @@ function PolicyUploadProgress() {
         </div>
       </div>
       <style>{`
-        @keyframes policy-spin {
+        @keyframes upload-spin {
           to { transform: rotate(360deg); }
         }
-        @keyframes policy-dots {
+        @keyframes upload-dots {
           0% { opacity: 0.2; }
           50% { opacity: 1; }
           100% { opacity: 0.2; }
@@ -140,9 +154,15 @@ export function AdvancedOptionsCard({
   enable3D,
   isAnalyzingFields,
   isGeneratingImage,
+  manualFilename,
+  manualChunkCount,
+  isUploadingManual,
+  manualUploadError,
   onBrandInstructionsChange,
   onPolicyFileSelect,
   onClearPolicyLibrary,
+  onManualFileSelect,
+  onClearManual,
   onEnableVariation1Change,
   onEnableVariation2Change,
   onEnable3DChange,
@@ -228,10 +248,12 @@ export function AdvancedOptionsCard({
                     Upload reference PDFs or start with an empty workspace.
                   </Text>
                 </Stack>
-                {loadedPolicies.length > 0 && (
+                {loadedPolicies.length > 0 ? (
                   <Text kind="body/regular/sm" className="text-subtle" style={{ whiteSpace: 'nowrap', flexShrink: 0 }}>
                     {loadedPolicies.length} {loadedPolicies.length === 1 ? 'file' : 'files'} loaded
                   </Text>
+                ) : (
+                  <span style={pillStyle}>Optional</span>
                 )}
               </Flex>
 
@@ -259,7 +281,7 @@ export function AdvancedOptionsCard({
                 </Flex>
               )}
 
-              {isUploadingPolicies && <PolicyUploadProgress />}
+              {isUploadingPolicies && <StagedUploadProgress stages={UPLOAD_STAGES} />}
 
               {policyUploadError && (
                 <div className="p-3 rounded-lg border" style={{ borderColor: 'var(--color-red-500)', backgroundColor: 'rgba(255, 84, 89, 0.08)', marginTop: '14px' }}>
@@ -322,6 +344,90 @@ export function AdvancedOptionsCard({
                     </div>
                   ))}
                 </Stack>
+              )}
+            </div>
+
+            {/* Product Manual for FAQs */}
+            <div style={innerCardStyle}>
+              <Flex justify="between" align="center" style={{ marginBottom: '14px' }}>
+                <Stack gap="1">
+                  <Text kind="body/semibold/md" className="text-primary">Product manual for FAQs</Text>
+                  <Text kind="body/regular/sm" className="text-subtle">
+                    Upload a product manual PDF to generate richer FAQs with specs, care instructions, and more.
+                  </Text>
+                </Stack>
+                <span style={pillStyle}>Optional</span>
+              </Flex>
+
+              {!isUploadingManual && !manualFilename && (
+                <Button
+                  kind="primary"
+                  size="medium"
+                  className="nvidia-green-button"
+                  onClick={onManualFileSelect}
+                  disabled={disabled}
+                >
+                  Upload PDF
+                </Button>
+              )}
+
+              {isUploadingManual && <StagedUploadProgress stages={MANUAL_UPLOAD_STAGES} />}
+
+              {manualUploadError && (
+                <div className="p-3 rounded-lg border" style={{ borderColor: 'var(--color-red-500)', backgroundColor: 'rgba(255, 84, 89, 0.08)', marginTop: '14px' }}>
+                  <Text kind="body/regular/sm" style={{ color: 'var(--color-red-400)' }}>
+                    {manualUploadError}
+                  </Text>
+                </div>
+              )}
+
+              {manualFilename && !isUploadingManual && (
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: '14px',
+                    padding: '14px',
+                    border: '1px solid var(--color-border-base)',
+                    borderRadius: '14px',
+                    background: 'var(--color-surface-base)',
+                    marginTop: '14px',
+                  }}
+                >
+                  <Flex gap="3" align="center" style={{ minWidth: 0 }}>
+                    <div
+                      style={{
+                        width: '42px',
+                        height: '42px',
+                        borderRadius: '12px',
+                        background: 'rgba(255,255,255,0.05)',
+                        display: 'grid',
+                        placeItems: 'center',
+                        fontSize: '18px',
+                        flexShrink: 0,
+                      }}
+                    >
+                      📋
+                    </div>
+                    <Stack gap="1" style={{ minWidth: 0 }}>
+                      <Text kind="body/semibold/sm" className="text-primary" style={{ wordBreak: 'break-word' }}>
+                        {manualFilename}
+                      </Text>
+                      <Text kind="body/regular/sm" className="text-subtle">
+                        {manualChunkCount} indexed {manualChunkCount === 1 ? 'chunk' : 'chunks'}
+                      </Text>
+                    </Stack>
+                  </Flex>
+                  <Button
+                    kind="secondary"
+                    size="small"
+                    onClick={onClearManual}
+                    disabled={disabled}
+                  >
+                    Remove
+                  </Button>
+                </div>
               )}
             </div>
           </Stack>

@@ -28,6 +28,7 @@ from openai import APIConnectionError
 
 from backend.policy import evaluate_policy_compliance
 from backend.policy_library import PolicyLibrary
+from backend.product_manual import process_manual_pdf, generate_manual_queries, extract_manual_knowledge
 from backend.vlm import extract_vlm_observation, build_enriched_vlm_result, _call_nemotron_generate_faqs
 from backend.image import generate_image_variation
 from backend.trellis import generate_3d_asset
@@ -272,8 +273,14 @@ async def vlm_faqs(
     tags: str = Form("[]"),
     colors: str = Form("[]"),
     locale: str = Form("en-US"),
+    manual_knowledge: str = Form(""),
 ) -> JSONResponse:
-    """Generate FAQs from enriched product data. Called after /vlm/analyze completes."""
+    """Generate FAQs from enriched product data. Called after /vlm/analyze completes.
+
+    When *manual_knowledge* is provided (JSON dict of topic → text), the FAQ
+    prompt uses both the product data and the extracted manual content to
+    produce up to 10 richer FAQs.
+    """
     try:
         if locale not in VALID_LOCALES:
             logger.error(f"/vlm/faqs error: invalid locale={locale}")
@@ -286,7 +293,17 @@ async def vlm_faqs(
             "tags": json.loads(tags),
             "colors": json.loads(colors),
         }
-        faqs = await asyncio.to_thread(_call_nemotron_generate_faqs, enriched, locale)
+
+        parsed_knowledge = None
+        if manual_knowledge and manual_knowledge.strip():
+            try:
+                parsed_knowledge = json.loads(manual_knowledge)
+            except json.JSONDecodeError:
+                logger.warning("/vlm/faqs: invalid manual_knowledge JSON, ignoring")
+
+        faqs = await asyncio.to_thread(
+            _call_nemotron_generate_faqs, enriched, locale, parsed_knowledge
+        )
         return JSONResponse({"faqs": faqs})
     except (APIConnectionError, httpx.ConnectError) as exc:
         logger.exception("/vlm/faqs connection error: %s", exc)
@@ -295,6 +312,80 @@ async def vlm_faqs(
         }, status_code=503)
     except Exception as exc:
         logger.exception("/vlm/faqs exception: %s", exc)
+        return JSONResponse({"detail": str(exc)}, status_code=500)
+
+
+@app.post("/vlm/manual/extract")
+async def vlm_manual_extract(
+    file: UploadFile = File(...),
+    title: str = Form(""),
+    categories: str = Form("[]"),
+    locale: str = Form("en-US"),
+) -> JSONResponse:
+    """Extract knowledge from a product manual PDF for FAQ enrichment.
+
+    Stateless: processes the PDF, generates product-specific queries (using
+    title + categories, NOT description), retrieves relevant chunks, and
+    returns the structured knowledge.  All vectors are freed after the
+    response is sent.
+    """
+    try:
+        if locale not in VALID_LOCALES:
+            return JSONResponse(
+                {"detail": f"Invalid locale. Supported locales: {sorted(VALID_LOCALES)}"},
+                status_code=400,
+            )
+
+        if not file.filename or not file.filename.lower().endswith(".pdf"):
+            return JSONResponse({"detail": "Only PDF files are accepted."}, status_code=400)
+
+        if file.content_type and file.content_type != "application/pdf":
+            return JSONResponse({"detail": "Only PDF files are accepted."}, status_code=400)
+
+        pdf_bytes = await file.read()
+        if not pdf_bytes:
+            return JSONResponse({"detail": "Uploaded file is empty."}, status_code=400)
+
+        max_pdf_size = 50 * 1024 * 1024  # 50 MB
+        if len(pdf_bytes) > max_pdf_size:
+            return JSONResponse({"detail": "PDF file exceeds the 50 MB size limit."}, status_code=400)
+
+        safe_title = title[:500] if title else ""
+        try:
+            parsed_categories = json.loads(categories) if categories else []
+            if not isinstance(parsed_categories, list):
+                parsed_categories = []
+            parsed_categories = [str(c)[:100] for c in parsed_categories[:20]]
+        except json.JSONDecodeError:
+            parsed_categories = []
+
+        def _extract():
+            ctx = process_manual_pdf(pdf_bytes, file.filename)
+            queries = generate_manual_queries(safe_title, parsed_categories, locale)
+            if not queries:
+                logger.warning("[Manual] LLM returned no queries; returning empty knowledge")
+                return ctx.filename, ctx.chunk_count, {}
+            knowledge = extract_manual_knowledge(ctx, queries)
+            return ctx.filename, ctx.chunk_count, knowledge
+
+        filename, chunk_count, knowledge = await asyncio.to_thread(_extract)
+
+        return JSONResponse({
+            "filename": filename,
+            "chunk_count": chunk_count,
+            "knowledge": knowledge,
+        })
+
+    except ValueError as exc:
+        logger.warning("/vlm/manual/extract validation error: %s", exc)
+        return JSONResponse({"detail": str(exc)}, status_code=400)
+    except (APIConnectionError, httpx.ConnectError) as exc:
+        logger.exception("/vlm/manual/extract connection error: %s", exc)
+        return JSONResponse({
+            "detail": "Unable to connect to the NIM endpoint. Please verify that the NVIDIA NIM container is running."
+        }, status_code=503)
+    except Exception as exc:
+        logger.exception("/vlm/manual/extract exception: %s", exc)
         return JSONResponse({"detail": str(exc)}, status_code=500)
 
 

@@ -30,3 +30,9 @@ policy_library:
   db_path: "data/policies/library.db"
   top_k: 8
   min_relevance_score: 0.3
+
+product_manual:
+  chunk_size_words: 250
+  chunk_overlap_words: 50
+  top_k_per_query: 3
+  min_relevance_score: 0.25

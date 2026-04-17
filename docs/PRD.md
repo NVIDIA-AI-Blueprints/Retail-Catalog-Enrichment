@@ -2,8 +2,8 @@
 
 ## Project: Catalog Enrichment System
 
-**Version:** 1.2.0
-**Last Updated:** 14-Oct-2025  
+**Version:** 1.3.0
+**Last Updated:** 16-Apr-2026  
 **Owner:** Antonio Martinez (NVIDIA)
 
 ## Problem Statement
@@ -130,13 +130,24 @@ A GenAI-powered catalog enrichment system that transforms basic product images i
 - Ensure background differences from original are not penalized (backgrounds should differ)
 
 ### FR-10: Product FAQ Generation
-- Generate 3-5 frequently asked questions and answers for each product
+- Generate 3-5 frequently asked questions and answers for each product from enriched catalog data
 - FAQs are derived from the final enriched catalog data (after VLM analysis, user data merge, and branding)
 - Questions cover practical shopper topics: materials, care instructions, sizing, use cases, compatibility, durability
 - Answers are concise (1-3 sentences), factual, and grounded in the enriched product data
 - Support locale-aware FAQ generation across all 10 supported regional locales
 - Separate `/vlm/faqs` endpoint allows asynchronous generation — details display immediately while FAQs load in the background
 - UI displays FAQs in a dedicated tab with collapsible accordion items
+
+### FR-12: Product Manual PDF Enhancement for FAQs
+- Accept an optional product manual PDF to enrich FAQ generation with detailed product knowledge
+- Stateless architecture: `/vlm/manual/extract` processes the PDF, returns structured knowledge as JSON, and frees all server-side resources — no server-side storage required
+- Dynamic query generation: LLM generates 5-8 product-type-specific questions based on title and categories (not description) to avoid FAQ duplication with the description
+- Targeted RAG retrieval: text is chunked, embedded in-memory using NVIDIA nv-embedqa-e5-v5, and relevant chunks retrieved per query via cosine similarity
+- When manual knowledge is provided to `/vlm/faqs`, generate up to 10 richer FAQs that surface details from the manual that go beyond the description
+- FAQ prompt explicitly avoids duplicating information already in the description
+- Supports concurrent processing: each request is independent with no shared server state, enabling batch processing of many products in parallel
+- UI provides a "Product manual for FAQs" upload section under Advanced Options
+- PDF file size limit: 50 MB; embedding requests batched at 128 chunks per call
 
 ### FR-11: Policy Compliance Checking
 - Accept PDF policy documents through a persistent policy library (`/policies` endpoint)
@@ -259,6 +270,11 @@ A GenAI-powered catalog enrichment system that transforms basic product images i
 **I want to** upload policy PDFs and have the system automatically check enriched product listings against those policies  
 **So that** I can ensure all catalog entries comply with marketplace regulations and internal guidelines before publishing
 
+### US-10: Manual-Enhanced Product FAQs
+**As a** e-commerce content manager  
+**I want to** upload a product manual PDF and have the system generate richer FAQs that include specific details like specs, care instructions, safety warnings, and warranty information  
+**So that** my product FAQ sections provide genuine value beyond what the description already covers, reducing customer support inquiries
+
 ## Success Criteria
 
 - **Processing Time**: <1 minute per product for complete enrichment (including quality assessment)
@@ -287,6 +303,7 @@ A GenAI-powered catalog enrichment system that transforms basic product images i
 - [x] ~~FR-9: Automated Quality Assessment for Generated Images~~ *(VLM-based reflection module integrated into image generation pipeline)*
 - [x] ~~FR-10: Product FAQ Generation~~ *(Separate /vlm/faqs endpoint with async loading, Kaizen Tabs + Accordion UI)*
 - [x] ~~FR-11: Policy Compliance Checking~~ *(PDF policy library with Milvus embeddings, semantic retrieval, compliance classification)*
+- [x] ~~FR-12: Product Manual PDF Enhancement for FAQs~~ *(Stateless targeted RAG via /vlm/manual/extract, dynamic query generation, up to 10 manual-enriched FAQs)*
 
 - [ ] TR-1: Model Integration
   - [x] ~~NVIDIA Nemotron VLM API integration~~

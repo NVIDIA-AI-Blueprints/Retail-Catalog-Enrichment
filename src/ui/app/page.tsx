@@ -8,8 +8,8 @@ import { ImageUploadCard } from '@/components/ImageUploadCard';
 import { FieldsCard } from '@/components/FieldsCard';
 import { AdvancedOptionsCard } from '@/components/AdvancedOptionsCard';
 import { GeneratedVariationsSection } from '@/components/GeneratedVariationsSection';
-import { ProductFields, AugmentedData, PolicyDocument, PolicyUploadResult, SUPPORTED_LOCALES } from '@/types';
-import { analyzeImage, generateFaqs, clearPolicies, generateImageVariation, generate3DModel, listPolicies, prepareProductData, uploadPolicies } from '@/lib/api';
+import { ProductFields, AugmentedData, PolicyDocument, PolicyUploadResult, ManualKnowledge, SUPPORTED_LOCALES } from '@/types';
+import { analyzeImage, generateFaqs, clearPolicies, generateImageVariation, generate3DModel, listPolicies, prepareProductData, uploadPolicies, extractManualKnowledge } from '@/lib/api';
 
 
 function Home() {
@@ -42,8 +42,14 @@ function Home() {
   const [enableVariation1, setEnableVariation1] = useState<boolean>(true);
   const [enableVariation2, setEnableVariation2] = useState<boolean>(true);
   const [enable3D, setEnable3D] = useState<boolean>(true);
+  const [manualKnowledge, setManualKnowledge] = useState<ManualKnowledge | null>(null);
+  const [manualFilename, setManualFilename] = useState<string | null>(null);
+  const [manualChunkCount, setManualChunkCount] = useState<number | null>(null);
+  const [isUploadingManual, setIsUploadingManual] = useState(false);
+  const [manualUploadError, setManualUploadError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const policyFileInputRef = useRef<HTMLInputElement>(null);
+  const manualFileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     void refreshPolicies({ silent: true });
@@ -111,8 +117,13 @@ function Home() {
     setEnableVariation1(true);
     setEnableVariation2(true);
     setEnable3D(true);
+    setManualKnowledge(null);
+    setManualFilename(null);
+    setManualChunkCount(null);
+    setManualUploadError(null);
     if (fileInputRef.current) fileInputRef.current.value = '';
     if (policyFileInputRef.current) policyFileInputRef.current.value = '';
+    if (manualFileInputRef.current) manualFileInputRef.current.value = '';
   };
 
   const refreshPolicies = async ({ silent = false }: { silent?: boolean } = {}) => {
@@ -180,6 +191,46 @@ function Home() {
     }
   };
 
+  const handleManualFileUpload = async (file: File | undefined) => {
+    if (!file) return;
+    if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) {
+      setManualUploadError(`"${file.name}" is not a PDF.`);
+      return;
+    }
+
+    try {
+      setIsUploadingManual(true);
+      setManualUploadError(null);
+
+      // Use augmented data if available, otherwise use user-entered fields
+      const title = augmentedData?.title || fields.title || '';
+      const categories = augmentedData?.categories || (fields.categories ? fields.categories.split(',').map(c => c.trim()).filter(Boolean) : []);
+
+      const result = await extractManualKnowledge(file, title, categories, locale);
+      setManualKnowledge(result.knowledge);
+      setManualFilename(result.filename);
+      setManualChunkCount(result.chunk_count);
+    } catch (error) {
+      console.error('Error uploading product manual:', error);
+      setManualUploadError(error instanceof Error ? error.message : 'Failed to extract manual knowledge');
+    } finally {
+      setIsUploadingManual(false);
+      if (manualFileInputRef.current) {
+        manualFileInputRef.current.value = '';
+      }
+    }
+  };
+
+  const handleClearManual = () => {
+    setManualKnowledge(null);
+    setManualFilename(null);
+    setManualChunkCount(null);
+    setManualUploadError(null);
+    if (manualFileInputRef.current) {
+      manualFileInputRef.current.value = '';
+    }
+  };
+
   const handleGenerate = async () => {
     if (!uploadedFile) return;
 
@@ -221,6 +272,7 @@ function Home() {
         tags: enrichedData.tags,
         colors: enrichedData.colors,
         locale,
+        manualKnowledge: manualKnowledge || undefined,
       }).then((faqs) => {
         setAugmentedData(prev => prev ? { ...prev, faqs } : prev);
       }).catch((err) => {
@@ -385,6 +437,15 @@ function Home() {
               }}
               style={{ display: 'none' }}
             />
+            <input
+              ref={manualFileInputRef}
+              type="file"
+              accept="application/pdf,.pdf"
+              onChange={(e) => {
+                void handleManualFileUpload(e.target.files?.[0]);
+              }}
+              style={{ display: 'none' }}
+            />
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '32px', padding: '0 16px' }}>
               <ImageUploadCard
@@ -424,11 +485,17 @@ function Home() {
                 enable3D={enable3D}
                 isAnalyzingFields={isAnalyzingFields}
                 isGeneratingImage={isGeneratingImage}
+                manualFilename={manualFilename}
+                manualChunkCount={manualChunkCount}
+                isUploadingManual={isUploadingManual}
+                manualUploadError={manualUploadError}
                 onBrandInstructionsChange={(value) => setFields(prev => ({ ...prev, brandInstructions: value }))}
                 onPolicyFileSelect={() => policyFileInputRef.current?.click()}
                 onClearPolicyLibrary={() => {
                   void handleClearPolicyLibrary();
                 }}
+                onManualFileSelect={() => manualFileInputRef.current?.click()}
+                onClearManual={handleClearManual}
                 onEnableVariation1Change={setEnableVariation1}
                 onEnableVariation2Change={setEnableVariation2}
                 onEnable3DChange={setEnable3D}

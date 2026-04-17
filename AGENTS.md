@@ -12,7 +12,9 @@ This document provides guidelines and instructions for AI assistants working on 
 - **[README.md](README.md)** - Quick start guide and high-level overview
 - **[docs/API.md](docs/API.md)** - Complete API reference with examples
 - **[docs/DOCKER.md](docs/DOCKER.md)** - Docker and container deployment guide
-- **[PRD.md](PRD.md)** - Product requirements document
+- **[docs/PRD.md](docs/PRD.md)** - Product requirements document
+- **[docs/POLICY_COMPLIANCE.md](docs/POLICY_COMPLIANCE.md)** - Policy compliance feature guide
+- **[docs/PRODUCT_MANUAL_FAQS.md](docs/PRODUCT_MANUAL_FAQS.md)** - Product manual PDF for FAQ enrichment guide
 - **[AGENTS.md](AGENTS.md)** - This file (AI assistant guidelines)
 
 ### Current Status
@@ -20,6 +22,8 @@ This document provides guidelines and instructions for AI assistants working on 
 - ✅ **VLM Content Augmentation** - Enhances existing product data with visual insights (FR-2 completed)
 - ✅ **2D Image Variation Generation** - Working with prompt planning and quality evaluation (FR-3 completed)
 - ✅ **Automated Quality Assessment** - VLM-based reflection for generated images (FR-9 completed)
+- ✅ **Product FAQ Generation** - FAQs from enriched data with optional product manual PDF enhancement (FR-10, FR-12 completed)
+- ✅ **Policy Compliance** - PDF policy library with Milvus RAG and compliance classification (FR-11 completed)
 - ⚠️ **In Development** - 3D Asset Generation (backend complete) and Video Generation in progress
 
 ### Key Goals
@@ -44,7 +48,7 @@ cd catalog-enrichment
 ### Backend (current)
 
 - Stack: FastAPI + Uvicorn (ASGI), OpenAI client (NVIDIA endpoint), Starlette under the hood
-- Dependencies: `fastapi`, `uvicorn[standard]`, `openai`, `python-multipart`, `python-dotenv`, `httpx`, `pillow`, `pyyaml`
+- Dependencies: `fastapi`, `uvicorn[standard]`, `openai`, `python-multipart`, `python-dotenv`, `httpx`, `pillow`, `pyyaml`, `pymilvus`, `pypdf`, `numpy`
 - Python: 3.11+
 - **Error Handling**: Comprehensive connection error detection with user-friendly messages when NIM endpoints are unreachable
 
@@ -101,6 +105,32 @@ uvicorn --app-dir src backend.main:app --host 0.0.0.0 --port 8000 --reload
     - `variation_plan`: object (planner LLM output with background style, camera angle, lighting)
     - `quality_score`: float (0-100 quality score from VLM reflection, or null if evaluation failed)
     - `quality_issues`: array (list of detected quality issues from reflection analysis)
+
+**FAQ Generation:**
+- POST `/vlm/faqs`
+  - Request: `multipart/form-data` with fields:
+    - `title` (string, optional): Product title from VLM analysis
+    - `description` (string, optional): Product description from VLM analysis
+    - `categories` (JSON string, optional): Categories array
+    - `tags` (JSON string, optional): Tags array
+    - `colors` (JSON string, optional): Colors array
+    - `locale` (string, optional): Regional locale code (default: "en-US")
+    - `manual_knowledge` (JSON string, optional): Extracted knowledge from `/vlm/manual/extract`
+  - Response: `{ "faqs": [{ "question": "string", "answer": "string" }] }`
+  - Without manual: 3-5 FAQs from product data
+  - With manual knowledge: up to 10 FAQs drawing from both product data and manual
+
+**Product Manual Knowledge Extraction:**
+- POST `/vlm/manual/extract`
+  - Request: `multipart/form-data` with fields:
+    - `file` (file): Product manual PDF (max 50 MB)
+    - `title` (string, optional): Product title for query generation
+    - `categories` (JSON string, optional): Product categories for query generation
+    - `locale` (string, optional): Regional locale code (default: "en-US")
+  - Response: `{ "filename": "string", "chunk_count": 42, "knowledge": { "topic": "extracted text..." } }`
+  - Stateless: all vectors freed after response, no server-side storage
+  - LLM generates 5-8 product-type-specific queries from title + categories (not description)
+  - Retrieves relevant chunks per query via in-memory cosine similarity
 
 **3D Asset Generation:**
 - POST `/generate/3d`
@@ -344,7 +374,7 @@ Given the catalog enrichment focus, pay special attention to:
 
 ---
 
-**Last Updated:** $(date)  
-**Version:** 1.0  
+**Last Updated:** 16-Apr-2026  
+**Version:** 1.3  
 
 *This document should be updated as the project evolves and new practices are established.*

@@ -93,6 +93,15 @@ class Config:
             ),
         }
 
+    def get_product_manual_config(self) -> Dict[str, Any]:
+        config = self._get_optional_section_config('product_manual')
+        return {
+            "chunk_size_words": int(config.get("chunk_size_words") or 250),
+            "chunk_overlap_words": int(config.get("chunk_overlap_words") or 50),
+            "top_k_per_query": int(config.get("top_k_per_query") or 3),
+            "min_relevance_score": float(config.get("min_relevance_score") or 0.25),
+        }
+
 
 _config_instance: Optional[Config] = None
 
