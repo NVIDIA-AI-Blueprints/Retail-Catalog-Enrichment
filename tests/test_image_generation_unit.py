@@ -20,12 +20,12 @@ Tests image variation generation pipeline with mocked OpenAI and HTTPX calls.
 """
 import json
 import pytest
-import base64
 from unittest.mock import Mock, patch, AsyncMock
+from fastapi.testclient import TestClient
+from backend.main import app
 from backend.image import (
     _call_planner_llm,
     _call_flux_edit,
-    persist_generated_image,
     generate_image_variation
 )
 
@@ -242,115 +242,14 @@ class TestCallFluxEdit:
         assert "output" in result
 
 
-class TestPersistGeneratedImage:
-    """Tests for persist_generated_image function."""
-    
-    def test_persist_image_without_enhanced_product(self, tmp_path, sample_base64_image, monkeypatch):
-        """Test persisting image without enhanced product data."""
-        # Set OUTPUT_DIR to temp directory
-        output_dir = tmp_path / "outputs"
-        output_dir.mkdir()
-        monkeypatch.setenv("OUTPUT_DIR", str(output_dir))
-        
-        result = persist_generated_image(
-            image_b64=sample_base64_image,
-            title="Test Product",
-            description="Test description",
-            categories=["accessories"],
-            tags=["test", "tag"],
-            colors=["black"],
-            locale="en-US",
-            content_type="image/png",
-            enhanced_product=None
-        )
-        
-        # Assertions
-        assert "artifact_id" in result
-        assert "image_path" in result
-        assert "metadata_path" in result
-        
-        # Check files exist
-        from pathlib import Path
-        assert Path(result["image_path"]).exists()
-        assert Path(result["metadata_path"]).exists()
-        
-        # Check metadata content
-        with open(result["metadata_path"], 'r') as f:
-            metadata = json.load(f)
-        
-        assert metadata["title"] == "Test Product"
-        assert metadata["locale"] == "en-US"
-        assert "created_at" in metadata
-    
-    def test_persist_image_with_enhanced_product(self, tmp_path, sample_base64_image, sample_enhanced_product, monkeypatch):
-        """Test persisting image with enhanced product data."""
-        # Set OUTPUT_DIR to temp directory
-        output_dir = tmp_path / "outputs"
-        output_dir.mkdir()
-        monkeypatch.setenv("OUTPUT_DIR", str(output_dir))
-        
-        result = persist_generated_image(
-            image_b64=sample_base64_image,
-            title="Test Product",
-            description="Test description",
-            categories=["accessories"],
-            tags=["test"],
-            colors=["black"],
-            locale="en-US",
-            content_type="image/png",
-            enhanced_product=sample_enhanced_product
-        )
-        
-        # Check metadata includes enhanced product
-        with open(result["metadata_path"], 'r') as f:
-            metadata = json.load(f)
-        
-        assert metadata["price"] == sample_enhanced_product["price"]
-        assert metadata["sku"] == sample_enhanced_product["sku"]
-        assert "id" in metadata
-        assert "locale" in metadata
-    
-    def test_persist_image_generates_unique_ids(self, tmp_path, sample_base64_image, monkeypatch):
-        """Test that multiple persists generate unique artifact IDs."""
-        output_dir = tmp_path / "outputs"
-        output_dir.mkdir()
-        monkeypatch.setenv("OUTPUT_DIR", str(output_dir))
-        
-        result1 = persist_generated_image(
-            image_b64=sample_base64_image,
-            title="Test 1",
-            description="Test",
-            categories=["test"],
-            tags=[],
-            colors=[],
-            locale="en-US",
-            content_type="image/png"
-        )
-        
-        result2 = persist_generated_image(
-            image_b64=sample_base64_image,
-            title="Test 2",
-            description="Test",
-            categories=["test"],
-            tags=[],
-            colors=[],
-            locale="en-US",
-            content_type="image/png"
-        )
-        
-        # IDs should be different
-        assert result1["artifact_id"] != result2["artifact_id"]
-
-
 class TestGenerateImageVariation:
     """Tests for generate_image_variation orchestration function."""
     
     @pytest.mark.asyncio
     @patch('backend.image.evaluate_image_quality')
-    @patch('backend.image.persist_generated_image')
     @patch('backend.image._call_flux_edit')
     @patch('backend.image._call_planner_llm')
-    async def test_generate_variation_complete_pipeline(self, mock_planner, mock_flux, mock_persist, mock_reflection, sample_image_bytes, sample_flux_plan):
+    async def test_generate_variation_complete_pipeline(self, mock_planner, mock_flux, mock_reflection, sample_image_bytes, sample_flux_plan):
         """Test complete image generation pipeline with reflection."""
         # Mock planner
         mock_planner.return_value = sample_flux_plan
@@ -365,14 +264,7 @@ class TestGenerateImageVariation:
             "score": 85.5,
             "issues": ["Minor background blur"]
         }
-        
-        # Mock persist
-        mock_persist.return_value = {
-            "artifact_id": "test123",
-            "image_path": "/tmp/test.png",
-            "metadata_path": "/tmp/test.json"
-        }
-        
+
         # Call function
         result = await generate_image_variation(
             image_bytes=sample_image_bytes,
@@ -387,12 +279,12 @@ class TestGenerateImageVariation:
         
         # Assertions
         assert "generated_image_b64" in result
-        assert "artifact_id" in result
-        assert "image_path" in result
-        assert "metadata_path" in result
         assert "variation_plan" in result
         assert "quality_score" in result
         assert "quality_issues" in result
+        assert "artifact_id" not in result
+        assert "image_path" not in result
+        assert "metadata_path" not in result
         
         # Verify new reflection fields
         assert result["quality_score"] == 85.5
@@ -403,15 +295,13 @@ class TestGenerateImageVariation:
         mock_planner.assert_called_once()
         mock_flux.assert_called_once()
         mock_reflection.assert_called_once()
-        mock_persist.assert_called_once()
     
     @pytest.mark.asyncio
     @patch('backend.image.evaluate_image_quality')
-    @patch('backend.image.persist_generated_image')
     @patch('backend.image._call_flux_edit')
     @patch('backend.image._call_planner_llm')
-    async def test_generate_variation_with_enhanced_product(self, mock_planner, mock_flux, mock_persist, mock_reflection, sample_image_bytes, sample_flux_plan, sample_enhanced_product):
-        """Test image generation with enhanced product data."""
+    async def test_generate_variation_omits_persistence_fields(self, mock_planner, mock_flux, mock_reflection, sample_image_bytes, sample_flux_plan):
+        """Test image generation returns only transient response data."""
         # Mock planner
         mock_planner.return_value = sample_flux_plan
         
@@ -425,15 +315,7 @@ class TestGenerateImageVariation:
             "score": 92.0,
             "issues": []
         }
-        
-        # Mock persist
-        mock_persist.return_value = {
-            "artifact_id": "test456",
-            "image_path": "/tmp/test2.png",
-            "metadata_path": "/tmp/test2.json"
-        }
-        
-        # Call function with enhanced_product
+
         result = await generate_image_variation(
             image_bytes=sample_image_bytes,
             content_type="image/png",
@@ -442,17 +324,16 @@ class TestGenerateImageVariation:
             categories=["accessories"],
             tags=["test"],
             colors=["black"],
-            locale="en-US",
-            enhanced_product=sample_enhanced_product
+            locale="en-US"
         )
         
-        # Verify enhanced_product was passed to persist
-        persist_call_kwargs = mock_persist.call_args[1]
-        assert persist_call_kwargs["enhanced_product"] == sample_enhanced_product
-        
-        # Verify reflection ran
+        assert result["generated_image_b64"] == "generatedbase64image"
+        assert result["variation_plan"] == sample_flux_plan
         assert result["quality_score"] == 92.0
         assert result["quality_issues"] == []
+        assert "artifact_id" not in result
+        assert "image_path" not in result
+        assert "metadata_path" not in result
     
     @pytest.mark.asyncio
     @patch('backend.image._call_flux_edit')
@@ -485,10 +366,9 @@ class TestGenerateImageVariation:
     
     @pytest.mark.asyncio
     @patch('backend.image.evaluate_image_quality')
-    @patch('backend.image.persist_generated_image')
     @patch('backend.image._call_flux_edit')
     @patch('backend.image._call_planner_llm')
-    async def test_generate_variation_with_different_locales(self, mock_planner, mock_flux, mock_persist, mock_reflection, sample_image_bytes, sample_base64_image, sample_flux_plan):
+    async def test_generate_variation_with_different_locales(self, mock_planner, mock_flux, mock_reflection, sample_image_bytes, sample_base64_image, sample_flux_plan):
         """Test image generation with different locales."""
         # Mock planner
         mock_planner.return_value = sample_flux_plan
@@ -501,14 +381,7 @@ class TestGenerateImageVariation:
             "score": 88.0,
             "issues": []
         }
-        
-        # Mock persist
-        mock_persist.return_value = {
-            "artifact_id": "test789",
-            "image_path": "/tmp/test3.png",
-            "metadata_path": "/tmp/test3.json"
-        }
-        
+
         # Test with Spanish locale
         result = await generate_image_variation(
             image_bytes=sample_image_bytes,
@@ -533,10 +406,9 @@ class TestGenerateImageVariation:
     
     @pytest.mark.asyncio
     @patch('backend.image.evaluate_image_quality')
-    @patch('backend.image.persist_generated_image')
     @patch('backend.image._call_flux_edit')
     @patch('backend.image._call_planner_llm')
-    async def test_generate_variation_handles_reflection_failure(self, mock_planner, mock_flux, mock_persist, mock_reflection, sample_image_bytes, sample_base64_image, sample_flux_plan):
+    async def test_generate_variation_handles_reflection_failure(self, mock_planner, mock_flux, mock_reflection, sample_image_bytes, sample_base64_image, sample_flux_plan):
         """Test image generation handles reflection failure gracefully."""
         # Mock planner
         mock_planner.return_value = sample_flux_plan
@@ -546,14 +418,7 @@ class TestGenerateImageVariation:
         
         # Mock reflection to return None (failure)
         mock_reflection.return_value = None
-        
-        # Mock persist
-        mock_persist.return_value = {
-            "artifact_id": "test999",
-            "image_path": "/tmp/test4.png",
-            "metadata_path": "/tmp/test4.json"
-        }
-        
+
         # Call function
         result = await generate_image_variation(
             image_bytes=sample_image_bytes,
@@ -568,12 +433,55 @@ class TestGenerateImageVariation:
         
         # Should still complete successfully
         assert "generated_image_b64" in result
-        assert "artifact_id" in result
+        assert "artifact_id" not in result
+        assert "image_path" not in result
+        assert "metadata_path" not in result
         
         # Reflection fields should be None and empty list
         assert result["quality_score"] is None
         assert result["quality_issues"] == []
-        
-        # Pipeline should have completed despite reflection failure
-        mock_persist.assert_called_once()
 
+
+class TestGenerateVariationEndpoint:
+    """Tests for the /generate/variation response contract."""
+
+    @patch('backend.main.generate_image_variation')
+    def test_generate_variation_response_omits_persistence_fields(self, mock_generate, sample_image_bytes, sample_flux_plan, sample_base64_image):
+        """Test endpoint accepts enhanced_product but returns no disk persistence metadata."""
+        mock_generate.return_value = {
+            "generated_image_b64": sample_base64_image,
+            "variation_plan": sample_flux_plan,
+            "quality_score": 91.0,
+            "quality_issues": []
+        }
+
+        client = TestClient(app)
+        response = client.post(
+            "/generate/variation",
+            files={"image": ("test.png", sample_image_bytes, "image/png")},
+            data={
+                "locale": "en-US",
+                "title": "Test Product",
+                "description": "Test description",
+                "categories": '["accessories"]',
+                "tags": '["test"]',
+                "colors": '["black"]',
+                "enhanced_product": "{not-json"
+            }
+        )
+
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload == {
+            "generated_image_b64": sample_base64_image,
+            "variation_plan": sample_flux_plan,
+            "quality_score": 91.0,
+            "quality_issues": [],
+            "locale": "en-US"
+        }
+        assert "artifact_id" not in payload
+        assert "image_path" not in payload
+        assert "metadata_path" not in payload
+
+        mock_generate.assert_awaited_once()
+        assert "enhanced_product" not in mock_generate.await_args.kwargs

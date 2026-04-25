@@ -17,18 +17,15 @@
 Image Generation Pipeline
 
 Handles the image variation generation workflow:
-Planner → FLUX → Persist
+Planner → FLUX → Reflection
 
 This module is decoupled from VLM analysis and takes pre-computed fields as input.
 """
 import os
-import json
 import base64
 import random
 import logging
 import httpx
-from uuid import uuid4
-from datetime import datetime, timezone
 from typing import Dict, Any, List, Optional
 from io import BytesIO
 from PIL import Image
@@ -258,70 +255,6 @@ def _extract_base64_image_from_flux_response(response_body: Dict[str, Any]) -> O
     return None
 
 
-def persist_generated_image(
-    image_b64: str,
-    title: str,
-    description: str,
-    categories: List[str],
-    tags: List[str],
-    colors: List[str],
-    locale: str,
-    content_type: str,
-    enhanced_product: Optional[Dict[str, Any]] = None
-) -> Dict[str, Any]:
-    """
-    Persist generated image and metadata to disk.
-    
-    Returns artifact information (id, paths).
-    """
-    logger.info("Persisting generated image: title_len=%d locale=%s", len(title), locale)
-    
-    output_dir = os.getenv("OUTPUT_DIR", os.path.join(os.getcwd(), "data", "outputs"))
-    os.makedirs(output_dir, exist_ok=True)
-    
-    artifact_id = uuid4().hex
-    image_path = os.path.join(output_dir, f"{artifact_id}.png")
-    metadata_path = os.path.join(output_dir, f"{artifact_id}.json")
-    
-    # Save image
-    with open(image_path, "wb") as f:
-        f.write(base64.b64decode(image_b64))
-    
-    # Prepare metadata
-    base_meta = {
-        "id": artifact_id,
-        "locale": locale,
-        "created_at": datetime.now(timezone.utc).isoformat(),
-        "image_path": image_path,
-        "source_content_type": content_type
-    }
-    
-    if enhanced_product:
-        logger.info("Saving enhanced_product metadata with keys=%s", list(enhanced_product.keys()))
-        metadata = {**enhanced_product, **base_meta}
-    else:
-        logger.info("Saving standard metadata")
-        metadata = {
-            **base_meta,
-            "title": title,
-            "description": description,
-            "categories": categories,
-            "tags": tags,
-            "colors": colors
-        }
-    
-    # Save metadata
-    with open(metadata_path, "w", encoding="utf-8") as f:
-        json.dump(metadata, f, ensure_ascii=False, indent=2)
-    
-    logger.info("Persist success: artifact_id=%s image_path=%s", artifact_id, image_path)
-    return {
-        "artifact_id": artifact_id,
-        "image_path": image_path,
-        "metadata_path": metadata_path
-    }
-
-
 async def generate_image_variation(
     image_bytes: bytes,
     content_type: str,
@@ -330,13 +263,12 @@ async def generate_image_variation(
     categories: List[str],
     tags: List[str],
     colors: List[str],
-    locale: str = "en-US",
-    enhanced_product: Optional[Dict[str, Any]] = None
+    locale: str = "en-US"
 ) -> Dict[str, Any]:
     """
     Generate image variation given pre-computed VLM analysis results.
     
-    Pipeline: Planner → FLUX → Reflection → Persist
+    Pipeline: Planner → FLUX → Reflection
     
     Args:
         image_bytes: Original product image bytes
@@ -347,10 +279,9 @@ async def generate_image_variation(
         tags: Product tags (from VLM)
         colors: Product colors (from VLM)
         locale: Target locale for variation
-        enhanced_product: Optional enhanced product data (if augmentation mode)
     
     Returns:
-        Dict with generated_image_b64, artifact_id, image_path, metadata_path, quality_score, quality_issues
+        Dict with generated_image_b64, variation_plan, quality_score, quality_issues
     """
     logger.info("Starting image generation pipeline: title_len=%d locale=%s", len(title), locale)
     
@@ -401,28 +332,11 @@ async def generate_image_variation(
         else:
             logger.warning("Reflection evaluation failed, continuing without score")
         
-        # Step 4: Persist - Save to disk
-        logger.info("Step 4: Persisting artifact")
-        artifact = persist_generated_image(
-            image_b64=image_b64,
-            title=title,
-            description=description,
-            categories=categories,
-            tags=tags,
-            colors=colors,
-            locale=locale,
-            content_type=content_type,
-            enhanced_product=enhanced_product
-        )
-        
-        logger.info("Image generation pipeline complete: artifact_id=%s quality_score=%s issues_count=%d", 
-                   artifact["artifact_id"], quality_score, len(quality_issues))
+        logger.info("Image generation pipeline complete: quality_score=%s issues_count=%d",
+                   quality_score, len(quality_issues))
         
         return {
             "generated_image_b64": image_b64,
-            "artifact_id": artifact["artifact_id"],
-            "image_path": artifact["image_path"],
-            "metadata_path": artifact["metadata_path"],
             "variation_plan": plan,
             "quality_score": quality_score,
             "quality_issues": quality_issues
@@ -431,4 +345,3 @@ async def generate_image_variation(
     except Exception as exc:
         logger.exception("Image generation pipeline failed: %s", exc)
         raise
-

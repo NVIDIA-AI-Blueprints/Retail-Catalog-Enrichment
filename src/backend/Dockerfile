@@ -43,7 +43,7 @@ COPY --from=builder /usr/local/bin /usr/local/bin
 COPY src/backend/ ./src/backend/
 COPY shared/ ./shared/
 
-RUN mkdir -p data/outputs && \
+RUN mkdir -p data/policies && \
     chmod -R 777 data
 
 ENV PYTHONUNBUFFERED=1 \
