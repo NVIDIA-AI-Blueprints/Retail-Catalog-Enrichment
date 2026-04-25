@@ -457,16 +457,21 @@ Generate culturally-appropriate product variations using FLUX models based on VL
 | `locale` | string | No | Regional locale code (default: "en-US") |
 | `tags` | JSON string | No | Tags array from VLM analysis |
 | `colors` | JSON string | No | Colors array from VLM analysis |
-| `enhanced_product` | JSON string | No | Enhanced product data |
+| `enhanced_product` | JSON string | No | Accepted for backwards compatibility; not persisted or returned |
 
 ### Response Schema
 
 ```json
 {
   "generated_image_b64": "string (base64)",
-  "artifact_id": "string",
-  "image_path": "string",
-  "metadata_path": "string",
+  "variation_plan": {
+    "preserve_subject": "string",
+    "background_style": "string",
+    "camera_angle": "string",
+    "lighting": "string"
+  },
+  "quality_score": 85.5,
+  "quality_issues": ["string"],
   "locale": "string"
 }
 ```
@@ -491,9 +496,14 @@ curl -X POST \
 ```json
 {
   "generated_image_b64": "iVBORw0KGgoAAAANS...",
-  "artifact_id": "a4511bbed05242078f9e3f7ead3b2247",
-  "image_path": "data/outputs/a4511bbed05242078f9e3f7ead3b2247.png",
-  "metadata_path": "data/outputs/a4511bbed05242078f9e3f7ead3b2247.json",
+  "variation_plan": {
+    "preserve_subject": "black evening handbag",
+    "background_style": "Parisian apartment entryway with soft natural window light",
+    "camera_angle": "3/4 view",
+    "lighting": "natural window light"
+  },
+  "quality_score": 85.5,
+  "quality_issues": [],
   "locale": "en-US"
 }
 ```

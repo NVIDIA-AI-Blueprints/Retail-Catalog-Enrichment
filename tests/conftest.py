@@ -61,15 +61,6 @@ def sample_base64_image() -> str:
 def mock_env_vars(monkeypatch):
     """Set up mock environment variables."""
     monkeypatch.setenv("NGC_API_KEY", "test-ngc-api-key-12345")
-    monkeypatch.setenv("OUTPUT_DIR", "/tmp/test_outputs")
-
-
-@pytest.fixture
-def temp_output_dir(tmp_path):
-    """Create a temporary output directory for testing."""
-    output_dir = tmp_path / "outputs"
-    output_dir.mkdir()
-    return str(output_dir)
 
 
 @pytest.fixture
