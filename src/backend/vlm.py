@@ -201,9 +201,9 @@ def _catalog_tokens(*values: Any) -> set[str]:
                 continue
             if len(token) == 1 and not token.isdigit():
                 continue
+            if token.endswith("s") and not token.endswith("ss") and len(token) > 3:
+                token = token[:-1]
             tokens.add(token)
-            if token.endswith("s") and len(token) > 3:
-                tokens.add(token[:-1])
     return tokens
 
 
@@ -211,52 +211,26 @@ def _identity_tokens(content: Dict[str, Any]) -> set[str]:
     return _catalog_tokens(*(content.get(field) for field in IDENTITY_TEXT_FIELDS))
 
 
-def _merge_repaired_tags(
-    visual_tags: Any,
-    merged_tags: Any,
-    blocked_tokens: set[str],
-) -> list[str]:
-    repaired: list[str] = []
-    seen: set[str] = set()
-    visual_tag_values = visual_tags if isinstance(visual_tags, list) else []
-    merged_tag_values = merged_tags if isinstance(merged_tags, list) else []
-
-    for tag in visual_tag_values + merged_tag_values:
-        if not isinstance(tag, str):
-            continue
-        clean_tag = tag.strip()
-        if not clean_tag:
-            continue
-        if _catalog_tokens(clean_tag) & blocked_tokens:
-            continue
-        tag_key = clean_tag.lower()
-        if tag_key not in seen:
-            repaired.append(clean_tag)
-            seen.add(tag_key)
-
-    return repaired
+def _has_merge_text_content(content: Optional[Dict[str, Any]]) -> bool:
+    return bool(content and any(_iter_text_values(content)))
 
 
-def _repair_visual_identity_regression(
+def _has_visual_identity_regression(
     vlm_output: Dict[str, Any],
     product_data: Dict[str, Any],
     merged_content: Dict[str, Any],
-) -> Dict[str, Any]:
-    """
-    Deterministically recover when a merge keeps stale user identity terms and
-    drops the visual/readable-label identity. Hidden user specs are left alone
-    unless the final title clearly regressed to user-only title terms.
-    """
+) -> bool:
+    """Detect a likely stale-identity regression without deciding the repair."""
     visual_title = vlm_output.get("title")
     merged_title = merged_content.get("title")
     if not isinstance(visual_title, str) or not isinstance(merged_title, str):
-        return merged_content
+        return False
 
     visual_title_tokens = _catalog_tokens(visual_title)
     user_title_tokens = _catalog_tokens(product_data.get("title"))
     merged_title_tokens = _catalog_tokens(merged_title)
     if not visual_title_tokens or not user_title_tokens or not merged_title_tokens:
-        return merged_content
+        return False
 
     visual_identity_tokens = _identity_tokens(vlm_output)
     user_identity_tokens = _identity_tokens(product_data)
@@ -264,35 +238,82 @@ def _repair_visual_identity_regression(
     distinctive_visual_title_tokens = visual_title_tokens - user_identity_tokens
     user_only_title_tokens = user_title_tokens - visual_identity_tokens
     if len(distinctive_visual_title_tokens) < 2 or not user_only_title_tokens:
-        return merged_content
+        return False
 
     visual_hits = distinctive_visual_title_tokens & merged_title_tokens
     stale_title_tokens = user_only_title_tokens & merged_title_tokens
-    if not stale_title_tokens or len(visual_hits) >= min(2, len(distinctive_visual_title_tokens)):
+    return bool(stale_title_tokens and len(visual_hits) < min(2, len(distinctive_visual_title_tokens)))
+
+
+def _call_nemotron_repair_visual_identity_regression(
+    vlm_output: Dict[str, Any],
+    original_product_data: Dict[str, Any],
+    filtered_product_data: Dict[str, Any],
+    merged_content: Dict[str, Any],
+    locale: str = "en-US",
+) -> Dict[str, Any]:
+    """Ask the LLM for a focused semantic repair when stale identity still appears."""
+    if not _has_visual_identity_regression(vlm_output, original_product_data, merged_content):
         return merged_content
 
-    blocked_tokens = user_identity_tokens - visual_identity_tokens
-    repaired = dict(merged_content)
-    repaired["title"] = visual_title
+    logger.info("[Merge QA] Possible visual identity regression detected; requesting semantic repair")
 
-    visual_description = vlm_output.get("description")
-    if isinstance(visual_description, str) and visual_description.strip():
-        repaired["description"] = visual_description
+    if not (api_key := os.getenv("NGC_API_KEY")):
+        raise RuntimeError(NGC_API_KEY_NOT_SET_ERROR)
 
-    if isinstance(vlm_output.get("tags"), list) or isinstance(merged_content.get("tags"), list):
-        repaired["tags"] = _merge_repaired_tags(
-            vlm_output.get("tags", []),
-            merged_content.get("tags", []),
-            blocked_tokens,
-        )
+    info = LOCALE_CONFIG.get(locale, {"language": "English", "region": "United States", "country": "United States", "context": "American English"})
+    llm_config = get_config().get_llm_config()
+    client = OpenAI(base_url=llm_config['url'], api_key=api_key)
 
-    logger.info(
-        "[Merge QA] Deterministic visual identity repair applied: stale_title_tokens=%s visual_title=%r merged_title=%r",
-        sorted(stale_title_tokens),
-        visual_title,
-        merged_title,
+    prompt = f"""/no_think You are a product catalog semantic reconciler. A lightweight detector found that the merged catalog title may still contain stale user identity terms. Do a fresh semantic reconciliation.
+
+VISUAL ANALYSIS (authoritative for visible facts and readable label text):
+{json.dumps(vlm_output, indent=2, ensure_ascii=False)}
+
+ORIGINAL USER DATA (may contain valid non-visible metadata and may also contain stale terms):
+{json.dumps(original_product_data, indent=2, ensure_ascii=False)}
+
+FILTERED USER DATA (best-effort cleanup from an earlier step; it may be incomplete):
+{json.dumps(filtered_product_data, indent=2, ensure_ascii=False)}
+
+MERGED CATALOG CONTENT TO REPAIR:
+{json.dumps(merged_content, indent=2, ensure_ascii=False)}
+
+TARGET LANGUAGE / REGION: {info['language']} ({info['region']}, {info['context']})
+
+RULES:
+- Return the exact same JSON keys as MERGED CATALOG CONTENT. Do not add or remove fields.
+- Use semantic judgment to decide which user-provided terms are relevant, compatible, conflicting, generic, redundant, or irrelevant for the sold product.
+- Readable label text and clear visual evidence are authoritative for visible product identity and visible facts.
+- Absence from the image is not a contradiction. Keep compatible user-provided metadata even when it is not visible, including brand/manufacturer/product-line terms when they fit the product.
+- If the visual/readable-label evidence makes a generic user title more specific, combine the specific visual identity with compatible user-provided information instead of replacing the title wholesale.
+- Remove or replace user terms only when they conflict with the visual/readable-label product identity or are irrelevant to the sold product.
+- Do not include packaging/container appearance in the title unless it is a real retail differentiator for the sold product.
+- Keep customer-facing title and description in {info['language']}.
+
+Return ONLY valid JSON. No markdown, no comments."""
+
+    completion = client.chat.completions.create(
+        model=llm_config['model'],
+        messages=[{"role": "system", "content": "/no_think"}, {"role": "user", "content": prompt}],
+        temperature=0.0, top_p=1, max_tokens=2048, stream=True,
+        extra_body={"chat_template_kwargs": {"enable_thinking": False}},
     )
-    return repaired
+
+    text = "".join(
+        chunk.choices[0].delta.content
+        for chunk in completion
+        if chunk.choices[0].delta and chunk.choices[0].delta.content
+    )
+    logger.info("[Merge QA] Semantic regression repair response received: %d chars", len(text))
+
+    parsed = parse_llm_json(text, extract_braces=True, strip_comments=True)
+    if isinstance(parsed, dict):
+        logger.info("[Merge QA] Semantic regression repair complete: keys=%s", list(parsed.keys()))
+        return parsed
+
+    logger.warning("[Merge QA] Semantic regression repair JSON parse failed, keeping merged content unchanged")
+    return merged_content
 
 
 def _call_nemotron_filter_user_data(
@@ -304,7 +325,7 @@ def _call_nemotron_filter_user_data(
 
     Uses a focused, low-temperature LLM call to clean user-provided text against
     the VLM visual analysis. Readable label text is treated as ground truth for
-    product names, variants, active ingredients, formulations, counts, and specs.
+    visible product identity and visible product attributes.
     """
     logger.info("[Pre-filter] Starting relevance filter: vlm_keys=%s, product_keys=%s",
                 list(vlm_output.keys()), list(product_data.keys()))
@@ -336,8 +357,10 @@ TASK:
 - Preserve non-conflicting user evidence, including brand names, model names, SKU, price, materials, and internal specs that are not visibly contradicted.
 - If a text field is about a completely different product type, set that field to an empty string.
 - If a text field is partially correct, edit that field minimally: keep correct terms and remove only the conflicting terms.
-- Readable label text is authoritative for product names, active ingredients, flavors, scents, colors, variants, formulations, package counts, dosages, ratings, and model/spec values.
-- If the user-provided product name, active ingredient, flavor, scent, variant, formulation, count, dosage, rating, or model/spec value differs from readable label text or the visually identified product type, remove the user-provided conflicting term.
+- Readable label text is authoritative for visible product identity and visible product attributes.
+- Absence from the image is not a contradiction. Keep compatible user-provided metadata even when it is not visible, including brand/manufacturer/product-line terms when they fit the product.
+- Use semantic judgment to decide which user-provided terms are relevant, compatible, conflicting, generic, redundant, or irrelevant for the sold product.
+- If a user-provided product identity or attribute differs from readable label text or the visually identified product type, remove the conflicting term.
 - Do not combine two conflicting product identities into one title or description. Use the visual/readable-label identity and any non-conflicting user terms.
 - Do not replace a conflicting user term with a new term unless that replacement is directly present in the visual analysis; otherwise remove the conflicting term and let the later enrichment step fill from visual evidence.
 
@@ -400,11 +423,11 @@ def _call_nemotron_enhance_vlm(
 
     if existing_title and localized_terminology_rule:
         title_instruction = (
-            f'The user provided this title after contradiction filtering: "{existing_title}". Treat the remaining user title terms as validated anchors, not as complete truth. Preserve the user\'s product intent plus any brand/model names and factual specs when they do not conflict with the VISUAL ANALYSIS. Localize common product-type words using established retail terminology when needed. Do not replace user factual words with unrelated synonyms. Add only title-worthy facts from the VISUAL ANALYSIS: official product name, product type, variant, flavor, scent, formulation, count, dosage, rating, size, material, compatibility, or model/spec values when readable/provided. Do not add packaging/container appearance such as cap color, bottle color, box color, label color, banner color, background color, shape, or label placement to the title unless it is an official product variant or necessary to distinguish the sold product. If readable label text identifies a product name, active ingredient, flavor, scent, variant, formulation, count, dosage, rating, or model/spec value, it overrides any remaining conflicting user title term. Do not combine conflicting product identities in the final title. If the visual analysis has useful title-worthy details, the final title must be more specific than, and not identical to, the user-provided title. Do not invent materials/specs; keep user material/spec terms when present.'
+            f'The user provided this title after contradiction filtering: "{existing_title}". Treat the remaining user title terms as validated anchors, not as complete truth. Use semantic judgment to preserve compatible user intent, brand/model/product-line wording, and factual title details even when they are not visible. Localize common product-type words using established retail terminology when needed. Add only customer-facing product identity and relevant factual details from the VISUAL ANALYSIS. Do not add packaging/container appearance such as cap color, bottle color, box color, label color, banner color, background color, shape, or label placement to the title unless it is a real retail differentiator. If readable label text contradicts a remaining user title term, use the readable-label identity. Do not combine conflicting product identities in the final title. If the visual analysis has useful title-worthy details, the final title must be more specific than, and not identical to, the user-provided title.'
         )
     elif existing_title:
         title_instruction = (
-            f'The user provided this title after contradiction filtering: "{existing_title}". Treat the remaining user title terms as validated anchors, not as complete truth. Preserve product names, brand/model names, and factual specs when they do not conflict with the VISUAL ANALYSIS. Do not replace user title words with unrelated synonyms. Add only title-worthy facts from the VISUAL ANALYSIS: official product name, product type, variant, flavor, scent, formulation, count, dosage, rating, size, material, compatibility, or model/spec values when readable/provided. Do not add packaging/container appearance such as cap color, bottle color, box color, label color, banner color, background color, shape, or label placement to the title unless it is an official product variant or necessary to distinguish the sold product. If readable label text identifies a product name, active ingredient, flavor, scent, variant, formulation, count, dosage, rating, or model/spec value, it overrides any remaining conflicting user title term. Do not combine conflicting product identities in the final title. If the visual analysis has useful title-worthy details, the final title must be more specific than, and not identical to, the user-provided title. Do not invent materials/specs; keep user material/spec terms when present.'
+            f'The user provided this title after contradiction filtering: "{existing_title}". Treat the remaining user title terms as validated anchors, not as complete truth. Use semantic judgment to preserve compatible user intent, brand/model/product-line wording, and factual title details even when they are not visible. Do not replace user title words with unrelated synonyms. Add only customer-facing product identity and relevant factual details from the VISUAL ANALYSIS. Do not add packaging/container appearance such as cap color, bottle color, box color, label color, banner color, background color, shape, or label placement to the title unless it is a real retail differentiator. If readable label text contradicts a remaining user title term, use the readable-label identity. Do not combine conflicting product identities in the final title. If the visual analysis has useful title-worthy details, the final title must be more specific than, and not identical to, the user-provided title.'
         )
     else:
         title_instruction = "Create a compelling product name."
@@ -425,11 +448,11 @@ ALLOWED COLORS: {json.dumps(ALLOWED_COLORS)}
 
 STRICT RULES:
 1. NEVER invent or fabricate details on your own. Only use facts from the VISUAL ANALYSIS or the EXISTING PRODUCT DATA above.
-2. Printed text readable on the product (brand names, product names, dosages, model numbers) is ground truth. Drop user words that contradict printed label text.
+2. Printed text readable on the product is ground truth for visible product identity and visible attributes. Drop user words that contradict printed label text.
 3. Material descriptions from the visual analysis are visual guesses — the camera cannot verify composition. Always use the user's material term when provided.
 4. The VISUAL ANALYSIS is authoritative for appearance (colors, shape, design) and printed text. The EXISTING PRODUCT DATA is authoritative for material composition and internal specs.
-5. {"In augmentation mode, filtered user-provided title words are validated anchors: keep them when natural for the target locale and not visibly contradicted, localize common product-type terms when needed, and add only title-worthy product identity/spec facts around them." if localized_terminology_rule else "In augmentation mode, filtered user-provided title words are validated anchors: keep them when not visibly contradicted, then add only title-worthy product identity/spec facts around them."}
-6. Do not state measurable specs such as capacity, dimensions, volume, weight, power rating, counts, compatibility, or model/spec values unless they are readable in the image or explicitly provided by the user.
+5. {"In augmentation mode, filtered user-provided title words are validated anchors: keep compatible terms when natural for the target locale and not visibly contradicted, localize common product-type terms when needed, and add only title-worthy product identity or factual details around them." if localized_terminology_rule else "In augmentation mode, filtered user-provided title words are validated anchors: keep compatible terms when not visibly contradicted, then add only title-worthy product identity or factual details around them."}
+6. Do not state measurable values or technical attributes unless they are readable in the image or explicitly provided by the user.
 7. Do not use size/weight claims such as compact, large, spacious, lightweight, or heavy unless scale is visible or the user provided that detail.
 8. Colors must be selected from ALLOWED COLORS only. Do not output materials, finishes, textures, or product types as colors; choose the closest visible generic color instead.
 9. Do not include packaging/container appearance in titles: cap color, bottle color, box color, label color, banner color, background color, shape, label placement, or similar visual packaging details belong in description/tags, not title, unless they are official product variants or necessary retail differentiators.
@@ -467,7 +490,8 @@ Return ONLY valid JSON. No markdown, no comments."""
 
 def _call_nemotron_resolve_merge_conflicts(
     vlm_output: Dict[str, Any],
-    product_data: Dict[str, Any],
+    original_product_data: Dict[str, Any],
+    filtered_product_data: Dict[str, Any],
     merged_content: Dict[str, Any],
     locale: str = "en-US",
 ) -> Dict[str, Any]:
@@ -486,8 +510,11 @@ def _call_nemotron_resolve_merge_conflicts(
 VISUAL ANALYSIS (ground truth for visible facts and readable label text):
 {json.dumps(vlm_output, indent=2, ensure_ascii=False)}
 
-FILTERED USER DATA (non-conflicting user evidence that may still be incomplete):
-{json.dumps(product_data, indent=2, ensure_ascii=False)}
+ORIGINAL USER DATA (may contain valid non-visible metadata and may also contain stale terms):
+{json.dumps(original_product_data, indent=2, ensure_ascii=False)}
+
+FILTERED USER DATA (best-effort cleanup from an earlier step; it may be incomplete):
+{json.dumps(filtered_product_data, indent=2, ensure_ascii=False)}
 
 MERGED CATALOG CONTENT TO VALIDATE:
 {json.dumps(merged_content, indent=2, ensure_ascii=False)}
@@ -496,12 +523,15 @@ TARGET LANGUAGE / REGION: {info['language']} ({info['region']}, {info['context']
 
 RULES:
 - Return the exact same JSON keys as MERGED CATALOG CONTENT. Do not add or remove fields.
-- Preserve non-conflicting user evidence such as brand names, model names, SKU, price, materials, and internal specs.
-- Readable label text is authoritative for product names, active ingredients, flavors, scents, colors, variants, formulations, package counts, dosages, ratings, and model/spec values.
-- If the merged title, description, categories, tags, or enhanced_product contains a user-derived product identity term that conflicts with readable label text or the visually identified product type, remove it or replace it with the exact supported visual/readable-label term.
+- Use semantic judgment to decide which user-provided terms are relevant, compatible, conflicting, generic, redundant, or irrelevant for the sold product.
+- Preserve compatible user-provided metadata even when it is not visible, including brand/manufacturer/product-line terms when they fit the product.
+- If a compatible term from ORIGINAL USER DATA was dropped by an earlier step, restore it where it naturally belongs.
+- Readable label text and clear visual evidence are authoritative for visible product identity and visible facts.
+- If the merged title, description, categories, tags, or enhanced_product contains a user-derived product identity term that conflicts with readable label text or the visually identified product type, remove it or replace it with the supported visual/readable-label term.
 - Do not combine two conflicting product identities in the title, description, tags, or enhanced_product.
 - Do not remove a term merely because it is absent from the image; remove it only when it conflicts with the visual/readable-label identity.
-- Title should contain customer-facing product identity only: brand, official product name, product type, variant, flavor, scent, formulation, count, dosage, rating, size, material, compatibility, and model/spec values when supported. Remove packaging/container appearance from title, such as cap color, bottle color, box color, label color, banner color, background color, shape, or label placement, unless it is an official variant or necessary retail differentiator.
+- If the visual/readable-label evidence makes a generic user title more specific, combine the specific visual identity with compatible user-provided information instead of replacing the title wholesale.
+- Title should contain only customer-facing product identity and relevant factual details. Remove packaging/container appearance from title, such as cap color, bottle color, box color, label color, banner color, background color, shape, or label placement, unless it is a real retail differentiator.
 - Keep the output in {info['language']} for customer-facing title and description.
 
 Return ONLY valid JSON. No markdown, no comments."""
@@ -878,12 +908,12 @@ def _call_nemotron_enhance(
                     repr(product_data.get("title", "")), repr(filtered_product_data.get("title", "")))
 
     # Step 1: Only run enhancement when there is user data with actual content to merge
-    has_content = filtered_product_data and any(
-        v for k, v in filtered_product_data.items()
-        if isinstance(v, str) and v.strip()
-    )
+    filtered_has_content = _has_merge_text_content(filtered_product_data)
+    original_has_content = _has_merge_text_content(product_data)
+    has_content = bool(filtered_has_content or original_has_content)
     if has_content:
-        enhanced = _call_nemotron_enhance_vlm(vlm_output, filtered_product_data, locale)
+        merge_product_data = filtered_product_data if filtered_has_content else product_data
+        enhanced = _call_nemotron_enhance_vlm(vlm_output, merge_product_data, locale)
         logger.info("Step 1 complete (enhanced + localized to %s): enhanced_keys=%s", locale, list(enhanced.keys()))
     else:
         enhanced = vlm_output
@@ -897,9 +927,21 @@ def _call_nemotron_enhance(
         logger.info("Step 2 skipped: no brand_instructions provided")
 
     if product_data and has_content:
-        enhanced = _call_nemotron_resolve_merge_conflicts(vlm_output, filtered_product_data, enhanced, locale)
+        enhanced = _call_nemotron_resolve_merge_conflicts(
+            vlm_output,
+            product_data,
+            filtered_product_data,
+            enhanced,
+            locale,
+        )
         logger.info("Merge QA complete: contradictions resolved")
-        enhanced = _repair_visual_identity_regression(vlm_output, filtered_product_data, enhanced)
+        enhanced = _call_nemotron_repair_visual_identity_regression(
+            vlm_output,
+            product_data,
+            filtered_product_data,
+            enhanced,
+            locale,
+        )
     
     logger.info("Nemotron enhancement pipeline complete: final_keys=%s", list(enhanced.keys()))
     return enhanced
