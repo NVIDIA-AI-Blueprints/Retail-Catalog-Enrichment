@@ -340,6 +340,62 @@ Return ONLY valid JSON. No markdown, no comments."""
     return None
 
 
+def _append_unique_compatible_tags(
+    target: list[str],
+    source: Any,
+    blocked_tokens: set[str],
+) -> None:
+    seen = {value.lower() for value in target}
+    source_values = source if isinstance(source, list) else []
+
+    for value in source_values:
+        if not isinstance(value, str):
+            continue
+        tag = value.strip()
+        if not tag:
+            continue
+        if _catalog_tokens(tag) & blocked_tokens:
+            continue
+        tag_key = tag.lower()
+        if tag_key not in seen:
+            target.append(tag)
+            seen.add(tag_key)
+
+
+def _build_visual_identity_safe_fallback(
+    vlm_output: Dict[str, Any],
+    original_product_data: Dict[str, Any],
+    filtered_product_data: Dict[str, Any],
+    merged_content: Dict[str, Any],
+) -> Dict[str, Any]:
+    """Prefer visual identity when LLM repair cannot resolve stale user identity."""
+    fallback = dict(merged_content)
+    visual_identity_tokens = _identity_tokens(vlm_output)
+    blocked_user_tokens = _identity_tokens(original_product_data) - visual_identity_tokens
+
+    visual_title = vlm_output.get("title")
+    if isinstance(visual_title, str) and visual_title.strip():
+        fallback["title"] = visual_title.strip()
+
+    visual_description = vlm_output.get("description")
+    if isinstance(visual_description, str) and visual_description.strip():
+        fallback["description"] = visual_description.strip()
+
+    if "tags" in fallback:
+        tags: list[str] = []
+        _append_unique_compatible_tags(tags, vlm_output.get("tags"), blocked_user_tokens)
+        _append_unique_compatible_tags(tags, filtered_product_data.get("tags"), blocked_user_tokens)
+        _append_unique_compatible_tags(tags, merged_content.get("tags"), blocked_user_tokens)
+        fallback["tags"] = tags
+
+    logger.warning(
+        "[Merge QA] Semantic repair failed to resolve stale identity; using visual identity fallback: title=%r blocked_tokens=%s",
+        fallback.get("title"),
+        sorted(blocked_user_tokens),
+    )
+    return fallback
+
+
 def _call_nemotron_repair_visual_identity_regression(
     vlm_output: Dict[str, Any],
     original_product_data: Dict[str, Any],
@@ -373,7 +429,12 @@ def _call_nemotron_repair_visual_identity_regression(
     )
 
     if repaired is None:
-        return merged_content
+        return _build_visual_identity_safe_fallback(
+            vlm_output,
+            original_product_data,
+            filtered_product_data,
+            merged_content,
+        )
     if not _has_visual_identity_regression(vlm_output, original_product_data, repaired):
         return repaired
 
@@ -390,9 +451,14 @@ def _call_nemotron_repair_visual_identity_regression(
         info,
         previous_failed_repair=repaired,
     )
-    if retry is not None:
+    if retry is not None and not _has_visual_identity_regression(vlm_output, original_product_data, retry):
         return retry
-    return repaired
+    return _build_visual_identity_safe_fallback(
+        vlm_output,
+        original_product_data,
+        filtered_product_data,
+        retry or repaired,
+    )
 
 
 def _call_nemotron_filter_user_data(
