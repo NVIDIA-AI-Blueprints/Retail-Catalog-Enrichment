@@ -215,22 +215,22 @@ def _has_merge_text_content(content: Optional[Dict[str, Any]]) -> bool:
     return bool(content and any(_iter_text_values(content)))
 
 
-def _has_visual_identity_regression(
+def _visual_identity_regression_evidence(
     vlm_output: Dict[str, Any],
     product_data: Dict[str, Any],
     merged_content: Dict[str, Any],
-) -> bool:
-    """Detect a likely stale-identity regression without deciding the repair."""
+) -> Dict[str, Any]:
+    """Detect likely stale-identity regression and expose generic evidence."""
     visual_title = vlm_output.get("title")
     merged_title = merged_content.get("title")
     if not isinstance(visual_title, str) or not isinstance(merged_title, str):
-        return False
+        return {"has_regression": False}
 
     visual_title_tokens = _catalog_tokens(visual_title)
     user_title_tokens = _catalog_tokens(product_data.get("title"))
     merged_title_tokens = _catalog_tokens(merged_title)
     if not visual_title_tokens or not user_title_tokens or not merged_title_tokens:
-        return False
+        return {"has_regression": False}
 
     visual_identity_tokens = _identity_tokens(vlm_output)
     user_identity_tokens = _identity_tokens(product_data)
@@ -238,32 +238,48 @@ def _has_visual_identity_regression(
     distinctive_visual_title_tokens = visual_title_tokens - user_identity_tokens
     user_only_title_tokens = user_title_tokens - visual_identity_tokens
     if len(distinctive_visual_title_tokens) < 2 or not user_only_title_tokens:
-        return False
+        return {"has_regression": False}
 
     visual_hits = distinctive_visual_title_tokens & merged_title_tokens
     stale_title_tokens = user_only_title_tokens & merged_title_tokens
-    return bool(stale_title_tokens and len(visual_hits) < min(2, len(distinctive_visual_title_tokens)))
+    has_regression = bool(stale_title_tokens and len(visual_hits) < min(2, len(distinctive_visual_title_tokens)))
+
+    return {
+        "has_regression": has_regression,
+        "stale_user_only_title_terms": sorted(stale_title_tokens),
+        "missing_visual_identity_terms": sorted(distinctive_visual_title_tokens - merged_title_tokens),
+        "visual_identity_terms_present": sorted(visual_hits),
+        "visual_title": visual_title,
+        "merged_title": merged_title,
+    }
 
 
-def _call_nemotron_repair_visual_identity_regression(
+def _has_visual_identity_regression(
+    vlm_output: Dict[str, Any],
+    product_data: Dict[str, Any],
+    merged_content: Dict[str, Any],
+) -> bool:
+    return bool(_visual_identity_regression_evidence(vlm_output, product_data, merged_content).get("has_regression"))
+
+
+def _request_semantic_identity_repair(
+    client: OpenAI,
+    llm_config: Dict[str, Any],
     vlm_output: Dict[str, Any],
     original_product_data: Dict[str, Any],
     filtered_product_data: Dict[str, Any],
     merged_content: Dict[str, Any],
-    locale: str = "en-US",
-) -> Dict[str, Any]:
-    """Ask the LLM for a focused semantic repair when stale identity still appears."""
-    if not _has_visual_identity_regression(vlm_output, original_product_data, merged_content):
-        return merged_content
+    detector_evidence: Dict[str, Any],
+    info: Dict[str, str],
+    previous_failed_repair: Optional[Dict[str, Any]] = None,
+) -> Optional[Dict[str, Any]]:
+    failed_repair_section = ""
+    if previous_failed_repair:
+        failed_repair_section = f"""
+PREVIOUS REPAIR ATTEMPT THAT STILL FAILED DETECTOR:
+{json.dumps(previous_failed_repair, indent=2, ensure_ascii=False)}
 
-    logger.info("[Merge QA] Possible visual identity regression detected; requesting semantic repair")
-
-    if not (api_key := os.getenv("NGC_API_KEY")):
-        raise RuntimeError(NGC_API_KEY_NOT_SET_ERROR)
-
-    info = LOCALE_CONFIG.get(locale, {"language": "English", "region": "United States", "country": "United States", "context": "American English"})
-    llm_config = get_config().get_llm_config()
-    client = OpenAI(base_url=llm_config['url'], api_key=api_key)
+Do not repeat the same unresolved stale-identity pattern."""
 
     prompt = f"""/no_think You are a product catalog semantic reconciler. A lightweight detector found that the merged catalog title may still contain stale user identity terms. Do a fresh semantic reconciliation.
 
@@ -279,6 +295,10 @@ FILTERED USER DATA (best-effort cleanup from an earlier step; it may be incomple
 MERGED CATALOG CONTENT TO REPAIR:
 {json.dumps(merged_content, indent=2, ensure_ascii=False)}
 
+DETECTOR EVIDENCE (generic token evidence, not the final decision):
+{json.dumps(detector_evidence, indent=2, ensure_ascii=False)}
+{failed_repair_section}
+
 TARGET LANGUAGE / REGION: {info['language']} ({info['region']}, {info['context']})
 
 RULES:
@@ -286,6 +306,7 @@ RULES:
 - Use semantic judgment to decide which user-provided terms are relevant, compatible, conflicting, generic, redundant, or irrelevant for the sold product.
 - Readable label text and clear visual evidence are authoritative for visible product identity and visible facts.
 - Absence from the image is not a contradiction. Keep compatible user-provided metadata even when it is not visible, including brand/manufacturer/product-line terms when they fit the product.
+- The detector evidence identifies terms that are likely stale only because they are user-only title terms and the current title is missing distinctive visual identity terms. Treat this as a strong signal to review and resolve, not as a hardcoded product rule.
 - If the visual/readable-label evidence makes a generic user title more specific, combine the specific visual identity with compatible user-provided information instead of replacing the title wholesale.
 - Remove or replace user terms only when they conflict with the visual/readable-label product identity or are irrelevant to the sold product.
 - Do not include packaging/container appearance in the title unless it is a real retail differentiator for the sold product.
@@ -296,7 +317,10 @@ Return ONLY valid JSON. No markdown, no comments."""
     completion = client.chat.completions.create(
         model=llm_config['model'],
         messages=[{"role": "system", "content": "/no_think"}, {"role": "user", "content": prompt}],
-        temperature=0.0, top_p=1, max_tokens=2048, stream=True,
+        temperature=0.0,
+        top_p=1,
+        max_tokens=2048,
+        stream=True,
         extra_body={"chat_template_kwargs": {"enable_thinking": False}},
     )
 
@@ -312,8 +336,63 @@ Return ONLY valid JSON. No markdown, no comments."""
         logger.info("[Merge QA] Semantic regression repair complete: keys=%s", list(parsed.keys()))
         return parsed
 
-    logger.warning("[Merge QA] Semantic regression repair JSON parse failed, keeping merged content unchanged")
-    return merged_content
+    logger.warning("[Merge QA] Semantic regression repair JSON parse failed")
+    return None
+
+
+def _call_nemotron_repair_visual_identity_regression(
+    vlm_output: Dict[str, Any],
+    original_product_data: Dict[str, Any],
+    filtered_product_data: Dict[str, Any],
+    merged_content: Dict[str, Any],
+    locale: str = "en-US",
+) -> Dict[str, Any]:
+    """Ask the LLM for a focused semantic repair when stale identity still appears."""
+    detector_evidence = _visual_identity_regression_evidence(vlm_output, original_product_data, merged_content)
+    if not detector_evidence.get("has_regression"):
+        return merged_content
+
+    logger.info("[Merge QA] Possible visual identity regression detected; requesting semantic repair: %s", detector_evidence)
+
+    if not (api_key := os.getenv("NGC_API_KEY")):
+        raise RuntimeError(NGC_API_KEY_NOT_SET_ERROR)
+
+    info = LOCALE_CONFIG.get(locale, {"language": "English", "region": "United States", "country": "United States", "context": "American English"})
+    llm_config = get_config().get_llm_config()
+    client = OpenAI(base_url=llm_config['url'], api_key=api_key)
+
+    repaired = _request_semantic_identity_repair(
+        client,
+        llm_config,
+        vlm_output,
+        original_product_data,
+        filtered_product_data,
+        merged_content,
+        detector_evidence,
+        info,
+    )
+
+    if repaired is None:
+        return merged_content
+    if not _has_visual_identity_regression(vlm_output, original_product_data, repaired):
+        return repaired
+
+    retry_evidence = _visual_identity_regression_evidence(vlm_output, original_product_data, repaired)
+    logger.info("[Merge QA] Semantic repair still failed detector; retrying with evidence: %s", retry_evidence)
+    retry = _request_semantic_identity_repair(
+        client,
+        llm_config,
+        vlm_output,
+        original_product_data,
+        filtered_product_data,
+        merged_content,
+        retry_evidence,
+        info,
+        previous_failed_repair=repaired,
+    )
+    if retry is not None:
+        return retry
+    return repaired
 
 
 def _call_nemotron_filter_user_data(

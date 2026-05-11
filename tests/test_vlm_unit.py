@@ -472,10 +472,80 @@ class TestVisualIdentityRegressionRepair:
         assert "product catalog semantic reconciler" in prompt
         assert "ORIGINAL USER DATA" in prompt
         assert "FILTERED USER DATA" in prompt
+        assert "DETECTOR EVIDENCE" in prompt
         assert "Use semantic judgment to decide which user-provided terms" in prompt
         assert "Absence from the image is not a contradiction" in prompt
         assert "including brand/manufacturer/product-line terms" in prompt
         assert "instead of replacing the title wholesale" in prompt
+
+    @patch('backend.vlm.OpenAI')
+    @patch('backend.vlm.get_config')
+    def test_repair_retries_when_first_repair_still_has_stale_identity(self, mock_get_config, mock_openai_class, mock_env_vars):
+        mock_config = Mock()
+        mock_config.get_llm_config.return_value = {
+            'url': 'http://test:8000/v1',
+            'model': 'test-llm-model'
+        }
+        mock_get_config.return_value = mock_config
+
+        mock_client = Mock()
+        mock_openai_class.return_value = mock_client
+
+        def response_chunk(payload):
+            mock_chunk = Mock()
+            mock_delta = Mock()
+            mock_delta.content = json.dumps(payload)
+            mock_choice = Mock()
+            mock_choice.delta = mock_delta
+            mock_chunk.choices = [mock_choice]
+            return [mock_chunk]
+
+        stale_repair = {
+            "title": "Example Brand Mineral Softgels",
+            "description": "Example Brand mineral softgels.",
+            "categories": ["uncategorized"],
+            "tags": ["example brand", "mineral", "softgels"],
+            "colors": ["yellow", "brown"],
+        }
+        fixed_repair = {
+            "title": "Example Brand Omega Oil 1200 mg Softgels",
+            "description": "Example Brand omega oil softgels with compatible user-provided details preserved.",
+            "categories": ["uncategorized"],
+            "tags": ["example brand", "omega oil", "1200 mg", "softgels"],
+            "colors": ["yellow", "brown"],
+        }
+        mock_client.chat.completions.create.side_effect = [
+            response_chunk(stale_repair),
+            response_chunk(fixed_repair),
+        ]
+
+        vlm_output = {
+            "title": "Example Brand Omega Oil Softgels 300 Count",
+            "description": "Readable label text says Example Brand Omega Oil.",
+            "categories": ["uncategorized"],
+            "tags": ["omega oil", "softgels"],
+            "colors": ["yellow", "brown"],
+        }
+        original_product_data = {
+            "title": "Example Brand Mineral 1200 mg",
+            "description": "Example Brand mineral supplement.",
+            "tags": ["mineral", "1200 mg"],
+        }
+        filtered_product_data = {"title": "Example Brand 1200 mg", "tags": ["1200 mg"]}
+
+        result = _call_nemotron_repair_visual_identity_regression(
+            vlm_output,
+            original_product_data,
+            filtered_product_data,
+            stale_repair,
+            "en-US",
+        )
+
+        assert result == fixed_repair
+        assert mock_client.chat.completions.create.call_count == 2
+        retry_prompt = mock_client.chat.completions.create.call_args.kwargs["messages"][1]["content"]
+        assert "PREVIOUS REPAIR ATTEMPT THAT STILL FAILED DETECTOR" in retry_prompt
+        assert "Do not repeat the same unresolved stale-identity pattern" in retry_prompt
 
     @patch('backend.vlm.OpenAI')
     def test_repair_skips_llm_when_visual_identity_is_present(self, mock_openai_class):
