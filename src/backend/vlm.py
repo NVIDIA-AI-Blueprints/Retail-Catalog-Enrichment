@@ -152,11 +152,11 @@ def _call_nemotron_filter_user_data(
     product_data: Dict[str, Any]
 ) -> Dict[str, Any]:
     """
-    Pre-filter: Remove irrelevant terms from user-provided product data before merging.
+    Pre-filter: Remove irrelevant or contradictory user terms before merging.
 
-    Uses a focused, low-temperature LLM call to classify each user-provided term
-    as relevant or irrelevant based on the VLM visual analysis (ground truth).
-    Returns a cleaned copy of product_data with only relevant terms preserved.
+    Uses a focused, low-temperature LLM call to clean user-provided text against
+    the VLM visual analysis. Readable label text is treated as ground truth for
+    product names, variants, active ingredients, formulations, counts, and specs.
     """
     logger.info("[Pre-filter] Starting relevance filter: vlm_keys=%s, product_keys=%s",
                 list(vlm_output.keys()), list(product_data.keys()))
@@ -171,7 +171,9 @@ def _call_nemotron_filter_user_data(
     product_json = json.dumps(product_data, indent=2, ensure_ascii=False)
     vlm_categories = json.dumps(vlm_output.get("categories", []))
 
-    prompt = f"""You are a product data validator. Decide if the user-provided text is about the SAME type of product shown in the visual analysis, or about a COMPLETELY DIFFERENT product.
+    prompt = f"""You are a product data validator. Clean user-provided product data before it is merged with visual analysis.
+
+The VISUAL ANALYSIS is ground truth for visible facts and readable label text. User-provided data may contain stale, copied, or partially wrong terms.
 
 VISUAL ANALYSIS (what the camera shows):
 {vlm_json}
@@ -181,11 +183,16 @@ PRODUCT CATEGORY: {vlm_categories}
 USER-PROVIDED PRODUCT DATA:
 {product_json}
 
-TASK: For each text field in the user-provided data, answer ONE question: "Is this text about a completely different type of product than what the image shows?"
-- If YES (completely different product type, e.g. "laptop" on a shoe image, or "yoga mat" on a blender image) → set that field to an empty string.
-- If NO (same product, related, or even partially relevant) → keep the ENTIRE field exactly as the user provided it. Do NOT modify, rephrase, or remove individual words.
+TASK:
+- Return the same JSON structure after removing user-provided text that conflicts with the visual analysis.
+- Preserve non-conflicting user evidence, including brand names, model names, SKU, price, materials, and internal specs that are not visibly contradicted.
+- If a text field is about a completely different product type, set that field to an empty string.
+- If a text field is partially correct, edit that field minimally: keep correct terms and remove only the conflicting terms.
+- Readable label text is authoritative for product names, active ingredients, flavors, scents, colors, variants, formulations, package counts, dosages, ratings, and model/spec values.
+- If the user-provided product name, active ingredient, flavor, scent, variant, formulation, count, dosage, rating, or model/spec value differs from readable label text or the visually identified product type, remove the user-provided conflicting term.
+- Do not combine two conflicting product identities into one title or description. Use the visual/readable-label identity and any non-conflicting user terms.
+- Do not replace a conflicting user term with a new term unless that replacement is directly present in the visual analysis; otherwise remove the conflicting term and let the later enrichment step fill from visual evidence.
 
-This is a binary decision per field — keep it all or clear it all. Never partially edit the user's text.
 For non-text fields (price, SKU, numeric values): always keep unchanged.
 
 Return ONLY valid JSON with the same structure as the user-provided data. No markdown, no comments."""
@@ -245,11 +252,11 @@ def _call_nemotron_enhance_vlm(
 
     if existing_title and localized_terminology_rule:
         title_instruction = (
-            f'The user provided this title: "{existing_title}". Preserve the user\'s product intent plus any brand/model names and factual specs. Keep user title words when they are already natural for the target locale; localize common product-type words using established retail terminology when needed. Do not replace user factual words with unrelated synonyms. Add 1-3 high-confidence visual descriptors from the VISUAL ANALYSIS before or after the user title, such as color, pattern, shape, style, or distinctive design details. If the visual analysis has useful details, the final title must be more specific than, and not identical to, the user-provided title. Only remove or change a user title word when readable printed label text or the visual product type clearly contradicts it, or when localization requires a natural target-language product term. Do not invent materials/specs; keep user material/spec terms when present.'
+            f'The user provided this title after contradiction filtering: "{existing_title}". Treat the remaining user title terms as validated anchors, not as complete truth. Preserve the user\'s product intent plus any brand/model names and factual specs when they do not conflict with the VISUAL ANALYSIS. Localize common product-type words using established retail terminology when needed. Do not replace user factual words with unrelated synonyms. Add only title-worthy facts from the VISUAL ANALYSIS: official product name, product type, variant, flavor, scent, formulation, count, dosage, rating, size, material, compatibility, or model/spec values when readable/provided. Do not add packaging/container appearance such as cap color, bottle color, box color, label color, banner color, background color, shape, or label placement to the title unless it is an official product variant or necessary to distinguish the sold product. If readable label text identifies a product name, active ingredient, flavor, scent, variant, formulation, count, dosage, rating, or model/spec value, it overrides any remaining conflicting user title term. Do not combine conflicting product identities in the final title. If the visual analysis has useful title-worthy details, the final title must be more specific than, and not identical to, the user-provided title. Do not invent materials/specs; keep user material/spec terms when present.'
         )
     elif existing_title:
         title_instruction = (
-            f'The user provided this title: "{existing_title}". Keep the user\'s original title wording and word choices for the product name, brand/model names, and factual specs. Do not replace user title words with synonyms. Add 1-3 high-confidence visual descriptors from the VISUAL ANALYSIS before or after the user title, such as color, pattern, shape, style, or distinctive design details. If the visual analysis has useful details, the final title must be more specific than, and not identical to, the user-provided title. Only remove or change a user title word when readable printed label text or the visual product type clearly contradicts it. Do not invent materials/specs; keep user material/spec terms when present.'
+            f'The user provided this title after contradiction filtering: "{existing_title}". Treat the remaining user title terms as validated anchors, not as complete truth. Preserve product names, brand/model names, and factual specs when they do not conflict with the VISUAL ANALYSIS. Do not replace user title words with unrelated synonyms. Add only title-worthy facts from the VISUAL ANALYSIS: official product name, product type, variant, flavor, scent, formulation, count, dosage, rating, size, material, compatibility, or model/spec values when readable/provided. Do not add packaging/container appearance such as cap color, bottle color, box color, label color, banner color, background color, shape, or label placement to the title unless it is an official product variant or necessary to distinguish the sold product. If readable label text identifies a product name, active ingredient, flavor, scent, variant, formulation, count, dosage, rating, or model/spec value, it overrides any remaining conflicting user title term. Do not combine conflicting product identities in the final title. If the visual analysis has useful title-worthy details, the final title must be more specific than, and not identical to, the user-provided title. Do not invent materials/specs; keep user material/spec terms when present.'
         )
     else:
         title_instruction = "Create a compelling product name."
@@ -273,10 +280,11 @@ STRICT RULES:
 2. Printed text readable on the product (brand names, product names, dosages, model numbers) is ground truth. Drop user words that contradict printed label text.
 3. Material descriptions from the visual analysis are visual guesses — the camera cannot verify composition. Always use the user's material term when provided.
 4. The VISUAL ANALYSIS is authoritative for appearance (colors, shape, design) and printed text. The EXISTING PRODUCT DATA is authoritative for material composition and internal specs.
-5. {"In augmentation mode, user-provided title words are anchors: keep them when natural for the target locale, localize common product-type terms when needed, and add visual descriptors around them." if localized_terminology_rule else "In augmentation mode, user-provided title words are required anchors: keep them verbatim unless visibly contradicted, then add visual descriptors around them."}
+5. {"In augmentation mode, filtered user-provided title words are validated anchors: keep them when natural for the target locale and not visibly contradicted, localize common product-type terms when needed, and add only title-worthy product identity/spec facts around them." if localized_terminology_rule else "In augmentation mode, filtered user-provided title words are validated anchors: keep them when not visibly contradicted, then add only title-worthy product identity/spec facts around them."}
 6. Do not state measurable specs such as capacity, dimensions, volume, weight, power rating, counts, compatibility, or model/spec values unless they are readable in the image or explicitly provided by the user.
 7. Do not use size/weight claims such as compact, large, spacious, lightweight, or heavy unless scale is visible or the user provided that detail.
 8. Colors must be selected from ALLOWED COLORS only. Do not output materials, finishes, textures, or product types as colors; choose the closest visible generic color instead.
+9. Do not include packaging/container appearance in titles: cap color, bottle color, box color, label color, banner color, background color, shape, label placement, or similar visual packaging details belong in description/tags, not title, unless they are official product variants or necessary retail differentiators.
 {localized_terminology_line}
 
 YOUR TASK:
@@ -307,6 +315,70 @@ Return ONLY valid JSON. No markdown, no comments."""
         return parsed
     logger.warning("[Step 1] JSON parse failed, using VLM output")
     return vlm_output
+
+
+def _call_nemotron_resolve_merge_conflicts(
+    vlm_output: Dict[str, Any],
+    product_data: Dict[str, Any],
+    merged_content: Dict[str, Any],
+    locale: str = "en-US",
+) -> Dict[str, Any]:
+    """Remove contradictions that survive the initial user-data merge."""
+    logger.info("[Merge QA] Resolving merge conflicts: merged_keys=%s, locale=%s", list(merged_content.keys()), locale)
+
+    if not (api_key := os.getenv("NGC_API_KEY")):
+        raise RuntimeError(NGC_API_KEY_NOT_SET_ERROR)
+
+    info = LOCALE_CONFIG.get(locale, {"language": "English", "region": "United States", "country": "United States", "context": "American English"})
+    llm_config = get_config().get_llm_config()
+    client = OpenAI(base_url=llm_config['url'], api_key=api_key)
+
+    prompt = f"""/no_think You are a product catalog merge QA validator. Review the merged catalog content and remove contradictions between user-provided data and visual/readable-label evidence.
+
+VISUAL ANALYSIS (ground truth for visible facts and readable label text):
+{json.dumps(vlm_output, indent=2, ensure_ascii=False)}
+
+FILTERED USER DATA (non-conflicting user evidence that may still be incomplete):
+{json.dumps(product_data, indent=2, ensure_ascii=False)}
+
+MERGED CATALOG CONTENT TO VALIDATE:
+{json.dumps(merged_content, indent=2, ensure_ascii=False)}
+
+TARGET LANGUAGE / REGION: {info['language']} ({info['region']}, {info['context']})
+
+RULES:
+- Return the exact same JSON keys as MERGED CATALOG CONTENT. Do not add or remove fields.
+- Preserve non-conflicting user evidence such as brand names, model names, SKU, price, materials, and internal specs.
+- Readable label text is authoritative for product names, active ingredients, flavors, scents, colors, variants, formulations, package counts, dosages, ratings, and model/spec values.
+- If the merged title, description, categories, tags, or enhanced_product contains a user-derived product identity term that conflicts with readable label text or the visually identified product type, remove it or replace it with the exact supported visual/readable-label term.
+- Do not combine two conflicting product identities in the title, description, tags, or enhanced_product.
+- Do not remove a term merely because it is absent from the image; remove it only when it conflicts with the visual/readable-label identity.
+- Title should contain customer-facing product identity only: brand, official product name, product type, variant, flavor, scent, formulation, count, dosage, rating, size, material, compatibility, and model/spec values when supported. Remove packaging/container appearance from title, such as cap color, bottle color, box color, label color, banner color, background color, shape, or label placement, unless it is an official variant or necessary retail differentiator.
+- Keep the output in {info['language']} for customer-facing title and description.
+
+Return ONLY valid JSON. No markdown, no comments."""
+
+    completion = client.chat.completions.create(
+        model=llm_config['model'],
+        messages=[{"role": "system", "content": "/no_think"}, {"role": "user", "content": prompt}],
+        temperature=0.0, top_p=1, max_tokens=2048, stream=True,
+        extra_body={"chat_template_kwargs": {"enable_thinking": False}}
+    )
+
+    text = "".join(
+        chunk.choices[0].delta.content
+        for chunk in completion
+        if chunk.choices[0].delta and chunk.choices[0].delta.content
+    )
+    logger.info("[Merge QA] Nemotron response received: %d chars", len(text))
+
+    parsed = parse_llm_json(text, extract_braces=True, strip_comments=True)
+    if isinstance(parsed, dict):
+        logger.info("[Merge QA] Conflict validation complete: keys=%s", list(parsed.keys()))
+        return parsed
+
+    logger.warning("[Merge QA] JSON parse failed, keeping merged content unchanged")
+    return merged_content
 
 
 def _call_nemotron_apply_branding(
@@ -675,6 +747,10 @@ def _call_nemotron_enhance(
         logger.info("Step 2 complete: brand-aligned content ready")
     else:
         logger.info("Step 2 skipped: no brand_instructions provided")
+
+    if product_data and has_content:
+        enhanced = _call_nemotron_resolve_merge_conflicts(vlm_output, filtered_product_data, enhanced, locale)
+        logger.info("Merge QA complete: contradictions resolved")
     
     logger.info("Nemotron enhancement pipeline complete: final_keys=%s", list(enhanced.keys()))
     return enhanced
@@ -748,7 +824,7 @@ ALLOWED CATEGORIES: {categories_str}
 ALLOWED COLORS: {colors_str}
 
 RULES:
-- title: Clear catalog title, not creative copy. Use only product type, brand/model names, visible color, and design details explicitly present in the description. Do not copy visible English generic product-type label text as the localized product type; translate generic product-type words into {info['language']}. Do not include capacities, dimensions, model values, or other specs unless the visual description says they are readable printed text. Write in {info['language']}.
+- title: Clear catalog title, not creative copy. Use only customer-facing product identity: brand/model names, official product name, product type, variant, flavor, scent, formulation, count, dosage, rating, size, material, compatibility, and model/spec values when explicitly readable or provided. Do not include packaging/container appearance such as cap color, bottle color, box color, label color, banner color, background color, shape, or label placement unless it is an official product variant or necessary retail differentiator. Do not copy visible English generic product-type label text as the localized product type; translate generic product-type words into {info['language']}. Do not include capacities, dimensions, model values, or other specs unless the visual description says they are readable printed text. Write in {info['language']}.
 - description: Write as customer-facing e-commerce catalog copy in {info['language']}. Highlight the product's appeal, visible design, and visible features. Do NOT describe the label or packaging text placement (no "brand name is displayed on", "text reads", "prominently displayed", "printed in white"). Instead, naturally incorporate brand and product names into the copy.
 - categories: Pick 1-2 from the allowed list. Use "uncategorized" if none fit. English.
 - tags: 10 search tags derived from the text. English.
