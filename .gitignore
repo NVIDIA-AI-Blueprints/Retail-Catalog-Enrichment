@@ -105,3 +105,4 @@ logs/
 # Project-specific
 data/
 nim_cache/
+.codex

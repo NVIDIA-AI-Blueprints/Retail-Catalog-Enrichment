@@ -109,7 +109,7 @@ BE CREATIVE AND VARY YOUR CHOICES:
 CATEGORY-SPECIFIC BACKGROUNDS:
 - For "skincare" products: bathroom counters, vanity setups, living room side tables, bedroom vanities, spa-inspired settings - with cultural touches
 - For "kitchen" products: kitchen counters, dining tables, cooking prep areas - reflecting local culinary culture
-- For "accessories": lifestyle contexts like entryways, closets, fashion displays, outdoor café tables, cobblestone streets
+- For "bags": lifestyle contexts like entryways, closets, fashion displays, outdoor café tables, cobblestone streets
 - For other categories: choose contextually appropriate settings that match how the product is typically used in that country
 
 Produce ONLY a JSON object with no markdown formatting or code blocks. Required schema:
@@ -125,7 +125,7 @@ CRITICAL: Write EVERYTHING in ENGLISH (preserve_subject, background_style, all f
 CRITICAL: preserve_subject MUST be a short product name (3-8 words) derived from the TITLE. Do NOT include physical descriptions like colors, materials, labels, cap details, or certifications. The original image already serves as the visual reference - the text only needs to IDENTIFY the product, not DESCRIBE it."""}
         ],
         temperature=0.8, top_p=1, max_tokens=1024, stream=True,
-        extra_body={"reasoning_budget": 16384, "chat_template_kwargs": {"enable_thinking": False}}
+        extra_body={"chat_template_kwargs": {"enable_thinking": False}}
     )
 
     text = "".join(chunk.choices[0].delta.content for chunk in completion if chunk.choices[0].delta and chunk.choices[0].delta.content).strip()
@@ -431,4 +431,3 @@ async def generate_image_variation(
     except Exception as exc:
         logger.exception("Image generation pipeline failed: %s", exc)
         raise
-

@@ -157,4 +157,3 @@ def _parse_quality_response(response_text: str) -> Optional[Dict[str, Any]]:
 
     issues = data.get("issues", []) if isinstance(data.get("issues"), list) else []
     return {"score": score, "issues": issues}
-

@@ -17,6 +17,7 @@ import os
 import json
 import base64
 import logging
+import re
 from typing import Optional, Dict, Any
 
 from dotenv import load_dotenv
@@ -48,17 +49,103 @@ NGC_API_KEY_NOT_SET_ERROR = "NGC_API_KEY is not set"
 PRODUCT_CATEGORIES = [
     "clothing",
     "footwear",
-    "kitchen", 
-    "accessories",
+    "kitchen",
     "toys",
     "electronics",
     "furniture",
     "office",
-    "fragrance",
     "skincare",
     "bags",
     "outdoor"
 ]
+FALLBACK_CATEGORY = "uncategorized"
+CATEGORY_OUTPUT_VALUES = PRODUCT_CATEGORIES + [FALLBACK_CATEGORY]
+CATEGORY_OUTPUT_SET = frozenset(CATEGORY_OUTPUT_VALUES)
+
+ALLOWED_COLORS = [
+    "black",
+    "white",
+    "gray",
+    "silver",
+    "gold",
+    "brown",
+    "beige",
+    "red",
+    "orange",
+    "yellow",
+    "green",
+    "blue",
+    "purple",
+    "pink",
+]
+COLOR_ALIASES = {"grey": "gray"}
+ALLOWED_COLOR_SET = frozenset(ALLOWED_COLORS)
+
+LOCALIZED_TERMINOLOGY_RULE = (
+    "Use established retail terminology for the target locale in localized customer-facing fields. "
+    "The visual analysis may be in English; translate generic product-type nouns from the visual analysis into natural, widely used terms in the target language. "
+    "English generic product-type nouns are not allowed in localized title or description output. "
+    "Do not keep English generic product-type nouns just because they appear in the visual analysis or as readable label text. "
+    "Do not invent new compound words, calques, or phonetic translations; never coin or merge words to translate a product type. "
+    "If unsure, use a common generic product term in the target language instead of inventing one. "
+    "Keep English only for brand names, model names, readable printed text, or terms explicitly provided as official product names; readable English label text does not override the localized generic product type. "
+    "Before returning JSON, self-check title and description; if an English generic product-type noun remains, translate it into the target language. "
+    "Use the chosen product-type term consistently across localized customer-facing fields."
+)
+
+
+def _localized_terminology_rule(info: Dict[str, str]) -> str:
+    """Return terminology guard only when the target output is not English."""
+    if info.get("language") == "English":
+        return ""
+    return LOCALIZED_TERMINOLOGY_RULE
+
+
+def _localized_terminology_block(info: Dict[str, str]) -> str:
+    """Return a prominent localization check for non-English catalog generation."""
+    rule = _localized_terminology_rule(info)
+    if not rule:
+        return ""
+    return f"""
+LOCALIZATION CHECK:
+- {rule}
+- Title and description are invalid if they keep English generic product-type nouns for the product type.
+- Before returning JSON, rewrite any remaining English generic product-type noun into {info['language']} while keeping brand/model names unchanged."""
+
+
+def _normalize_categories(categories: Any) -> list[str]:
+    """Keep only supported category labels and preserve first-seen order."""
+    if not isinstance(categories, list):
+        return []
+
+    normalized = []
+    for value in categories:
+        if not isinstance(value, str):
+            continue
+        category = value.strip().lower()
+        if category in CATEGORY_OUTPUT_SET and category not in normalized:
+            normalized.append(category)
+
+    if len(normalized) > 1 and FALLBACK_CATEGORY in normalized:
+        return [category for category in normalized if category != FALLBACK_CATEGORY]
+    return normalized
+
+
+def _normalize_colors(colors: Any) -> list[str]:
+    """Keep only generic color names, not materials/finishes."""
+    if not isinstance(colors, list):
+        return []
+
+    normalized = []
+    for value in colors:
+        if not isinstance(value, str):
+            continue
+        for word in re.findall(r"[a-z]+", value.lower()):
+            color = COLOR_ALIASES.get(word, word)
+            if color in ALLOWED_COLOR_SET and color not in normalized:
+                normalized.append(color)
+    return normalized
+
 
 def _call_nemotron_filter_user_data(
     vlm_output: Dict[str, Any],
@@ -109,7 +196,7 @@ Return ONLY valid JSON with the same structure as the user-provided data. No mar
         model=llm_config['model'],
         messages=[{"role": "system", "content": ""}, {"role": "user", "content": prompt}],
         temperature=0.1, top_p=0.9, max_tokens=2048, stream=True,
-        extra_body={"reasoning_budget": 16384, "chat_template_kwargs": {"enable_thinking": True}}
+        extra_body={"chat_template_kwargs": {"enable_thinking": False}}
     )
 
     text = "".join(chunk.choices[0].delta.content for chunk in completion if chunk.choices[0].delta and chunk.choices[0].delta.content)
@@ -146,6 +233,8 @@ def _call_nemotron_enhance_vlm(
         raise RuntimeError(NGC_API_KEY_NOT_SET_ERROR)
 
     info = LOCALE_CONFIG.get(locale, {"language": "English", "region": "United States", "country": "United States", "context": "American English"})
+    localized_terminology_rule = _localized_terminology_rule(info)
+    localized_terminology_line = f"9. {localized_terminology_rule}" if localized_terminology_rule else ""
     llm_config = get_config().get_llm_config()
     client = OpenAI(base_url=llm_config['url'], api_key=api_key)
 
@@ -154,10 +243,16 @@ def _call_nemotron_enhance_vlm(
     existing_title = product_data.get("title", "") if product_data else ""
     existing_desc = product_data.get("description", "") if product_data else ""
 
-    title_instruction = (
-        f'The user provided this title: "{existing_title}". Use it as the BASE and enrich it with visual details (color, shape, design) from the analysis. Keep all user words unless printed label text on the product clearly contradicts them.'
-        if existing_title else "Create a compelling product name."
-    )
+    if existing_title and localized_terminology_rule:
+        title_instruction = (
+            f'The user provided this title: "{existing_title}". Preserve the user\'s product intent plus any brand/model names and factual specs. Keep user title words when they are already natural for the target locale; localize common product-type words using established retail terminology when needed. Do not replace user factual words with unrelated synonyms. Add 1-3 high-confidence visual descriptors from the VISUAL ANALYSIS before or after the user title, such as color, pattern, shape, style, or distinctive design details. If the visual analysis has useful details, the final title must be more specific than, and not identical to, the user-provided title. Only remove or change a user title word when readable printed label text or the visual product type clearly contradicts it, or when localization requires a natural target-language product term. Do not invent materials/specs; keep user material/spec terms when present.'
+        )
+    elif existing_title:
+        title_instruction = (
+            f'The user provided this title: "{existing_title}". Keep the user\'s original title wording and word choices for the product name, brand/model names, and factual specs. Do not replace user title words with synonyms. Add 1-3 high-confidence visual descriptors from the VISUAL ANALYSIS before or after the user title, such as color, pattern, shape, style, or distinctive design details. If the visual analysis has useful details, the final title must be more specific than, and not identical to, the user-provided title. Only remove or change a user title word when readable printed label text or the visual product type clearly contradicts it. Do not invent materials/specs; keep user material/spec terms when present.'
+        )
+    else:
+        title_instruction = "Create a compelling product name."
     desc_instruction = (
         f'The user provided this description: "{existing_desc}". Use it as the BASE and expand it with visual details from the analysis. Keep all user terms unless printed label text on the product clearly contradicts them.'
         if existing_desc else "Focus on what makes this product appealing."
@@ -170,20 +265,26 @@ def _call_nemotron_enhance_vlm(
 VISUAL ANALYSIS (what the camera sees):
 {vlm_json}
 {product_section}
-ALLOWED CATEGORIES: {json.dumps(PRODUCT_CATEGORIES)}
+ALLOWED CATEGORIES: {json.dumps(CATEGORY_OUTPUT_VALUES)}
+ALLOWED COLORS: {json.dumps(ALLOWED_COLORS)}
 
 STRICT RULES:
 1. NEVER invent or fabricate details on your own. Only use facts from the VISUAL ANALYSIS or the EXISTING PRODUCT DATA above.
 2. Printed text readable on the product (brand names, product names, dosages, model numbers) is ground truth. Drop user words that contradict printed label text.
 3. Material descriptions from the visual analysis are visual guesses — the camera cannot verify composition. Always use the user's material term when provided.
 4. The VISUAL ANALYSIS is authoritative for appearance (colors, shape, design) and printed text. The EXISTING PRODUCT DATA is authoritative for material composition and internal specs.
+5. {"In augmentation mode, user-provided title words are anchors: keep them when natural for the target locale, localize common product-type terms when needed, and add visual descriptors around them." if localized_terminology_rule else "In augmentation mode, user-provided title words are required anchors: keep them verbatim unless visibly contradicted, then add visual descriptors around them."}
+6. Do not state measurable specs such as capacity, dimensions, volume, weight, power rating, counts, compatibility, or model/spec values unless they are readable in the image or explicitly provided by the user.
+7. Do not use size/weight claims such as compact, large, spacious, lightweight, or heavy unless scale is visible or the user provided that detail.
+8. Colors must be selected from ALLOWED COLORS only. Do not output materials, finishes, textures, or product types as colors; choose the closest visible generic color instead.
+{localized_terminology_line}
 
 YOUR TASK:
 - title: {title_instruction} Write in {info['language']}.
 - description: Write a rich, persuasive product description. Merge visual details with user-provided information. {desc_instruction} Write in {info['language']}.
 - categories: Pick from allowed list only. English. Array format.
 - tags: {"Keep all existing user tags AND add more from the visual analysis." if product_data else "Generate 10 relevant search tags."} English.
-- colors: Use the VLM colors. English.
+- colors: Use visible product colors from ALLOWED COLORS only. English.
 {f"Keep any other fields from the existing data (price, SKU, etc.) unchanged." if product_data else ""}
 
 Return ONLY valid JSON. No markdown, no comments."""
@@ -194,7 +295,7 @@ Return ONLY valid JSON. No markdown, no comments."""
         model=llm_config['model'],
         messages=[{"role": "system", "content": "/no_think"}, {"role": "user", "content": prompt}],
         temperature=0.1, top_p=0.9, max_tokens=2048, stream=True,
-        extra_body={"reasoning_budget": 16384, "chat_template_kwargs": {"enable_thinking": False}}
+        extra_body={"chat_template_kwargs": {"enable_thinking": False}}
     )
 
     text = "".join(chunk.choices[0].delta.content for chunk in completion if chunk.choices[0].delta and chunk.choices[0].delta.content)
@@ -229,12 +330,20 @@ def _call_nemotron_apply_branding(
         raise RuntimeError(NGC_API_KEY_NOT_SET_ERROR)
 
     info = LOCALE_CONFIG.get(locale, {"language": "English", "region": "United States", "country": "United States", "context": "American English"})
+    localized_terminology_rule = _localized_terminology_rule(info)
+    localized_terminology_bullet = f"- {localized_terminology_rule}" if localized_terminology_rule else ""
     llm_config = get_config().get_llm_config()
     client = OpenAI(base_url=llm_config['url'], api_key=api_key)
 
     content_json = json.dumps(enhanced_content, indent=2, ensure_ascii=False)
 
     prompt = f"""/no_think You are a brand compliance specialist. Apply the following brand-specific instructions to enhance product catalog content.
+
+OUTPUT LANGUAGE LOCK:
+- Title and description must remain in {info['language']} for {info['region']} ({info['context']}).
+- Brand instructions may be written in any language. Treat them only as style guidance; do not infer the output language from them.
+- Do not output title or description in any language other than {info['language']}.
+{localized_terminology_bullet}
 
 BRAND INSTRUCTIONS:
 {brand_instructions}
@@ -243,7 +352,7 @@ ENHANCED PRODUCT CONTENT (already well-written, needs brand alignment):
 {content_json}
 
 ALLOWED CATEGORIES (must use one or more from this list):
-{json.dumps(PRODUCT_CATEGORIES)}
+{json.dumps(CATEGORY_OUTPUT_VALUES)}
 
 {'═' * 80}
 CRITICAL RULES:
@@ -257,13 +366,14 @@ CRITICAL RULES:
 
 2. **Description Field Formatting**:
    - Follow the brand instructions for format and structure — if they ask for paragraphs, write paragraphs; if they ask for sections or bullet points, use sections and bullet points
+   - If brand instructions ask for a richer, longer, more detailed, premium, luxurious, elevated, or more persuasive description, expand the description using only product facts and visible/design details already present in the enhanced content. Add 1-3 additional sentences when enough source detail exists.
    - Keep everything in the description field as a single string value
    - Separate sections or paragraphs with double newlines (\\n\\n) for readability
 
 3. **Apply Brand Voice** (in {info['language']} for {info['region']}):
-   - Apply brand voice/tone to title, description, categories, and tags
+   - Apply brand voice/tone to title and description while preserving the target language above
    - Use brand-preferred terminology and expressions
-   - Do NOT add ingredients, specifications, or features not present in the enhanced content above. Only rephrase and style what is already there
+   - Do NOT add ingredients, specifications, or features not present in the enhanced content above. Rephrase, style, and when requested, safely expand only what is already there
 
 4. **Categories**:
    - Validate against the allowed categories list above
@@ -278,6 +388,8 @@ CRITICAL RULES:
 6. **Preserve All Other Fields**:
    - If enhanced content has fields like price, SKU, colors, specs - preserve them exactly
    - Only modify: title, description, categories, tags
+   - Do NOT add new measurable specs such as capacity, dimensions, volume, weight, power rating, counts, compatibility, or model/spec values
+   - Do NOT add size/weight claims such as compact, large, spacious, lightweight, or heavy unless they already appear in the enhanced content
 
 {'═' * 80}
 OUTPUT FORMAT:
@@ -293,7 +405,7 @@ Return ONLY valid JSON. No markdown, no commentary, no comments (// or /* */).""
         model=llm_config['model'],
         messages=[{"role": "system", "content": "/no_think"}, {"role": "user", "content": prompt}],
         temperature=0.1, top_p=0.9, max_tokens=2048, stream=True,
-        extra_body={"reasoning_budget": 16384, "chat_template_kwargs": {"enable_thinking": False}}
+        extra_body={"chat_template_kwargs": {"enable_thinking": False}}
     )
 
     text = "".join(chunk.choices[0].delta.content for chunk in completion if chunk.choices[0].delta and chunk.choices[0].delta.content)
@@ -343,6 +455,8 @@ def _call_nemotron_generate_faqs(
         raise RuntimeError(NGC_API_KEY_NOT_SET_ERROR)
 
     info = LOCALE_CONFIG.get(locale, {"language": "English", "region": "United States", "country": "United States", "context": "American English"})
+    localized_terminology_rule = _localized_terminology_rule(info)
+    localized_terminology_bullet = f"- {localized_terminology_rule}" if localized_terminology_rule else ""
     llm_config = get_config().get_llm_config()
     client = OpenAI(base_url=llm_config['url'], api_key=api_key)
 
@@ -369,6 +483,7 @@ RULES:
 - Answers must be helpful, concise (1-3 sentences), and factual.
 - ONLY reference details present in the product data or manual knowledge above. Do NOT fabricate specifications.
 - Write questions and answers in {info['language']} appropriate for {info['region']}.
+{localized_terminology_bullet}
 
 OUTPUT FORMAT:
 Return ONLY a valid JSON array. No markdown, no commentary.
@@ -389,6 +504,7 @@ RULES:
 - Answers must be helpful, concise (1-3 sentences), and factual.
 - ONLY reference details present in the product data above. Do NOT fabricate specifications.
 - Write questions and answers in {info['language']} appropriate for {info['region']}.
+{localized_terminology_bullet}
 
 OUTPUT FORMAT:
 Return ONLY a valid JSON array. No markdown, no commentary.
@@ -401,7 +517,7 @@ Example: [{{"question": "...", "answer": "..."}}, ...]"""
         model=llm_config['model'],
         messages=[{"role": "system", "content": "/no_think"}, {"role": "user", "content": prompt}],
         temperature=0.1, top_p=0.9, max_tokens=max_tokens, stream=True,
-        extra_body={"reasoning_budget": 16384, "chat_template_kwargs": {"enable_thinking": False}}
+        extra_body={"chat_template_kwargs": {"enable_thinking": False}}
     )
 
     text = "".join(
@@ -488,7 +604,7 @@ Example: {{"brand": "...", "condition": "new", "material": null, "age_group": "a
         model=llm_config['model'],
         messages=[{"role": "system", "content": "/no_think"}, {"role": "user", "content": prompt}],
         temperature=0.1, top_p=0.9, max_tokens=2048, stream=True,
-        extra_body={"reasoning_budget": 16384, "chat_template_kwargs": {"enable_thinking": False}}
+        extra_body={"chat_template_kwargs": {"enable_thinking": False}}
     )
 
     text = "".join(
@@ -579,14 +695,21 @@ def _call_vlm(image_bytes: bytes, content_type: str, locale: str = "en-US") -> D
     vlm_config = get_config().get_vlm_config()
     client = OpenAI(base_url=vlm_config['url'], api_key=api_key)
 
-    prompt_text = "Describe this product in detail: appearance, shape, colors, materials, visible text, brand names, labels, and any distinctive design features."
+    prompt_text = (
+        "Describe only visible facts about this product: appearance, shape, colors, visible text, "
+        "brand/labels, controls, and distinctive design. Include numbers/specs only if clearly readable "
+        "as printed text; never infer capacity, size, model, power, weight, or volume."
+    )
 
     completion = client.chat.completions.create(
         model=vlm_config['model'],
-        messages=[{"role": "user", "content": [
-            {"type": "image_url", "image_url": {"url": f"data:{content_type};base64,{base64.b64encode(image_bytes).decode()}"}},
-            {"type": "text", "text": prompt_text}
-        ]}],
+        messages=[
+            {"role": "system", "content": "/no_think"},
+            {"role": "user", "content": [
+                {"type": "image_url", "image_url": {"url": f"data:{content_type};base64,{base64.b64encode(image_bytes).decode()}"}},
+                {"type": "text", "text": prompt_text}
+            ]}
+        ],
         temperature=0.1, top_p=0.9, max_tokens=4096, stream=True
     )
 
@@ -608,24 +731,28 @@ def _call_nemotron_structure_vlm(vlm_text: str, locale: str = "en-US") -> Dict[s
         raise RuntimeError(NGC_API_KEY_NOT_SET_ERROR)
 
     info = LOCALE_CONFIG.get(locale, {"language": "English", "region": "United States", "country": "United States", "context": "American English"})
+    localized_terminology_block = _localized_terminology_block(info)
     llm_config = get_config().get_llm_config()
     client = OpenAI(base_url=llm_config['url'], api_key=api_key)
 
-    categories_str = json.dumps(PRODUCT_CATEGORIES)
+    categories_str = json.dumps(CATEGORY_OUTPUT_VALUES)
+    colors_str = json.dumps(ALLOWED_COLORS)
 
-    prompt = f"""/no_think Convert the visual description below into e-commerce product catalog fields. Write in polished, professional catalog language in {info['language']} for {info['region']} ({info['context']}). Do NOT invent features, materials, or specifications not mentioned in the description.
+    prompt = f"""/no_think Convert the visual description below into e-commerce product catalog fields. Write in polished, professional catalog language in {info['language']} for {info['region']} ({info['context']}). Do NOT invent features, materials, or specifications not mentioned in the description. Do NOT state capacity, dimensions, volume, weight, power rating, counts, compatibility, or model/spec values unless the visual description explicitly says the value appears as readable printed text. If the visual description mentions a number/spec but does not say it is readable printed text, omit it. Do NOT use size/weight claims like compact, large, spacious, lightweight, or heavy unless scale is visible in the visual description.
+{localized_terminology_block}
 
 VISUAL DESCRIPTION:
 {vlm_text}
 
 ALLOWED CATEGORIES: {categories_str}
+ALLOWED COLORS: {colors_str}
 
 RULES:
-- title: Compelling product name using only details from the description. Write in {info['language']}.
-- description: Write as customer-facing e-commerce catalog copy in {info['language']}. Highlight the product's appeal, materials, design, and features. Do NOT describe the label or packaging text placement (no "brand name is displayed on", "text reads", "prominently displayed", "printed in white"). Instead, naturally incorporate brand and product names into the copy.
+- title: Clear catalog title, not creative copy. Use only product type, brand/model names, visible color, and design details explicitly present in the description. Do not copy visible English generic product-type label text as the localized product type; translate generic product-type words into {info['language']}. Do not include capacities, dimensions, model values, or other specs unless the visual description says they are readable printed text. Write in {info['language']}.
+- description: Write as customer-facing e-commerce catalog copy in {info['language']}. Highlight the product's appeal, visible design, and visible features. Do NOT describe the label or packaging text placement (no "brand name is displayed on", "text reads", "prominently displayed", "printed in white"). Instead, naturally incorporate brand and product names into the copy.
 - categories: Pick 1-2 from the allowed list. Use "uncategorized" if none fit. English.
 - tags: 10 search tags derived from the text. English.
-- colors: 1-2 product colors mentioned in the text. English.
+- colors: 1-2 visible product colors selected from ALLOWED COLORS only. Do not output materials, finishes, textures, or product types as colors; choose the closest visible generic color instead. English.
 
 Return ONLY valid JSON:
 {{"title": "...", "description": "...", "categories": [...], "tags": [...], "colors": [...]}}"""
@@ -633,8 +760,8 @@ Return ONLY valid JSON:
     completion = client.chat.completions.create(
         model=llm_config['model'],
         messages=[{"role": "system", "content": "/no_think"}, {"role": "user", "content": prompt}],
-        temperature=0.1, top_p=0.9, max_tokens=2048, stream=True,
-        extra_body={"reasoning_budget": 16384, "chat_template_kwargs": {"enable_thinking": False}}
+        temperature=0.0, top_p=1, max_tokens=2048, stream=True,
+        extra_body={"chat_template_kwargs": {"enable_thinking": False}}
     )
 
     text = "".join(
@@ -681,23 +808,25 @@ def build_enriched_vlm_result(
     logger.info("Nemotron enhance complete: keys=%s", list(enhanced.keys()))
 
     categories = (
-        enhanced.get("categories")
-        if enhanced.get("categories") and isinstance(enhanced.get("categories"), list)
-        else vlm_result.get("categories", ["uncategorized"])
+        _normalize_categories(enhanced.get("categories"))
+        or _normalize_categories(vlm_result.get("categories"))
+        or [FALLBACK_CATEGORY]
     )
+    colors = _normalize_colors(enhanced.get("colors")) or _normalize_colors(vlm_result.get("colors"))
 
     result = {
         "title": enhanced.get("title", vlm_result.get("title", "")),
         "description": enhanced.get("description", vlm_result.get("description", "")),
         "categories": categories,
         "tags": enhanced.get("tags", vlm_result.get("tags", [])),
-        "colors": enhanced.get("colors", vlm_result.get("colors", [])),
+        "colors": colors,
     }
 
     if product_data:
-        result["enhanced_product"] = {**product_data, **enhanced}
+        result["enhanced_product"] = {**product_data, **enhanced, "categories": categories, "colors": colors}
 
     return result
+
 
 def run_vlm_analysis(
     image_bytes: bytes,

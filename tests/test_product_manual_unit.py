@@ -133,6 +133,29 @@ class TestEmbedTextsBatching:
         assert len(result) == 3
         assert mock_openai.return_value.embeddings.create.call_count == 1
 
+    @patch("backend.product_manual.OpenAI")
+    @patch("backend.product_manual.get_config")
+    @patch("backend.product_manual._get_api_key", return_value="test-key")
+    def test_limits_embedding_inputs_below_token_cap(self, mock_key, mock_config, mock_openai):
+        from backend.product_manual import _embed_texts, EMBEDDING_INPUT_MAX_WORDS
+
+        mock_cfg = Mock()
+        mock_cfg.get_embeddings_config.return_value = {"url": "http://test:8005/v1", "model": "test-embed"}
+        mock_config.return_value = mock_cfg
+
+        mock_resp = Mock()
+        mock_resp.data = [Mock(embedding=[0.1] * 4)]
+        mock_openai.return_value.embeddings.create.return_value = mock_resp
+
+        long_text = " ".join(f"word{i}" for i in range(300))
+        result = _embed_texts([long_text], input_type="passage")
+
+        assert len(result) == 1
+        call_args = mock_openai.return_value.embeddings.create.call_args
+        embedded_input = call_args.kwargs["input"][0]
+        assert len(embedded_input.split()) == EMBEDDING_INPUT_MAX_WORDS
+        assert call_args.kwargs["extra_body"] == {"input_type": "passage", "truncate": "END"}
+
 
 class TestProductManualContext:
     """Tests for the ProductManualContext class."""

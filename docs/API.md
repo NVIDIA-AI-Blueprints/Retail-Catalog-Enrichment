@@ -228,7 +228,7 @@ curl -X POST \
 ```bash
 curl -X POST \
   -F "image=@bag.jpg;type=image/jpeg" \
-  -F 'product_data={"title":"Classic Black Patent purse","description":"Elegant bag","price":15.99,"categories":["accessories"],"tags":["bag","purse"]}' \
+  -F 'product_data={"title":"Classic Black Patent purse","description":"Elegant bag","price":15.99,"categories":["bags"],"tags":["bag","purse"]}' \
   -F "locale=en-US" \
   http://localhost:8000/vlm/analyze
 ```
@@ -248,7 +248,7 @@ curl -X POST \
   -F "image=@bag.jpg;type=image/jpeg" \
   -F 'product_data={"title":"Beauty Product","description":"Nice cream"}' \
   -F "locale=en-US" \
-  -F 'brand_instructions=Write the catalog as a professional expert in Sephora Beauty. Strictly use this tone and style when writing the product document. Use this example as guidance for fragrance products: Title: Good Girl Blush Eau de Parfum with Floral Vanilla Description: A fresh, floral explosion of femininity, this radiant reinvention of the iconic Good Girl scent reveals the multifaceted nature of modern womanhood with a double dose of sensual vanilla and exotic ylang-ylang.' \
+  -F 'brand_instructions=Write the catalog as a professional expert in Sephora Beauty. Strictly use this tone and style when writing the product document. Use this example as guidance for skincare products: Title: Radiant Hydration Face Cream Description: A rich, nourishing cream designed to leave skin feeling soft, hydrated, and luminous with a polished beauty-editor tone.' \
   http://localhost:8000/vlm/analyze
 ```
 
@@ -258,7 +258,7 @@ curl -X POST \
 {
   "title": "Glamorous Black Evening Handbag with Gold Accents",
   "description": "This exquisite handbag exudes sophistication and elegance. Crafted from high-quality, glossy leather...",
-  "categories": ["accessories"],
+  "categories": ["bags"],
   "tags": ["black leather", "gold accents", "evening bag", "rectangular shape"],
   "colors": ["black", "gold"],
   "locale": "en-US",
@@ -480,7 +480,7 @@ curl -X POST \
   -F "locale=en-US" \
   -F "title=Glamorous Black Evening Handbag with Gold Accents" \
   -F "description=This exquisite handbag exudes sophistication..." \
-  -F 'categories=["accessories"]' \
+  -F 'categories=["bags"]' \
   -F 'tags=["black leather","gold accents","evening bag"]' \
   -F 'colors=["black","gold"]' \
   http://localhost:8000/generate/variation

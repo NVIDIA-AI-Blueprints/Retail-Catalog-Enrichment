@@ -26,7 +26,7 @@ The extraction pipeline runs entirely within a single request:
 1. **PDF validation** -- File must be a PDF, non-empty, and under 50 MB
 2. **Text extraction** -- `pypdf` extracts raw text from each page
 3. **Chunking** -- Text is split into overlapping word-based chunks (default: 250 words per chunk, 50-word overlap between consecutive chunks)
-4. **Embedding** -- All chunks are embedded using NVIDIA `nv-embedqa-e5-v5`, batched at 128 chunks per API call
+4. **Embedding** -- All chunks are embedded using NVIDIA `nv-embedqa-e5-v5`, batched at 128 chunks per API call. Embedding inputs are capped before submission to stay under the model's token limit.
 5. **Dynamic query generation** -- The Nemotron LLM generates 5-8 product-type-specific questions based on the product **title and categories only** (not the description -- this is intentional to avoid retrieving content that duplicates the description)
 6. **Targeted retrieval** -- For each generated query, the system embeds the query and retrieves the top-3 most similar chunks from the manual via in-memory cosine similarity (numpy). Chunks are deduplicated across queries.
 7. **Knowledge returned** -- The structured knowledge (a JSON object mapping topic labels to relevant extracted text) is returned to the client

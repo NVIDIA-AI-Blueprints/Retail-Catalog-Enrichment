@@ -17,6 +17,7 @@ import asyncio
 import base64
 import json
 import logging
+import time
 from contextlib import asynccontextmanager
 
 from dotenv import load_dotenv
@@ -39,6 +40,9 @@ load_dotenv()
 logger = logging.getLogger("catalog_enrichment.api")
 VALID_LOCALES = {"en-US", "en-GB", "en-AU", "en-CA", "es-ES", "es-MX", "es-AR", "es-CO", "fr-FR", "fr-CA"}
 policy_library = PolicyLibrary()
+NIM_HEALTH_CACHE_TTL_SECONDS = 30
+_nim_health_cache: dict | None = None
+_nim_health_cache_expires_at = 0.0
 
 
 @asynccontextmanager
@@ -83,6 +87,12 @@ async def health_nims() -> JSONResponse:
     Each service is checked by calling its /v1/health/ready endpoint.
     """
     logger.debug("GET /health/nims - checking all NIM endpoints")
+    global _nim_health_cache, _nim_health_cache_expires_at
+
+    now = time.monotonic()
+    if _nim_health_cache and now < _nim_health_cache_expires_at:
+        return JSONResponse(_nim_health_cache)
+
     config = get_config()
     
     async def check_service(name: str, base_url: str) -> str:
@@ -131,6 +141,8 @@ async def health_nims() -> JSONResponse:
             "flux": flux_status,
             "trellis": trellis_status
         }
+        _nim_health_cache = result
+        _nim_health_cache_expires_at = time.monotonic() + NIM_HEALTH_CACHE_TTL_SECONDS
         
         logger.debug(f"NIM health check results: {result}")
         return JSONResponse(result)

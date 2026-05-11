@@ -116,7 +116,7 @@ Rules:
         top_p=0.9,
         max_tokens=1600,
         stream=True,
-        extra_body={"reasoning_budget": 8192, "chat_template_kwargs": {"enable_thinking": False}},
+        extra_body={"chat_template_kwargs": {"enable_thinking": False}},
     )
 
     text = "".join(
@@ -324,7 +324,7 @@ Rules:
         top_p=0.9,
         max_tokens=900,
         stream=True,
-        extra_body={"reasoning_budget": 4096, "chat_template_kwargs": {"enable_thinking": False}},
+        extra_body={"chat_template_kwargs": {"enable_thinking": False}},
     )
 
     text = "".join(
@@ -421,7 +421,7 @@ Rules:
         top_p=0.9,
         max_tokens=1200,
         stream=True,
-        extra_body={"reasoning_budget": 8192, "chat_template_kwargs": {"enable_thinking": False}},
+        extra_body={"chat_template_kwargs": {"enable_thinking": False}},
     )
 
     text = "".join(

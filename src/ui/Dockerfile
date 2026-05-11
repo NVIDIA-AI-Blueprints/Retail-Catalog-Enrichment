@@ -15,9 +15,10 @@
 
 FROM node:20-slim AS base
 
+ENV PNPM_VERSION="10.0.0"
 ENV PNPM_HOME="/pnpm"
 ENV PATH="$PNPM_HOME:$PATH"
-RUN corepack enable
+RUN corepack enable && corepack prepare "pnpm@${PNPM_VERSION}" --activate
 
 WORKDIR /app
 
@@ -60,4 +61,3 @@ ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
 
 CMD ["node", "server.js"]
-

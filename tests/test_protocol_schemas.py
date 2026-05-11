@@ -181,7 +181,7 @@ class TestBuildUcpSchema:
 
     def test_product_type_joined_with_arrow(self, sample_vlm_response):
         schema = _build_ucp_schema(sample_vlm_response, [], {})
-        assert schema["product_type"] == "accessories > bags"
+        assert schema["product_type"] == "bags"
 
     def test_product_highlight_from_tags(self, sample_vlm_response):
         schema = _build_ucp_schema(sample_vlm_response, [], {})

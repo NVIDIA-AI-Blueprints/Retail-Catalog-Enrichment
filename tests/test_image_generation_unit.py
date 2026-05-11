@@ -59,7 +59,7 @@ class TestCallPlannerLLM:
         mock_client.chat.completions.create.return_value = [mock_chunk]
         
         # Call function
-        result = _call_planner_llm("Test Product", "Test description", ["accessories"], "en-US")
+        result = _call_planner_llm("Test Product", "Test description", ["bags"], "en-US")
         
         # Assertions
         assert isinstance(result, dict)
@@ -169,7 +169,7 @@ class TestCallPlannerLLM:
         mock_client.chat.completions.create.return_value = [mock_chunk]
         
         # Call with French locale
-        result = _call_planner_llm("Sac à main", "Description", ["accessories"], "fr-FR")
+        result = _call_planner_llm("Sac à main", "Description", ["bags"], "fr-FR")
         
         # Plan should still be in English (FLUX requirement)
         assert isinstance(result, dict)
@@ -256,7 +256,7 @@ class TestPersistGeneratedImage:
             image_b64=sample_base64_image,
             title="Test Product",
             description="Test description",
-            categories=["accessories"],
+            categories=["bags"],
             tags=["test", "tag"],
             colors=["black"],
             locale="en-US",
@@ -293,7 +293,7 @@ class TestPersistGeneratedImage:
             image_b64=sample_base64_image,
             title="Test Product",
             description="Test description",
-            categories=["accessories"],
+            categories=["bags"],
             tags=["test"],
             colors=["black"],
             locale="en-US",
@@ -379,7 +379,7 @@ class TestGenerateImageVariation:
             content_type="image/png",
             title="Test Product",
             description="Test description",
-            categories=["accessories"],
+            categories=["bags"],
             tags=["test"],
             colors=["black"],
             locale="en-US"
@@ -439,7 +439,7 @@ class TestGenerateImageVariation:
             content_type="image/png",
             title="Test Product",
             description="Test description",
-            categories=["accessories"],
+            categories=["bags"],
             tags=["test"],
             colors=["black"],
             locale="en-US",
@@ -515,7 +515,7 @@ class TestGenerateImageVariation:
             content_type="image/png",
             title="Producto de Prueba",
             description="Descripción de prueba",
-            categories=["accessories"],
+            categories=["bags"],
             tags=["prueba"],
             colors=["negro"],
             locale="es-ES"
@@ -560,7 +560,7 @@ class TestGenerateImageVariation:
             content_type="image/png",
             title="Test Product",
             description="Test description",
-            categories=["accessories"],
+            categories=["bags"],
             tags=["test"],
             colors=["black"],
             locale="en-US"

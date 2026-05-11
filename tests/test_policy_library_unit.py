@@ -16,14 +16,14 @@ class TestBuildPolicyQuery:
             {
                 "title": "Catalog Item",
                 "description": "Demo description",
-                "categories": ["accessories"],
+                "categories": ["bags"],
                 "tags": ["premium", "structured"],
                 "colors": ["black"],
             }
         )
 
         assert "Catalog Item" in query
-        assert "accessories" in query
+        assert "bags" in query
         assert "black" in query
 
     def test_build_policy_query_is_trimmed_for_embedding_limit(self):
@@ -32,7 +32,7 @@ class TestBuildPolicyQuery:
             {
                 "title": "Catalog Item",
                 "description": long_description,
-                "categories": ["accessories"],
+                "categories": ["bags"],
                 "tags": ["premium"],
                 "colors": ["black"],
             }

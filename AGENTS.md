@@ -82,7 +82,7 @@ uvicorn --app-dir src backend.main:app --host 0.0.0.0 --port 8000 --reload
   - Response: Product fields JSON with:
     - `title`: string (enriched and localized)
     - `description`: string (expanded and localized)
-    - `categories`: array (validated/improved, e.g. ["accessories", "bag"])
+    - `categories`: array (validated/improved, e.g. ["bags"])
     - `tags`: array (expanded with relevant terms)
     - `colors`: array (extracted color palette, e.g. ["black", "gold"])
     - `enhanced_product`: object (if product_data was provided)
@@ -181,7 +181,7 @@ Example Response:
 {
   "title": "Glamorous Black Evening Handbag with Gold Accents",
   "description": "This exquisite handbag exudes sophistication and elegance...",
-  "categories": ["accessories"],
+  "categories": ["bags"],
   "tags": ["black leather", "gold accents", "evening bag", "rectangular shape"],
   "colors": ["black", "gold"]
 }
@@ -229,14 +229,14 @@ curl -X POST \
 # With product data (augmentation mode) - American English
 curl -X POST \
   -F "image=@bag.jpg;type=image/jpeg" \
-  -F 'product_data={"title":"Classic Black Patent purse","description":"Elegant bag","price":15.99,"categories":["accessories","bag"],"tags":["bag","purse"]}' \
+  -F 'product_data={"title":"Classic Black Patent purse","description":"Elegant bag","price":15.99,"categories":["bags"],"tags":["bag","purse"]}' \
   -F "locale=en-US" \
   http://localhost:8000/vlm/analyze
 
 # Spain Spanish with product data
 curl -X POST \
   -F "image=@bag.jpg;type=image/jpeg" \
-  -F 'product_data={"categories":["accessories"],"title":"Black Purse","description":"Elegant bag"}' \
+  -F 'product_data={"categories":["bags"],"title":"Black Purse","description":"Elegant bag"}' \
   -F "locale=es-ES" \
   http://localhost:8000/vlm/analyze
 
@@ -257,7 +257,7 @@ curl -X POST \
   -F "locale=en-US" \
   -F "title=Glamorous Black Evening Handbag with Gold Accents" \
   -F "description=This exquisite handbag exudes sophistication..." \
-  -F 'categories=["accessories"]' \
+  -F 'categories=["bags"]' \
   -F 'tags=["black leather","gold accents","evening bag"]' \
   -F 'colors=["black","gold"]' \
   http://localhost:8000/generate/variation

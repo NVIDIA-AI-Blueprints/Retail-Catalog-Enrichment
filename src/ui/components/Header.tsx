@@ -24,10 +24,8 @@ export function Header() {
 
     performHealthCheck();
 
-    // Poll every 5 seconds
-    const interval = setInterval(performHealthCheck, 5000);
+    const interval = setInterval(performHealthCheck, 30000);
 
-    // Cleanup on unmount
     return () => clearInterval(interval);
   }, []);
 
@@ -47,4 +45,3 @@ export function Header() {
     </div>
   );
 }
-

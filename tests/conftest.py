@@ -78,7 +78,7 @@ def sample_vlm_response() -> Dict[str, Any]:
     return {
         "title": "Elegant Black Handbag with Gold Accents",
         "description": "A sophisticated leather handbag featuring gold-tone hardware and a structured design perfect for evening occasions.",
-        "categories": ["accessories", "bags"],
+        "categories": ["bags"],
         "tags": ["black leather", "gold hardware", "evening bag", "structured", "luxury", "handbag", "elegant", "formal", "premium", "classic"],
         "colors": ["black", "gold"]
     }
@@ -91,7 +91,7 @@ def sample_product_data() -> Dict[str, Any]:
         "title": "Black Purse",
         "description": "Nice bag",
         "price": 15.99,
-        "categories": ["accessories"],
+        "categories": ["bags"],
         "tags": ["bag", "purse"],
         "sku": "BAG-001"
     }
@@ -104,7 +104,7 @@ def sample_enhanced_product() -> Dict[str, Any]:
         "title": "Elegant Black Evening Handbag with Gold Hardware",
         "description": "This exquisite leather handbag combines timeless elegance with modern sophistication. Features premium black leather construction with lustrous gold-tone hardware.",
         "price": 15.99,
-        "categories": ["accessories", "bags"],
+        "categories": ["bags"],
         "tags": ["black leather", "gold hardware", "evening bag", "luxury", "elegant"],
         "colors": ["black", "gold"],
         "sku": "BAG-001"
@@ -214,7 +214,7 @@ def mock_openai_client(mock_openai_completion):
     default_response = {
         "title": "Test Product",
         "description": "Test description",
-        "categories": ["accessories"],
+        "categories": ["bags"],
         "tags": ["test"],
         "colors": ["black"]
     }
