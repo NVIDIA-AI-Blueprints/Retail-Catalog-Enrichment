@@ -97,12 +97,9 @@ uvicorn --app-dir src backend.main:app --host 0.0.0.0 --port 8000 --reload
     - `tags` (JSON string, optional): Tags array from VLM analysis
     - `colors` (JSON string, optional): Colors array from VLM analysis
     - `locale` (string, optional): Regional locale code (default: "en-US")
-    - `enhanced_product` (JSON string, optional): Enhanced product data
+    - `enhanced_product` (JSON string, optional): Accepted for backwards compatibility; not persisted or returned
   - Response: Generated image JSON with:
     - `generated_image_b64`: string (base64-encoded PNG)
-    - `artifact_id`: string (unique identifier)
-    - `image_path`: string (disk location of saved image)
-    - `metadata_path`: string (disk location of saved metadata)
     - `variation_plan`: object (planner LLM output with background style, camera angle, lighting)
     - `quality_score`: float (0-100 quality score from VLM reflection, or null if evaluation failed)
     - `quality_issues`: array (list of detected quality issues from reflection analysis)
@@ -212,7 +209,7 @@ The image variation generation follows a multi-stage pipeline:
    - Checks anatomical accuracy (if hands are present, verifies natural appearance)
    - Validates background quality (photorealism, appropriate context)
    - Returns quality score (0-100) and list of detected issues
-4. **Persist Stage**: Saves generated image and metadata to disk
+4. **Return Stage**: Returns the generated image and evaluation data directly without writing image or metadata artifacts to disk
 
 **Quality Scoring**: The reflection module is exceptionally strict, with most images scoring 50-70%. Scores above 85% indicate excellent quality with only minor issues. The evaluation now focuses specifically on the named product to avoid false positives from background variations.
 

@@ -467,7 +467,6 @@ async def generate_variation(
             categories_list = json.loads(categories)
             tags_list = json.loads(tags)
             colors_list = json.loads(colors)
-            enhanced_product_dict = json.loads(enhanced_product) if enhanced_product else None
         except Exception as e:
             logger.error(f"/generate/variation error: invalid JSON in fields: {e}")
             return JSONResponse({"detail": f"Invalid JSON in fields: {e}"}, status_code=400)
@@ -486,21 +485,18 @@ async def generate_variation(
             categories=categories_list,
             tags=tags_list,
             colors=colors_list,
-            locale=locale,
-            enhanced_product=enhanced_product_dict
+            locale=locale
         )
         
         payload = {
             "generated_image_b64": result["generated_image_b64"],
-            "artifact_id": result["artifact_id"],
-            "image_path": result["image_path"],
-            "metadata_path": result["metadata_path"],
+            "variation_plan": result["variation_plan"],
             "quality_score": result["quality_score"],
             "quality_issues": result["quality_issues"],
             "locale": locale
         }
         
-        logger.info(f"/generate/variation success: artifact_id={result['artifact_id']} image_b64_len={len(result['generated_image_b64'])} quality_score={result['quality_score']} issues_count={len(result['quality_issues'])}")
+        logger.info(f"/generate/variation success: image_b64_len={len(result['generated_image_b64'])} quality_score={result['quality_score']} issues_count={len(result['quality_issues'])}")
         return JSONResponse(payload)
         
     except (APIConnectionError, httpx.ConnectError) as exc:
