@@ -18,7 +18,7 @@ import json
 import base64
 import logging
 import re
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, Iterable
 
 from dotenv import load_dotenv
 from openai import OpenAI
@@ -80,6 +80,39 @@ ALLOWED_COLORS = [
 ]
 COLOR_ALIASES = {"grey": "gray"}
 ALLOWED_COLOR_SET = frozenset(ALLOWED_COLORS)
+
+CATALOG_TOKEN_STOPWORDS = frozenset(
+    {
+        "a",
+        "an",
+        "and",
+        "are",
+        "as",
+        "at",
+        "by",
+        "for",
+        "from",
+        "in",
+        "into",
+        "is",
+        "it",
+        "its",
+        "of",
+        "on",
+        "or",
+        "the",
+        "this",
+        "to",
+        "with",
+        "without",
+        "your",
+        "product",
+        "item",
+        "new",
+    }
+)
+
+IDENTITY_TEXT_FIELDS = ("title", "description", "tags")
 
 LOCALIZED_TERMINOLOGY_RULE = (
     "Use established retail terminology for the target locale in localized customer-facing fields. "
@@ -145,6 +178,121 @@ def _normalize_colors(colors: Any) -> list[str]:
             if color in ALLOWED_COLOR_SET and color not in normalized:
                 normalized.append(color)
     return normalized
+
+
+def _iter_text_values(value: Any) -> Iterable[str]:
+    if isinstance(value, str):
+        stripped = value.strip()
+        if stripped:
+            yield stripped
+    elif isinstance(value, list):
+        for item in value:
+            yield from _iter_text_values(item)
+    elif isinstance(value, dict):
+        for field in IDENTITY_TEXT_FIELDS:
+            yield from _iter_text_values(value.get(field))
+
+
+def _catalog_tokens(*values: Any) -> set[str]:
+    tokens: set[str] = set()
+    for text in _iter_text_values(list(values)):
+        for token in re.findall(r"[a-z0-9]+", text.lower()):
+            if token in CATALOG_TOKEN_STOPWORDS:
+                continue
+            if len(token) == 1 and not token.isdigit():
+                continue
+            tokens.add(token)
+            if token.endswith("s") and len(token) > 3:
+                tokens.add(token[:-1])
+    return tokens
+
+
+def _identity_tokens(content: Dict[str, Any]) -> set[str]:
+    return _catalog_tokens(*(content.get(field) for field in IDENTITY_TEXT_FIELDS))
+
+
+def _merge_repaired_tags(
+    visual_tags: Any,
+    merged_tags: Any,
+    blocked_tokens: set[str],
+) -> list[str]:
+    repaired: list[str] = []
+    seen: set[str] = set()
+    visual_tag_values = visual_tags if isinstance(visual_tags, list) else []
+    merged_tag_values = merged_tags if isinstance(merged_tags, list) else []
+
+    for tag in visual_tag_values + merged_tag_values:
+        if not isinstance(tag, str):
+            continue
+        clean_tag = tag.strip()
+        if not clean_tag:
+            continue
+        if _catalog_tokens(clean_tag) & blocked_tokens:
+            continue
+        tag_key = clean_tag.lower()
+        if tag_key not in seen:
+            repaired.append(clean_tag)
+            seen.add(tag_key)
+
+    return repaired
+
+
+def _repair_visual_identity_regression(
+    vlm_output: Dict[str, Any],
+    product_data: Dict[str, Any],
+    merged_content: Dict[str, Any],
+) -> Dict[str, Any]:
+    """
+    Deterministically recover when a merge keeps stale user identity terms and
+    drops the visual/readable-label identity. Hidden user specs are left alone
+    unless the final title clearly regressed to user-only title terms.
+    """
+    visual_title = vlm_output.get("title")
+    merged_title = merged_content.get("title")
+    if not isinstance(visual_title, str) or not isinstance(merged_title, str):
+        return merged_content
+
+    visual_title_tokens = _catalog_tokens(visual_title)
+    user_title_tokens = _catalog_tokens(product_data.get("title"))
+    merged_title_tokens = _catalog_tokens(merged_title)
+    if not visual_title_tokens or not user_title_tokens or not merged_title_tokens:
+        return merged_content
+
+    visual_identity_tokens = _identity_tokens(vlm_output)
+    user_identity_tokens = _identity_tokens(product_data)
+
+    distinctive_visual_title_tokens = visual_title_tokens - user_identity_tokens
+    user_only_title_tokens = user_title_tokens - visual_identity_tokens
+    if len(distinctive_visual_title_tokens) < 2 or not user_only_title_tokens:
+        return merged_content
+
+    visual_hits = distinctive_visual_title_tokens & merged_title_tokens
+    stale_title_tokens = user_only_title_tokens & merged_title_tokens
+    if not stale_title_tokens or len(visual_hits) >= min(2, len(distinctive_visual_title_tokens)):
+        return merged_content
+
+    blocked_tokens = user_identity_tokens - visual_identity_tokens
+    repaired = dict(merged_content)
+    repaired["title"] = visual_title
+
+    visual_description = vlm_output.get("description")
+    if isinstance(visual_description, str) and visual_description.strip():
+        repaired["description"] = visual_description
+
+    if isinstance(vlm_output.get("tags"), list) or isinstance(merged_content.get("tags"), list):
+        repaired["tags"] = _merge_repaired_tags(
+            vlm_output.get("tags", []),
+            merged_content.get("tags", []),
+            blocked_tokens,
+        )
+
+    logger.info(
+        "[Merge QA] Deterministic visual identity repair applied: stale_title_tokens=%s visual_title=%r merged_title=%r",
+        sorted(stale_title_tokens),
+        visual_title,
+        merged_title,
+    )
+    return repaired
 
 
 def _call_nemotron_filter_user_data(
@@ -751,6 +899,7 @@ def _call_nemotron_enhance(
     if product_data and has_content:
         enhanced = _call_nemotron_resolve_merge_conflicts(vlm_output, filtered_product_data, enhanced, locale)
         logger.info("Merge QA complete: contradictions resolved")
+        enhanced = _repair_visual_identity_regression(vlm_output, filtered_product_data, enhanced)
     
     logger.info("Nemotron enhancement pipeline complete: final_keys=%s", list(enhanced.keys()))
     return enhanced

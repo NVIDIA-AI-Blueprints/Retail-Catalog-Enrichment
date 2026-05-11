@@ -30,6 +30,7 @@ from backend.vlm import (
     _call_nemotron_apply_branding,
     _call_nemotron_generate_faqs,
     _call_nemotron_enhance,
+    _repair_visual_identity_regression,
     extract_vlm_observation,
     build_enriched_vlm_result,
     run_vlm_analysis
@@ -383,6 +384,63 @@ class TestCallNemotronResolveMergeConflicts:
         assert "Do not remove a term merely because it is absent from the image" in prompt
         assert "Remove packaging/container appearance from title" in prompt
         assert "cap color, bottle color, box color, label color" in prompt
+
+
+class TestVisualIdentityRegressionRepair:
+    """Tests for deterministic fallback when merge QA keeps stale identity terms."""
+
+    def test_repair_restores_visual_identity_when_title_regresses_to_user_only_terms(self):
+        vlm_output = {
+            "title": "Example Brand Omega Oil Softgels 300 Count",
+            "description": "Example Brand Omega Oil softgels with 300 count visible on the label.",
+            "categories": ["uncategorized"],
+            "tags": ["omega oil", "softgels", "300 count", "dietary supplement"],
+            "colors": ["yellow", "brown"],
+        }
+        product_data = {
+            "title": "Example Brand Mineral",
+            "description": "Example Brand mineral supplement for immune support.",
+            "tags": ["mineral", "immune support"],
+            "price": 12.99,
+        }
+        merged_content = {
+            "title": "Example Brand Mineral Softgel Supplement",
+            "description": "Example Brand mineral supplement in softgel form.",
+            "categories": ["uncategorized"],
+            "tags": ["mineral", "immune support", "softgel", "dietary supplement"],
+            "colors": ["yellow", "brown"],
+        }
+
+        result = _repair_visual_identity_regression(vlm_output, product_data, merged_content)
+
+        assert result["title"] == vlm_output["title"]
+        assert result["description"] == vlm_output["description"]
+        assert "mineral" not in result["tags"]
+        assert "immune support" not in result["tags"]
+        assert "omega oil" in result["tags"]
+        assert result["categories"] == merged_content["categories"]
+        assert result["colors"] == merged_content["colors"]
+
+    def test_repair_leaves_non_conflicting_hidden_user_specs_when_visual_identity_is_present(self):
+        vlm_output = {
+            "title": "Example Brand Trail Running Shoes",
+            "description": "Example Brand trail running shoes with a textured outsole.",
+            "tags": ["trail running", "shoes", "textured outsole"],
+        }
+        product_data = {
+            "title": "Example Brand Waterproof Shoes",
+            "description": "Waterproof trail footwear.",
+            "tags": ["waterproof"],
+        }
+        merged_content = {
+            "title": "Example Brand Waterproof Trail Running Shoes",
+            "description": "Waterproof trail running shoes with a textured outsole.",
+            "tags": ["waterproof", "trail running", "shoes"],
+        }
+
+        result = _repair_visual_identity_regression(vlm_output, product_data, merged_content)
+
+        assert result == merged_content
 
 
 class TestCallNemotronEnhanceVLM:
