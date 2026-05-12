@@ -22,6 +22,7 @@ import io
 import json
 import pytest
 from fastapi import UploadFile
+import backend.main as main
 from backend.main import _validate_image, _validate_policy_uploads, VALID_LOCALES
 
 
@@ -230,6 +231,19 @@ class TestLocaleValidation:
         assert "en-US" in VALID_LOCALES      # correct case
 
 
+class TestNIMHealthCache:
+    @pytest.mark.asyncio
+    async def test_health_nims_returns_cached_result_without_downstream_checks(self, monkeypatch):
+        cached = {"vlm": "healthy", "llm": "healthy", "flux": "healthy", "trellis": "healthy"}
+        monkeypatch.setattr(main, "_nim_health_cache", cached)
+        monkeypatch.setattr(main, "_nim_health_cache_expires_at", main.time.monotonic() + 60)
+        monkeypatch.setattr(main, "get_config", lambda: pytest.fail("cache should avoid config lookup"))
+
+        response = await main.health_nims()
+
+        assert json.loads(response.body.decode()) == cached
+
+
 class TestJSONParsing:
     """Tests for JSON parsing in endpoint handlers."""
     
@@ -295,12 +309,12 @@ class TestCategoriesValidation:
     
     def test_categories_as_list(self):
         """Test that categories can be parsed as list."""
-        categories_json = '["accessories", "bags"]'
+        categories_json = '["bags", "kitchen"]'
         categories = json.loads(categories_json)
         
         assert isinstance(categories, list)
-        assert "accessories" in categories
         assert "bags" in categories
+        assert "kitchen" in categories
     
     def test_empty_categories_list(self):
         """Test handling of empty categories list."""
@@ -312,12 +326,12 @@ class TestCategoriesValidation:
     
     def test_single_category(self):
         """Test single category in list."""
-        categories_json = '["accessories"]'
+        categories_json = '["bags"]'
         categories = json.loads(categories_json)
         
         assert isinstance(categories, list)
         assert len(categories) == 1
-        assert categories[0] == "accessories"
+        assert categories[0] == "bags"
 
 
 class TestTagsValidation:

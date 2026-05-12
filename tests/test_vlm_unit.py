@@ -24,10 +24,14 @@ from unittest.mock import Mock, patch, MagicMock
 from backend.vlm import (
     _call_vlm,
     _call_nemotron_structure_vlm,
+    _call_nemotron_filter_user_data,
     _call_nemotron_enhance_vlm,
+    _call_nemotron_resolve_merge_conflicts,
     _call_nemotron_apply_branding,
     _call_nemotron_generate_faqs,
     _call_nemotron_enhance,
+    _call_nemotron_repair_visual_identity_regression,
+    _has_visual_identity_regression,
     extract_vlm_observation,
     build_enriched_vlm_result,
     run_vlm_analysis
@@ -90,8 +94,12 @@ class TestCallVLM:
 
         call_args = mock_client.chat.completions.create.call_args
         messages = call_args.kwargs["messages"]
-        prompt_text = messages[0]["content"][1]["text"]
-        assert len(prompt_text) < 200
+        assert messages[0]["content"] == "/no_think"
+        prompt_text = messages[1]["content"][1]["text"]
+        assert len(prompt_text) < 300
+        assert "Describe only visible facts" in prompt_text
+        assert "Include numbers/specs only if clearly readable as printed text" in prompt_text
+        assert "never infer capacity, size, model, power, weight, or volume" in prompt_text
 
     @patch('backend.vlm._call_nemotron_structure_vlm')
     @patch('backend.vlm.OpenAI')
@@ -145,6 +153,59 @@ class TestCallNemotronStructureVlm:
         assert isinstance(result, dict)
         assert result["title"] == sample_vlm_response["title"]
         assert "description" in result
+
+        prompt = mock_client.chat.completions.create.call_args.kwargs["messages"][1]["content"]
+        assert "Do NOT state capacity, dimensions, volume, weight, power rating" in prompt
+        assert "readable printed text" in prompt
+        assert "If the visual description mentions a number/spec but does not say it is readable printed text, omit it" in prompt
+        assert "Clear catalog title, not creative copy" in prompt
+        assert "Do NOT use size/weight claims like compact" in prompt
+        assert "ALLOWED COLORS" in prompt
+        assert "Do not output materials, finishes, textures, or product types as colors" in prompt
+        assert "Do not include packaging/container appearance such as cap color" in prompt
+        assert "official product variant or necessary retail differentiator" in prompt
+        assert "Use established retail terminology for the target locale" not in prompt
+        call_args = mock_client.chat.completions.create.call_args
+        assert call_args.kwargs["temperature"] == 0.0
+        assert call_args.kwargs["top_p"] == 1
+
+    @patch('backend.vlm.OpenAI')
+    @patch('backend.vlm.get_config')
+    def test_structure_non_english_prompt_adds_terminology_rule(self, mock_get_config, mock_openai_class, sample_vlm_response, mock_env_vars):
+        """Test localized terminology guard is added only for non-English output."""
+        mock_config = Mock()
+        mock_config.get_llm_config.return_value = {'url': 'http://test:8000/v1', 'model': 'test-llm-model'}
+        mock_get_config.return_value = mock_config
+
+        mock_client = Mock()
+        mock_openai_class.return_value = mock_client
+
+        mock_chunk = Mock()
+        mock_delta = Mock()
+        mock_delta.content = json.dumps(sample_vlm_response)
+        mock_choice = Mock()
+        mock_choice.delta = mock_delta
+        mock_chunk.choices = [mock_choice]
+        mock_client.chat.completions.create.return_value = [mock_chunk]
+
+        _call_nemotron_structure_vlm("A black air fryer.", "es-AR")
+
+        prompt = mock_client.chat.completions.create.call_args.kwargs["messages"][1]["content"]
+        assert "Use established retail terminology for the target locale" in prompt
+        assert "The visual analysis may be in English" in prompt
+        assert "translate generic product-type nouns from the visual analysis" in prompt
+        assert "English generic product-type nouns are not allowed" in prompt
+        assert "Do not keep English generic product-type nouns just because they appear in the visual analysis" in prompt
+        assert "readable label text" in prompt
+        assert "Do not invent new compound words, calques, or phonetic translations" in prompt
+        assert "never coin or merge words to translate a product type" in prompt
+        assert "use a common generic product term in the target language instead of inventing one" in prompt
+        assert "readable English label text does not override the localized generic product type" in prompt
+        assert "self-check title and description" in prompt
+        assert "Do not copy visible English generic product-type label text as the localized product type" in prompt
+        assert "LOCALIZATION CHECK" in prompt
+        assert "Title and description are invalid if they keep English generic product-type nouns" in prompt
+        assert "rewrite any remaining English generic product-type noun into Spanish" in prompt
 
     @patch('backend.vlm.OpenAI')
     @patch('backend.vlm.get_config')
@@ -204,6 +265,387 @@ class TestCallNemotronStructureVlm:
             _call_nemotron_structure_vlm("Some text")
 
 
+class TestCallNemotronFilterUserData:
+    """Tests for contradiction-aware user data filtering before merge."""
+
+    @patch('backend.vlm.OpenAI')
+    @patch('backend.vlm.get_config')
+    def test_filter_user_data_allows_term_level_cleanup_for_label_conflicts(self, mock_get_config, mock_openai_class, mock_env_vars):
+        """Test prompt supports removing only conflicting user terms when label text disagrees."""
+        mock_config = Mock()
+        mock_config.get_llm_config.return_value = {
+            'url': 'http://test:8000/v1',
+            'model': 'test-llm-model'
+        }
+        mock_get_config.return_value = mock_config
+
+        mock_client = Mock()
+        mock_openai_class.return_value = mock_client
+
+        cleaned_product_data = {
+            "title": "Example Brand",
+            "description": "A supplement from Example Brand.",
+            "price": 12.99,
+            "sku": "SUP-001",
+        }
+
+        mock_chunk = Mock()
+        mock_delta = Mock()
+        mock_delta.content = json.dumps(cleaned_product_data)
+        mock_choice = Mock()
+        mock_choice.delta = mock_delta
+        mock_chunk.choices = [mock_choice]
+        mock_client.chat.completions.create.return_value = [mock_chunk]
+
+        vlm_output = {
+            "title": "Example Brand Omega Softgels",
+            "description": "Bottle label reads Example Brand Omega softgels.",
+            "categories": ["skincare"],
+            "tags": ["omega", "softgels"],
+            "colors": ["yellow"],
+        }
+        product_data = {
+            "title": "Example Brand Mineral",
+            "description": "A mineral supplement from Example Brand.",
+            "price": 12.99,
+            "sku": "SUP-001",
+        }
+
+        result = _call_nemotron_filter_user_data(vlm_output, product_data)
+
+        assert result == cleaned_product_data
+        prompt = mock_client.chat.completions.create.call_args.kwargs["messages"][1]["content"]
+        assert "partially correct, edit that field minimally" in prompt
+        assert "remove only the conflicting terms" in prompt
+        assert "Readable label text is authoritative for visible product identity" in prompt
+        assert "Absence from the image is not a contradiction" in prompt
+        assert "Use semantic judgment to decide which user-provided terms" in prompt
+        assert "differs from readable label text or the visually identified product type" in prompt
+        assert "Do not combine two conflicting product identities" in prompt
+        assert "For non-text fields (price, SKU, numeric values): always keep unchanged" in prompt
+        assert "This is a binary decision per field" not in prompt
+        assert "Never partially edit" not in prompt
+
+
+class TestCallNemotronResolveMergeConflicts:
+    """Tests for final merge QA validation."""
+
+    @patch('backend.vlm.OpenAI')
+    @patch('backend.vlm.get_config')
+    def test_resolve_merge_conflicts_removes_surviving_identity_conflicts(self, mock_get_config, mock_openai_class, mock_env_vars):
+        mock_config = Mock()
+        mock_config.get_llm_config.return_value = {
+            'url': 'http://test:8000/v1',
+            'model': 'test-llm-model'
+        }
+        mock_get_config.return_value = mock_config
+
+        mock_client = Mock()
+        mock_openai_class.return_value = mock_client
+
+        repaired_content = {
+            "title": "Example Brand Omega Oil Softgels",
+            "description": "Example Brand omega oil softgels with readable dosage and count details.",
+            "categories": ["uncategorized"],
+            "tags": ["example brand", "omega oil", "softgels"],
+            "colors": ["yellow", "brown"],
+        }
+
+        mock_chunk = Mock()
+        mock_delta = Mock()
+        mock_delta.content = json.dumps(repaired_content)
+        mock_choice = Mock()
+        mock_choice.delta = mock_delta
+        mock_chunk.choices = [mock_choice]
+        mock_client.chat.completions.create.return_value = [mock_chunk]
+
+        vlm_output = {
+            "title": "Example Brand Omega Oil Softgels",
+            "description": "Readable label text says Example Brand Omega Oil.",
+            "categories": ["uncategorized"],
+            "tags": ["omega oil", "softgels"],
+            "colors": ["yellow", "brown"],
+        }
+        original_product_data = {"title": "Example Brand Mineral", "tags": ["mineral"]}
+        filtered_product_data = {"title": "Example Brand"}
+        merged_content = {
+            "title": "Example Brand Mineral Softgels",
+            "description": "Example Brand mineral softgels.",
+            "categories": ["uncategorized"],
+            "tags": ["example brand", "mineral", "softgels"],
+            "colors": ["yellow", "brown"],
+        }
+
+        result = _call_nemotron_resolve_merge_conflicts(
+            vlm_output,
+            original_product_data,
+            filtered_product_data,
+            merged_content,
+            "en-US",
+        )
+
+        assert result == repaired_content
+        prompt = mock_client.chat.completions.create.call_args.kwargs["messages"][1]["content"]
+        assert "product catalog merge QA validator" in prompt
+        assert "ORIGINAL USER DATA" in prompt
+        assert "FILTERED USER DATA" in prompt
+        assert "MERGED CATALOG CONTENT TO VALIDATE" in prompt
+        assert "Use semantic judgment to decide which user-provided terms" in prompt
+        assert "If a compatible term from ORIGINAL USER DATA was dropped" in prompt
+        assert "remove it or replace it with the supported visual/readable-label term" in prompt
+        assert "Do not combine two conflicting product identities" in prompt
+        assert "Do not remove a term merely because it is absent from the image" in prompt
+        assert "combine the specific visual identity with compatible user-provided information" in prompt
+        assert "Remove packaging/container appearance from title" in prompt
+        assert "cap color, bottle color, box color, label color" in prompt
+
+
+class TestVisualIdentityRegressionRepair:
+    """Tests for focused LLM repair when merge QA keeps stale identity terms."""
+
+    @patch('backend.vlm.OpenAI')
+    @patch('backend.vlm.get_config')
+    def test_repair_asks_llm_to_reconcile_stale_identity_with_original_user_data(self, mock_get_config, mock_openai_class, mock_env_vars):
+        mock_config = Mock()
+        mock_config.get_llm_config.return_value = {
+            'url': 'http://test:8000/v1',
+            'model': 'test-llm-model'
+        }
+        mock_get_config.return_value = mock_config
+
+        mock_client = Mock()
+        mock_openai_class.return_value = mock_client
+
+        repaired_content = {
+            "title": "Example Brand Omega Oil 1200 mg Softgels",
+            "description": "Example Brand omega oil softgels with compatible user-provided details preserved.",
+            "categories": ["uncategorized"],
+            "tags": ["example brand", "omega oil", "1200 mg", "softgels"],
+            "colors": ["yellow", "brown"],
+        }
+
+        mock_chunk = Mock()
+        mock_delta = Mock()
+        mock_delta.content = json.dumps(repaired_content)
+        mock_choice = Mock()
+        mock_choice.delta = mock_delta
+        mock_chunk.choices = [mock_choice]
+        mock_client.chat.completions.create.return_value = [mock_chunk]
+
+        vlm_output = {
+            "title": "Example Brand Omega Oil Softgels 300 Count",
+            "description": "Example Brand Omega Oil softgels with 300 count visible on the label.",
+            "categories": ["uncategorized"],
+            "tags": ["omega oil", "softgels", "300 count", "dietary supplement"],
+            "colors": ["yellow", "brown"],
+        }
+        original_product_data = {
+            "title": "Example Brand Mineral 1200 mg",
+            "description": "Example Brand mineral supplement for immune support.",
+            "tags": ["mineral", "immune support", "1200 mg"],
+            "price": 12.99,
+        }
+        filtered_product_data = {
+            "title": "Example Brand 1200 mg",
+            "description": "Example Brand supplement.",
+            "tags": ["1200 mg"],
+            "price": 12.99,
+        }
+        merged_content = {
+            "title": "Example Brand Mineral Softgel Supplement",
+            "description": "Example Brand mineral supplement in softgel form.",
+            "categories": ["uncategorized"],
+            "tags": ["mineral", "immune support", "softgel", "dietary supplement"],
+            "colors": ["yellow", "brown"],
+        }
+
+        result = _call_nemotron_repair_visual_identity_regression(
+            vlm_output,
+            original_product_data,
+            filtered_product_data,
+            merged_content,
+            "en-US",
+        )
+
+        assert result == repaired_content
+        prompt = mock_client.chat.completions.create.call_args.kwargs["messages"][1]["content"]
+        assert "product catalog semantic reconciler" in prompt
+        assert "ORIGINAL USER DATA" in prompt
+        assert "FILTERED USER DATA" in prompt
+        assert "DETECTOR EVIDENCE" in prompt
+        assert "Use semantic judgment to decide which user-provided terms" in prompt
+        assert "Absence from the image is not a contradiction" in prompt
+        assert "including brand/manufacturer/product-line terms" in prompt
+        assert "instead of replacing the title wholesale" in prompt
+
+    @patch('backend.vlm.OpenAI')
+    @patch('backend.vlm.get_config')
+    def test_repair_retries_when_first_repair_still_has_stale_identity(self, mock_get_config, mock_openai_class, mock_env_vars):
+        mock_config = Mock()
+        mock_config.get_llm_config.return_value = {
+            'url': 'http://test:8000/v1',
+            'model': 'test-llm-model'
+        }
+        mock_get_config.return_value = mock_config
+
+        mock_client = Mock()
+        mock_openai_class.return_value = mock_client
+
+        def response_chunk(payload):
+            mock_chunk = Mock()
+            mock_delta = Mock()
+            mock_delta.content = json.dumps(payload)
+            mock_choice = Mock()
+            mock_choice.delta = mock_delta
+            mock_chunk.choices = [mock_choice]
+            return [mock_chunk]
+
+        stale_repair = {
+            "title": "Example Brand Mineral Softgels",
+            "description": "Example Brand mineral softgels.",
+            "categories": ["uncategorized"],
+            "tags": ["example brand", "mineral", "softgels"],
+            "colors": ["yellow", "brown"],
+        }
+        fixed_repair = {
+            "title": "Example Brand Omega Oil 1200 mg Softgels",
+            "description": "Example Brand omega oil softgels with compatible user-provided details preserved.",
+            "categories": ["uncategorized"],
+            "tags": ["example brand", "omega oil", "1200 mg", "softgels"],
+            "colors": ["yellow", "brown"],
+        }
+        mock_client.chat.completions.create.side_effect = [
+            response_chunk(stale_repair),
+            response_chunk(fixed_repair),
+        ]
+
+        vlm_output = {
+            "title": "Example Brand Omega Oil Softgels 300 Count",
+            "description": "Readable label text says Example Brand Omega Oil.",
+            "categories": ["uncategorized"],
+            "tags": ["omega oil", "softgels"],
+            "colors": ["yellow", "brown"],
+        }
+        original_product_data = {
+            "title": "Example Brand Mineral 1200 mg",
+            "description": "Example Brand mineral supplement.",
+            "tags": ["mineral", "1200 mg"],
+        }
+        filtered_product_data = {"title": "Example Brand 1200 mg", "tags": ["1200 mg"]}
+
+        result = _call_nemotron_repair_visual_identity_regression(
+            vlm_output,
+            original_product_data,
+            filtered_product_data,
+            stale_repair,
+            "en-US",
+        )
+
+        assert result == fixed_repair
+        assert mock_client.chat.completions.create.call_count == 2
+        retry_prompt = mock_client.chat.completions.create.call_args.kwargs["messages"][1]["content"]
+        assert "PREVIOUS REPAIR ATTEMPT THAT STILL FAILED DETECTOR" in retry_prompt
+        assert "Do not repeat the same unresolved stale-identity pattern" in retry_prompt
+
+    @patch('backend.vlm.OpenAI')
+    @patch('backend.vlm.get_config')
+    def test_repair_uses_visual_fallback_when_retry_still_has_stale_identity(self, mock_get_config, mock_openai_class, mock_env_vars):
+        mock_config = Mock()
+        mock_config.get_llm_config.return_value = {
+            'url': 'http://test:8000/v1',
+            'model': 'test-llm-model'
+        }
+        mock_get_config.return_value = mock_config
+
+        mock_client = Mock()
+        mock_openai_class.return_value = mock_client
+
+        stale_repair = {
+            "title": "Example Brand Mineral Softgels",
+            "description": "Example Brand mineral softgels.",
+            "categories": ["uncategorized"],
+            "tags": ["example brand", "mineral", "softgels"],
+            "colors": ["yellow", "brown"],
+        }
+
+        mock_chunk = Mock()
+        mock_delta = Mock()
+        mock_delta.content = json.dumps(stale_repair)
+        mock_choice = Mock()
+        mock_choice.delta = mock_delta
+        mock_chunk.choices = [mock_choice]
+        mock_client.chat.completions.create.return_value = [mock_chunk]
+
+        vlm_output = {
+            "title": "Example Brand Omega Oil Softgels",
+            "description": "Readable label text says Example Brand Omega Oil.",
+            "categories": ["uncategorized"],
+            "tags": ["omega oil", "softgels"],
+            "colors": ["yellow", "brown"],
+        }
+        original_product_data = {
+            "title": "Example Brand Mineral",
+            "description": "Example Brand mineral supplement.",
+            "tags": ["mineral"],
+        }
+        filtered_product_data = {"title": "Example Brand", "tags": []}
+
+        result = _call_nemotron_repair_visual_identity_regression(
+            vlm_output,
+            original_product_data,
+            filtered_product_data,
+            stale_repair,
+            "en-US",
+        )
+
+        assert result["title"] == vlm_output["title"]
+        assert result["description"] == vlm_output["description"]
+        assert result["tags"] == ["omega oil", "softgels", "example brand"]
+        assert result["categories"] == stale_repair["categories"]
+        assert result["colors"] == stale_repair["colors"]
+        assert mock_client.chat.completions.create.call_count == 2
+
+    @patch('backend.vlm.OpenAI')
+    def test_repair_skips_llm_when_visual_identity_is_present(self, mock_openai_class):
+        vlm_output = {
+            "title": "Example Brand Trail Running Shoes",
+            "description": "Example Brand trail running shoes with a textured outsole.",
+            "tags": ["trail running", "shoes", "textured outsole"],
+        }
+        product_data = {
+            "title": "Example Brand Waterproof Shoes",
+            "description": "Waterproof trail footwear.",
+            "tags": ["waterproof"],
+        }
+        merged_content = {
+            "title": "Example Brand Waterproof Trail Running Shoes",
+            "description": "Waterproof trail running shoes with a textured outsole.",
+            "tags": ["waterproof", "trail running", "shoes"],
+        }
+
+        result = _call_nemotron_repair_visual_identity_regression(
+            vlm_output,
+            product_data,
+            product_data,
+            merged_content,
+            "en-US",
+        )
+
+        assert result == merged_content
+        mock_openai_class.assert_not_called()
+
+    def test_detector_flags_user_only_identity_when_visual_identity_is_missing(self):
+        vlm_output = {
+            "title": "Example Brand Omega Oil Softgels",
+            "description": "Readable label text says Example Brand Omega Oil.",
+            "tags": ["omega oil", "softgels"],
+        }
+        product_data = {"title": "Example Brand Mineral"}
+        merged_content = {"title": "Example Brand Mineral Softgels"}
+
+        assert _has_visual_identity_regression(vlm_output, product_data, merged_content)
+
+
 class TestCallNemotronEnhanceVLM:
     """Tests for _call_nemotron_enhance_vlm function."""
     
@@ -226,7 +668,7 @@ class TestCallNemotronEnhanceVLM:
         enhanced_response = {
             "title": "Enhanced Title",
             "description": "Enhanced Description",
-            "categories": ["accessories"],
+            "categories": ["bags"],
             "tags": ["enhanced", "tags"],
             "colors": ["black", "gold"]
         }
@@ -268,7 +710,7 @@ class TestCallNemotronEnhanceVLM:
             "title": "Enhanced Augmented Title",
             "description": "Enhanced augmented description",
             "price": 15.99,  # Preserved from original
-            "categories": ["accessories", "bags"],
+            "categories": ["bags"],
             "tags": ["enhanced", "augmented"],
             "colors": ["black", "gold"],
             "sku": "BAG-001"  # Preserved from original
@@ -290,6 +732,62 @@ class TestCallNemotronEnhanceVLM:
         assert isinstance(result, dict)
         assert "price" in result  # Should preserve original fields
         assert "sku" in result
+
+    @patch('backend.vlm.OpenAI')
+    @patch('backend.vlm.get_config')
+    def test_enhance_vlm_prompt_requires_richer_augmented_title(self, mock_get_config, mock_openai_class, sample_vlm_response, mock_env_vars):
+        """Test augmentation prompt tells the LLM to enrich, not copy, user titles."""
+        mock_config = Mock()
+        mock_config.get_llm_config.return_value = {
+            'url': 'http://test:8000/v1',
+            'model': 'test-llm-model'
+        }
+        mock_get_config.return_value = mock_config
+
+        mock_client = Mock()
+        mock_openai_class.return_value = mock_client
+
+        enhanced_response = {
+            "title": "Sport Sneakers with White Finish and Black Accents",
+            "description": "Enhanced product description",
+            "categories": ["footwear"],
+            "tags": ["sneakers", "sport"],
+            "colors": ["white", "black"]
+        }
+
+        mock_chunk = Mock()
+        mock_delta = Mock()
+        mock_delta.content = json.dumps(enhanced_response)
+        mock_choice = Mock()
+        mock_choice.delta = mock_delta
+        mock_chunk.choices = [mock_choice]
+        mock_client.chat.completions.create.return_value = [mock_chunk]
+
+        product_data = {
+            "title": "Sport sneakers",
+            "description": "Comfortable shoes",
+            "categories": ["footwear"],
+            "tags": ["sneakers"]
+        }
+
+        _call_nemotron_enhance_vlm(sample_vlm_response, product_data, "en-US")
+
+        prompt = mock_client.chat.completions.create.call_args.kwargs["messages"][1]["content"]
+        assert "Add only customer-facing product identity and relevant factual details from the VISUAL ANALYSIS" in prompt
+        assert "not identical to, the user-provided title" in prompt
+        assert "Treat the remaining user title terms as validated anchors" in prompt
+        assert "Use semantic judgment to preserve compatible user intent" in prompt
+        assert "If readable label text contradicts a remaining user title term" in prompt
+        assert "Do not combine conflicting product identities in the final title" in prompt
+        assert "filtered user-provided title words are validated anchors" in prompt
+        assert "Do not add packaging/container appearance such as cap color" in prompt
+        assert "unless it is a real retail differentiator" in prompt
+        assert "Do not replace user title words with unrelated synonyms" in prompt
+        assert "Do not state measurable values or technical attributes" in prompt
+        assert "Do not use size/weight claims such as compact" in prompt
+        assert "ALLOWED COLORS" in prompt
+        assert "Do not output materials, finishes, textures, or product types as colors" in prompt
+        assert "Use established retail terminology for the target locale" not in prompt
     
     @patch('backend.vlm.OpenAI')
     @patch('backend.vlm.get_config')
@@ -311,7 +809,7 @@ class TestCallNemotronEnhanceVLM:
         spanish_response = {
             "title": "Bolso Negro Elegante con Detalles Dorados",
             "description": "Un bolso sofisticado de cuero...",
-            "categories": ["accessories"],
+            "categories": ["bags"],
             "tags": ["cuero negro", "herrajes dorados"],
             "colors": ["black", "gold"]
         }
@@ -331,6 +829,10 @@ class TestCallNemotronEnhanceVLM:
         # Should contain localized content
         assert isinstance(result, dict)
         assert result["title"] == spanish_response["title"]
+        prompt = mock_client.chat.completions.create.call_args.kwargs["messages"][1]["content"]
+        assert "Use established retail terminology for the target locale" in prompt
+        assert "English generic product-type nouns are not allowed" in prompt
+        assert "Do not invent new compound words, calques, or phonetic translations" in prompt
     
     @patch('backend.vlm.OpenAI')
     @patch('backend.vlm.get_config')
@@ -399,7 +901,7 @@ class TestCallNemotronApplyBranding:
             "title": "Brand-Aligned Title",
             "description": "Brand-aligned description with brand voice",
             "price": 15.99,
-            "categories": ["accessories"],
+            "categories": ["bags"],
             "tags": ["brand", "aligned"],
             "colors": ["black", "gold"],
             "sku": "BAG-001"
@@ -461,6 +963,52 @@ class TestCallNemotronApplyBranding:
         # Should have same keys as input
         assert set(result.keys()) == set(sample_enhanced_product.keys())
 
+    @patch('backend.vlm.OpenAI')
+    @patch('backend.vlm.get_config')
+    def test_apply_branding_locks_output_language_for_spanish_brand_instructions(self, mock_get_config, mock_openai_class, sample_enhanced_product, mock_env_vars):
+        """Test brand instructions cannot override the selected output locale."""
+        mock_config = Mock()
+        mock_config.get_llm_config.return_value = {
+            'url': 'http://test:8000/v1',
+            'model': 'test-llm-model'
+        }
+        mock_get_config.return_value = mock_config
+
+        mock_client = Mock()
+        mock_openai_class.return_value = mock_client
+
+        branded_response = sample_enhanced_product.copy()
+        branded_response["description"] = "Descripción de lujo en español argentino."
+
+        mock_chunk = Mock()
+        mock_delta = Mock()
+        mock_delta.content = json.dumps(branded_response)
+        mock_choice = Mock()
+        mock_choice.delta = mock_delta
+        mock_chunk.choices = [mock_choice]
+        mock_client.chat.completions.create.return_value = [mock_chunk]
+
+        _call_nemotron_apply_branding(
+            sample_enhanced_product,
+            "utiliza palabras de lujo para describir el producto",
+            "es-AR",
+        )
+
+        prompt = mock_client.chat.completions.create.call_args.kwargs["messages"][1]["content"]
+        assert "OUTPUT LANGUAGE LOCK" in prompt
+        assert "Title and description must remain in Spanish for Argentina" in prompt
+        assert "Brand instructions may be written in any language" in prompt
+        assert "do not infer the output language from them" in prompt
+        assert "richer, longer, more detailed" in prompt
+        assert "Add 1-3 additional sentences" in prompt
+        assert "safely expand only what is already there" in prompt
+        assert "Use established retail terminology for the target locale" in prompt
+        assert "English generic product-type nouns are not allowed" in prompt
+        assert "Do not invent new compound words, calques, or phonetic translations" in prompt
+        assert "readable English label text does not override the localized generic product type" in prompt
+        assert "Do NOT add new measurable specs such as capacity, dimensions" in prompt
+        assert "Do NOT add size/weight claims such as compact" in prompt
+
 
 class TestCallNemotronGenerateFaqs:
     """Tests for _call_nemotron_generate_faqs function."""
@@ -490,6 +1038,8 @@ class TestCallNemotronGenerateFaqs:
         assert len(result) == 3
         assert all("question" in faq and "answer" in faq for faq in result)
         mock_client.chat.completions.create.assert_called_once()
+        prompt = mock_client.chat.completions.create.call_args.kwargs["messages"][1]["content"]
+        assert "Use established retail terminology for the target locale" not in prompt
 
     @patch('backend.vlm.OpenAI')
     @patch('backend.vlm.get_config')
@@ -568,6 +1118,9 @@ class TestCallNemotronGenerateFaqs:
         prompt = call_args.kwargs["messages"][1]["content"]
         assert "Spanish" in prompt
         assert "Spain" in prompt
+        assert "Use established retail terminology for the target locale" in prompt
+        assert "English generic product-type nouns are not allowed" in prompt
+        assert "Do not invent new compound words, calques, or phonetic translations" in prompt
 
     def test_generate_faqs_raises_without_api_key(self, sample_vlm_response, monkeypatch):
         """Test RuntimeError when NGC_API_KEY is not set."""
@@ -608,14 +1161,18 @@ class TestCallNemotronEnhance:
         mock_apply_branding.assert_called_once_with(sample_vlm_response, brand_instructions, "en-US")
         assert result == branded_data
 
+    @patch('backend.vlm._call_nemotron_repair_visual_identity_regression')
+    @patch('backend.vlm._call_nemotron_resolve_merge_conflicts')
     @patch('backend.vlm._call_nemotron_filter_user_data')
     @patch('backend.vlm._call_nemotron_apply_branding')
     @patch('backend.vlm._call_nemotron_enhance_vlm')
-    def test_enhance_runs_step1_with_product_data(self, mock_enhance_vlm, mock_apply_branding, mock_filter, sample_vlm_response, sample_product_data):
+    def test_enhance_runs_step1_with_product_data(self, mock_enhance_vlm, mock_apply_branding, mock_filter, mock_merge_qa, mock_regression_repair, sample_vlm_response, sample_product_data):
         """Test that Step 1 runs when product_data is provided."""
         enhanced_data = {"title": "Enhanced", "description": "Enhanced"}
         mock_filter.return_value = sample_product_data
         mock_enhance_vlm.return_value = enhanced_data
+        mock_merge_qa.return_value = enhanced_data
+        mock_regression_repair.return_value = enhanced_data
 
         result = _call_nemotron_enhance(sample_vlm_response, sample_product_data, "en-US", None)
 
@@ -624,18 +1181,46 @@ class TestCallNemotronEnhance:
         mock_enhance_vlm.assert_called_once()
         # Step 2 should NOT run
         mock_apply_branding.assert_not_called()
+        mock_merge_qa.assert_called_once_with(sample_vlm_response, sample_product_data, sample_product_data, enhanced_data, "en-US")
+        mock_regression_repair.assert_called_once_with(sample_vlm_response, sample_product_data, sample_product_data, enhanced_data, "en-US")
         assert result == enhanced_data
 
+    @patch('backend.vlm._call_nemotron_repair_visual_identity_regression')
+    @patch('backend.vlm._call_nemotron_resolve_merge_conflicts')
     @patch('backend.vlm._call_nemotron_filter_user_data')
     @patch('backend.vlm._call_nemotron_apply_branding')
     @patch('backend.vlm._call_nemotron_enhance_vlm')
-    def test_enhance_runs_full_pipeline_with_product_data_and_brand(self, mock_enhance_vlm, mock_apply_branding, mock_filter, sample_vlm_response, sample_product_data):
+    def test_enhance_uses_original_data_when_filter_drops_all_text(self, mock_enhance_vlm, mock_apply_branding, mock_filter, mock_merge_qa, mock_regression_repair, sample_vlm_response, sample_product_data):
+        enhanced_data = {"title": "Enhanced", "description": "Enhanced"}
+        filtered_data = {**sample_product_data, "title": "", "description": ""}
+        filtered_data["tags"] = []
+        mock_filter.return_value = filtered_data
+        mock_enhance_vlm.return_value = enhanced_data
+        mock_merge_qa.return_value = enhanced_data
+        mock_regression_repair.return_value = enhanced_data
+
+        result = _call_nemotron_enhance(sample_vlm_response, sample_product_data, "en-US", None)
+
+        mock_enhance_vlm.assert_called_once_with(sample_vlm_response, sample_product_data, "en-US")
+        mock_apply_branding.assert_not_called()
+        mock_merge_qa.assert_called_once_with(sample_vlm_response, sample_product_data, filtered_data, enhanced_data, "en-US")
+        mock_regression_repair.assert_called_once_with(sample_vlm_response, sample_product_data, filtered_data, enhanced_data, "en-US")
+        assert result == enhanced_data
+
+    @patch('backend.vlm._call_nemotron_repair_visual_identity_regression')
+    @patch('backend.vlm._call_nemotron_resolve_merge_conflicts')
+    @patch('backend.vlm._call_nemotron_filter_user_data')
+    @patch('backend.vlm._call_nemotron_apply_branding')
+    @patch('backend.vlm._call_nemotron_enhance_vlm')
+    def test_enhance_runs_full_pipeline_with_product_data_and_brand(self, mock_enhance_vlm, mock_apply_branding, mock_filter, mock_merge_qa, mock_regression_repair, sample_vlm_response, sample_product_data):
         """Test full pipeline (Step 1 + Step 2) when both product_data and brand_instructions provided."""
         enhanced_data = {"title": "Enhanced", "description": "Enhanced"}
         branded_data = {"title": "Branded", "description": "Branded"}
         mock_filter.return_value = sample_product_data
         mock_enhance_vlm.return_value = enhanced_data
         mock_apply_branding.return_value = branded_data
+        mock_merge_qa.return_value = branded_data
+        mock_regression_repair.return_value = branded_data
 
         brand_instructions = "Use playful tone"
         result = _call_nemotron_enhance(sample_vlm_response, sample_product_data, "en-US", brand_instructions)
@@ -644,6 +1229,8 @@ class TestCallNemotronEnhance:
         mock_filter.assert_called_once()
         mock_enhance_vlm.assert_called_once()
         mock_apply_branding.assert_called_once_with(enhanced_data, brand_instructions, "en-US")
+        mock_merge_qa.assert_called_once_with(sample_vlm_response, sample_product_data, sample_product_data, branded_data, "en-US")
+        mock_regression_repair.assert_called_once_with(sample_vlm_response, sample_product_data, sample_product_data, branded_data, "en-US")
         assert result == branded_data
 
 
@@ -680,7 +1267,7 @@ class TestRunVLMAnalysis:
             "title": "Enhanced Title",
             "description": "Enhanced Description",
             "price": 15.99,
-            "categories": ["accessories"],
+            "categories": ["bags"],
             "tags": ["test"],
             "colors": ["black"],
             "sku": "BAG-001"
@@ -771,3 +1358,17 @@ class TestSplitVLMFlow:
 
         assert result["title"] == "Enhanced Title"
         assert "enhanced_product" not in result
+
+    @patch('backend.vlm._call_nemotron_enhance')
+    def test_build_enriched_vlm_result_normalizes_categories_and_colors(self, mock_enhance, sample_vlm_response, sample_product_data):
+        enhanced_response = sample_vlm_response.copy()
+        enhanced_response["categories"] = ["accessories", "bags", "unknown", "uncategorized"]
+        enhanced_response["colors"] = ["acero inoxidable", "black leather", "grey fabric", "gold-tone"]
+        mock_enhance.return_value = enhanced_response
+
+        result = build_enriched_vlm_result(sample_vlm_response, "en-US", sample_product_data, None)
+
+        assert result["categories"] == ["bags"]
+        assert result["colors"] == ["black", "gray", "gold"]
+        assert result["enhanced_product"]["categories"] == ["bags"]
+        assert result["enhanced_product"]["colors"] == ["black", "gray", "gold"]

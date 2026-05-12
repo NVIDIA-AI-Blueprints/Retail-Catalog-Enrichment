@@ -88,7 +88,7 @@ class TestPolicyModelCalls:
         mock_client.chat.completions.create.return_value = [mock_chunk]
 
         result = evaluate_policy_compliance(
-            {"title": "Catalog Item", "description": "Generic product listing", "categories": ["accessories"]},
+            {"title": "Catalog Item", "description": "Generic product listing", "categories": ["bags"]},
             [sample_policy_summary],
         )
 
@@ -137,7 +137,7 @@ class TestPolicyModelCalls:
         mock_client.chat.completions.create.return_value = [mock_chunk]
 
         result = evaluate_policy_compliance(
-            {"title": "Catalog Item", "description": "Generic product listing", "categories": ["accessories"]},
+            {"title": "Catalog Item", "description": "Generic product listing", "categories": ["bags"]},
             [sample_policy_summary],
         )
 
@@ -194,7 +194,7 @@ class TestPolicyModelCalls:
         mock_client.chat.completions.create.side_effect = [[first_chunk], [second_chunk]]
 
         result = evaluate_policy_compliance(
-            {"title": "Catalog Item", "description": "Generic product listing", "categories": ["accessories"]},
+            {"title": "Catalog Item", "description": "Generic product listing", "categories": ["bags"]},
             [sample_policy_summary],
         )
 

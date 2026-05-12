@@ -17,7 +17,8 @@ import os
 import json
 import base64
 import logging
-from typing import Optional, Dict, Any
+import re
+from typing import Optional, Dict, Any, Iterable
 
 from dotenv import load_dotenv
 from openai import OpenAI
@@ -48,28 +49,428 @@ NGC_API_KEY_NOT_SET_ERROR = "NGC_API_KEY is not set"
 PRODUCT_CATEGORIES = [
     "clothing",
     "footwear",
-    "kitchen", 
-    "accessories",
+    "kitchen",
     "toys",
     "electronics",
     "furniture",
     "office",
-    "fragrance",
     "skincare",
     "bags",
     "outdoor"
 ]
+FALLBACK_CATEGORY = "uncategorized"
+CATEGORY_OUTPUT_VALUES = PRODUCT_CATEGORIES + [FALLBACK_CATEGORY]
+CATEGORY_OUTPUT_SET = frozenset(CATEGORY_OUTPUT_VALUES)
+
+ALLOWED_COLORS = [
+    "black",
+    "white",
+    "gray",
+    "silver",
+    "gold",
+    "brown",
+    "beige",
+    "red",
+    "orange",
+    "yellow",
+    "green",
+    "blue",
+    "purple",
+    "pink",
+]
+COLOR_ALIASES = {"grey": "gray"}
+ALLOWED_COLOR_SET = frozenset(ALLOWED_COLORS)
+
+CATALOG_TOKEN_STOPWORDS = frozenset(
+    {
+        "a",
+        "an",
+        "and",
+        "are",
+        "as",
+        "at",
+        "by",
+        "for",
+        "from",
+        "in",
+        "into",
+        "is",
+        "it",
+        "its",
+        "of",
+        "on",
+        "or",
+        "the",
+        "this",
+        "to",
+        "with",
+        "without",
+        "your",
+        "product",
+        "item",
+        "new",
+    }
+)
+
+IDENTITY_TEXT_FIELDS = ("title", "description", "tags")
+
+LOCALIZED_TERMINOLOGY_RULE = (
+    "Use established retail terminology for the target locale in localized customer-facing fields. "
+    "The visual analysis may be in English; translate generic product-type nouns from the visual analysis into natural, widely used terms in the target language. "
+    "English generic product-type nouns are not allowed in localized title or description output. "
+    "Do not keep English generic product-type nouns just because they appear in the visual analysis or as readable label text. "
+    "Do not invent new compound words, calques, or phonetic translations; never coin or merge words to translate a product type. "
+    "If unsure, use a common generic product term in the target language instead of inventing one. "
+    "Keep English only for brand names, model names, readable printed text, or terms explicitly provided as official product names; readable English label text does not override the localized generic product type. "
+    "Before returning JSON, self-check title and description; if an English generic product-type noun remains, translate it into the target language. "
+    "Use the chosen product-type term consistently across localized customer-facing fields."
+)
+
+
+def _localized_terminology_rule(info: Dict[str, str]) -> str:
+    """Return terminology guard only when the target output is not English."""
+    if info.get("language") == "English":
+        return ""
+    return LOCALIZED_TERMINOLOGY_RULE
+
+
+def _localized_terminology_block(info: Dict[str, str]) -> str:
+    """Return a prominent localization check for non-English catalog generation."""
+    rule = _localized_terminology_rule(info)
+    if not rule:
+        return ""
+    return f"""
+LOCALIZATION CHECK:
+- {rule}
+- Title and description are invalid if they keep English generic product-type nouns for the product type.
+- Before returning JSON, rewrite any remaining English generic product-type noun into {info['language']} while keeping brand/model names unchanged."""
+
+
+def _normalize_categories(categories: Any) -> list[str]:
+    """Keep only supported category labels and preserve first-seen order."""
+    if not isinstance(categories, list):
+        return []
+
+    normalized = []
+    for value in categories:
+        if not isinstance(value, str):
+            continue
+        category = value.strip().lower()
+        if category in CATEGORY_OUTPUT_SET and category not in normalized:
+            normalized.append(category)
+
+    if len(normalized) > 1 and FALLBACK_CATEGORY in normalized:
+        return [category for category in normalized if category != FALLBACK_CATEGORY]
+    return normalized
+
+
+def _normalize_colors(colors: Any) -> list[str]:
+    """Keep only generic color names, not materials/finishes."""
+    if not isinstance(colors, list):
+        return []
+
+    normalized = []
+    for value in colors:
+        if not isinstance(value, str):
+            continue
+        for word in re.findall(r"[a-z]+", value.lower()):
+            color = COLOR_ALIASES.get(word, word)
+            if color in ALLOWED_COLOR_SET and color not in normalized:
+                normalized.append(color)
+    return normalized
+
+
+def _iter_text_values(value: Any) -> Iterable[str]:
+    if isinstance(value, str):
+        stripped = value.strip()
+        if stripped:
+            yield stripped
+    elif isinstance(value, list):
+        for item in value:
+            yield from _iter_text_values(item)
+    elif isinstance(value, dict):
+        for field in IDENTITY_TEXT_FIELDS:
+            yield from _iter_text_values(value.get(field))
+
+
+def _catalog_tokens(*values: Any) -> set[str]:
+    tokens: set[str] = set()
+    for text in _iter_text_values(list(values)):
+        for token in re.findall(r"[a-z0-9]+", text.lower()):
+            if token in CATALOG_TOKEN_STOPWORDS:
+                continue
+            if len(token) == 1 and not token.isdigit():
+                continue
+            if token.endswith("s") and not token.endswith("ss") and len(token) > 3:
+                token = token[:-1]
+            tokens.add(token)
+    return tokens
+
+
+def _identity_tokens(content: Dict[str, Any]) -> set[str]:
+    return _catalog_tokens(*(content.get(field) for field in IDENTITY_TEXT_FIELDS))
+
+
+def _has_merge_text_content(content: Optional[Dict[str, Any]]) -> bool:
+    return bool(content and any(_iter_text_values(content)))
+
+
+def _visual_identity_regression_evidence(
+    vlm_output: Dict[str, Any],
+    product_data: Dict[str, Any],
+    merged_content: Dict[str, Any],
+) -> Dict[str, Any]:
+    """Detect likely stale-identity regression and expose generic evidence."""
+    visual_title = vlm_output.get("title")
+    merged_title = merged_content.get("title")
+    if not isinstance(visual_title, str) or not isinstance(merged_title, str):
+        return {"has_regression": False}
+
+    visual_title_tokens = _catalog_tokens(visual_title)
+    user_title_tokens = _catalog_tokens(product_data.get("title"))
+    merged_title_tokens = _catalog_tokens(merged_title)
+    if not visual_title_tokens or not user_title_tokens or not merged_title_tokens:
+        return {"has_regression": False}
+
+    visual_identity_tokens = _identity_tokens(vlm_output)
+    user_identity_tokens = _identity_tokens(product_data)
+
+    distinctive_visual_title_tokens = visual_title_tokens - user_identity_tokens
+    user_only_title_tokens = user_title_tokens - visual_identity_tokens
+    if len(distinctive_visual_title_tokens) < 2 or not user_only_title_tokens:
+        return {"has_regression": False}
+
+    visual_hits = distinctive_visual_title_tokens & merged_title_tokens
+    stale_title_tokens = user_only_title_tokens & merged_title_tokens
+    has_regression = bool(stale_title_tokens and len(visual_hits) < min(2, len(distinctive_visual_title_tokens)))
+
+    return {
+        "has_regression": has_regression,
+        "stale_user_only_title_terms": sorted(stale_title_tokens),
+        "missing_visual_identity_terms": sorted(distinctive_visual_title_tokens - merged_title_tokens),
+        "visual_identity_terms_present": sorted(visual_hits),
+        "visual_title": visual_title,
+        "merged_title": merged_title,
+    }
+
+
+def _has_visual_identity_regression(
+    vlm_output: Dict[str, Any],
+    product_data: Dict[str, Any],
+    merged_content: Dict[str, Any],
+) -> bool:
+    return bool(_visual_identity_regression_evidence(vlm_output, product_data, merged_content).get("has_regression"))
+
+
+def _request_semantic_identity_repair(
+    client: OpenAI,
+    llm_config: Dict[str, Any],
+    vlm_output: Dict[str, Any],
+    original_product_data: Dict[str, Any],
+    filtered_product_data: Dict[str, Any],
+    merged_content: Dict[str, Any],
+    detector_evidence: Dict[str, Any],
+    info: Dict[str, str],
+    previous_failed_repair: Optional[Dict[str, Any]] = None,
+) -> Optional[Dict[str, Any]]:
+    failed_repair_section = ""
+    if previous_failed_repair:
+        failed_repair_section = f"""
+PREVIOUS REPAIR ATTEMPT THAT STILL FAILED DETECTOR:
+{json.dumps(previous_failed_repair, indent=2, ensure_ascii=False)}
+
+Do not repeat the same unresolved stale-identity pattern."""
+
+    prompt = f"""/no_think You are a product catalog semantic reconciler. A lightweight detector found that the merged catalog title may still contain stale user identity terms. Do a fresh semantic reconciliation.
+
+VISUAL ANALYSIS (authoritative for visible facts and readable label text):
+{json.dumps(vlm_output, indent=2, ensure_ascii=False)}
+
+ORIGINAL USER DATA (may contain valid non-visible metadata and may also contain stale terms):
+{json.dumps(original_product_data, indent=2, ensure_ascii=False)}
+
+FILTERED USER DATA (best-effort cleanup from an earlier step; it may be incomplete):
+{json.dumps(filtered_product_data, indent=2, ensure_ascii=False)}
+
+MERGED CATALOG CONTENT TO REPAIR:
+{json.dumps(merged_content, indent=2, ensure_ascii=False)}
+
+DETECTOR EVIDENCE (generic token evidence, not the final decision):
+{json.dumps(detector_evidence, indent=2, ensure_ascii=False)}
+{failed_repair_section}
+
+TARGET LANGUAGE / REGION: {info['language']} ({info['region']}, {info['context']})
+
+RULES:
+- Return the exact same JSON keys as MERGED CATALOG CONTENT. Do not add or remove fields.
+- Use semantic judgment to decide which user-provided terms are relevant, compatible, conflicting, generic, redundant, or irrelevant for the sold product.
+- Readable label text and clear visual evidence are authoritative for visible product identity and visible facts.
+- Absence from the image is not a contradiction. Keep compatible user-provided metadata even when it is not visible, including brand/manufacturer/product-line terms when they fit the product.
+- The detector evidence identifies terms that are likely stale only because they are user-only title terms and the current title is missing distinctive visual identity terms. Treat this as a strong signal to review and resolve, not as a hardcoded product rule.
+- If the visual/readable-label evidence makes a generic user title more specific, combine the specific visual identity with compatible user-provided information instead of replacing the title wholesale.
+- Remove or replace user terms only when they conflict with the visual/readable-label product identity or are irrelevant to the sold product.
+- Do not include packaging/container appearance in the title unless it is a real retail differentiator for the sold product.
+- Keep customer-facing title and description in {info['language']}.
+
+Return ONLY valid JSON. No markdown, no comments."""
+
+    completion = client.chat.completions.create(
+        model=llm_config['model'],
+        messages=[{"role": "system", "content": "/no_think"}, {"role": "user", "content": prompt}],
+        temperature=0.0,
+        top_p=1,
+        max_tokens=2048,
+        stream=True,
+        extra_body={"chat_template_kwargs": {"enable_thinking": False}},
+    )
+
+    text = "".join(
+        chunk.choices[0].delta.content
+        for chunk in completion
+        if chunk.choices[0].delta and chunk.choices[0].delta.content
+    )
+    logger.info("[Merge QA] Semantic regression repair response received: %d chars", len(text))
+
+    parsed = parse_llm_json(text, extract_braces=True, strip_comments=True)
+    if isinstance(parsed, dict):
+        logger.info("[Merge QA] Semantic regression repair complete: keys=%s", list(parsed.keys()))
+        return parsed
+
+    logger.warning("[Merge QA] Semantic regression repair JSON parse failed")
+    return None
+
+
+def _append_unique_compatible_tags(
+    target: list[str],
+    source: Any,
+    blocked_tokens: set[str],
+) -> None:
+    seen = {value.lower() for value in target}
+    source_values = source if isinstance(source, list) else []
+
+    for value in source_values:
+        if not isinstance(value, str):
+            continue
+        tag = value.strip()
+        if not tag:
+            continue
+        if _catalog_tokens(tag) & blocked_tokens:
+            continue
+        tag_key = tag.lower()
+        if tag_key not in seen:
+            target.append(tag)
+            seen.add(tag_key)
+
+
+def _build_visual_identity_safe_fallback(
+    vlm_output: Dict[str, Any],
+    original_product_data: Dict[str, Any],
+    filtered_product_data: Dict[str, Any],
+    merged_content: Dict[str, Any],
+) -> Dict[str, Any]:
+    """Prefer visual identity when LLM repair cannot resolve stale user identity."""
+    fallback = dict(merged_content)
+    visual_identity_tokens = _identity_tokens(vlm_output)
+    blocked_user_tokens = _identity_tokens(original_product_data) - visual_identity_tokens
+
+    visual_title = vlm_output.get("title")
+    if isinstance(visual_title, str) and visual_title.strip():
+        fallback["title"] = visual_title.strip()
+
+    visual_description = vlm_output.get("description")
+    if isinstance(visual_description, str) and visual_description.strip():
+        fallback["description"] = visual_description.strip()
+
+    if "tags" in fallback:
+        tags: list[str] = []
+        _append_unique_compatible_tags(tags, vlm_output.get("tags"), blocked_user_tokens)
+        _append_unique_compatible_tags(tags, filtered_product_data.get("tags"), blocked_user_tokens)
+        _append_unique_compatible_tags(tags, merged_content.get("tags"), blocked_user_tokens)
+        fallback["tags"] = tags
+
+    logger.warning(
+        "[Merge QA] Semantic repair failed to resolve stale identity; using visual identity fallback: title=%r blocked_tokens=%s",
+        fallback.get("title"),
+        sorted(blocked_user_tokens),
+    )
+    return fallback
+
+
+def _call_nemotron_repair_visual_identity_regression(
+    vlm_output: Dict[str, Any],
+    original_product_data: Dict[str, Any],
+    filtered_product_data: Dict[str, Any],
+    merged_content: Dict[str, Any],
+    locale: str = "en-US",
+) -> Dict[str, Any]:
+    """Ask the LLM for a focused semantic repair when stale identity still appears."""
+    detector_evidence = _visual_identity_regression_evidence(vlm_output, original_product_data, merged_content)
+    if not detector_evidence.get("has_regression"):
+        return merged_content
+
+    logger.info("[Merge QA] Possible visual identity regression detected; requesting semantic repair: %s", detector_evidence)
+
+    if not (api_key := os.getenv("NGC_API_KEY")):
+        raise RuntimeError(NGC_API_KEY_NOT_SET_ERROR)
+
+    info = LOCALE_CONFIG.get(locale, {"language": "English", "region": "United States", "country": "United States", "context": "American English"})
+    llm_config = get_config().get_llm_config()
+    client = OpenAI(base_url=llm_config['url'], api_key=api_key)
+
+    repaired = _request_semantic_identity_repair(
+        client,
+        llm_config,
+        vlm_output,
+        original_product_data,
+        filtered_product_data,
+        merged_content,
+        detector_evidence,
+        info,
+    )
+
+    if repaired is None:
+        return _build_visual_identity_safe_fallback(
+            vlm_output,
+            original_product_data,
+            filtered_product_data,
+            merged_content,
+        )
+    if not _has_visual_identity_regression(vlm_output, original_product_data, repaired):
+        return repaired
+
+    retry_evidence = _visual_identity_regression_evidence(vlm_output, original_product_data, repaired)
+    logger.info("[Merge QA] Semantic repair still failed detector; retrying with evidence: %s", retry_evidence)
+    retry = _request_semantic_identity_repair(
+        client,
+        llm_config,
+        vlm_output,
+        original_product_data,
+        filtered_product_data,
+        merged_content,
+        retry_evidence,
+        info,
+        previous_failed_repair=repaired,
+    )
+    if retry is not None and not _has_visual_identity_regression(vlm_output, original_product_data, retry):
+        return retry
+    return _build_visual_identity_safe_fallback(
+        vlm_output,
+        original_product_data,
+        filtered_product_data,
+        retry or repaired,
+    )
+
 
 def _call_nemotron_filter_user_data(
     vlm_output: Dict[str, Any],
     product_data: Dict[str, Any]
 ) -> Dict[str, Any]:
     """
-    Pre-filter: Remove irrelevant terms from user-provided product data before merging.
+    Pre-filter: Remove irrelevant or contradictory user terms before merging.
 
-    Uses a focused, low-temperature LLM call to classify each user-provided term
-    as relevant or irrelevant based on the VLM visual analysis (ground truth).
-    Returns a cleaned copy of product_data with only relevant terms preserved.
+    Uses a focused, low-temperature LLM call to clean user-provided text against
+    the VLM visual analysis. Readable label text is treated as ground truth for
+    visible product identity and visible product attributes.
     """
     logger.info("[Pre-filter] Starting relevance filter: vlm_keys=%s, product_keys=%s",
                 list(vlm_output.keys()), list(product_data.keys()))
@@ -84,7 +485,9 @@ def _call_nemotron_filter_user_data(
     product_json = json.dumps(product_data, indent=2, ensure_ascii=False)
     vlm_categories = json.dumps(vlm_output.get("categories", []))
 
-    prompt = f"""You are a product data validator. Decide if the user-provided text is about the SAME type of product shown in the visual analysis, or about a COMPLETELY DIFFERENT product.
+    prompt = f"""You are a product data validator. Clean user-provided product data before it is merged with visual analysis.
+
+The VISUAL ANALYSIS is ground truth for visible facts and readable label text. User-provided data may contain stale, copied, or partially wrong terms.
 
 VISUAL ANALYSIS (what the camera shows):
 {vlm_json}
@@ -94,11 +497,18 @@ PRODUCT CATEGORY: {vlm_categories}
 USER-PROVIDED PRODUCT DATA:
 {product_json}
 
-TASK: For each text field in the user-provided data, answer ONE question: "Is this text about a completely different type of product than what the image shows?"
-- If YES (completely different product type, e.g. "laptop" on a shoe image, or "yoga mat" on a blender image) → set that field to an empty string.
-- If NO (same product, related, or even partially relevant) → keep the ENTIRE field exactly as the user provided it. Do NOT modify, rephrase, or remove individual words.
+TASK:
+- Return the same JSON structure after removing user-provided text that conflicts with the visual analysis.
+- Preserve non-conflicting user evidence, including brand names, model names, SKU, price, materials, and internal specs that are not visibly contradicted.
+- If a text field is about a completely different product type, set that field to an empty string.
+- If a text field is partially correct, edit that field minimally: keep correct terms and remove only the conflicting terms.
+- Readable label text is authoritative for visible product identity and visible product attributes.
+- Absence from the image is not a contradiction. Keep compatible user-provided metadata even when it is not visible, including brand/manufacturer/product-line terms when they fit the product.
+- Use semantic judgment to decide which user-provided terms are relevant, compatible, conflicting, generic, redundant, or irrelevant for the sold product.
+- If a user-provided product identity or attribute differs from readable label text or the visually identified product type, remove the conflicting term.
+- Do not combine two conflicting product identities into one title or description. Use the visual/readable-label identity and any non-conflicting user terms.
+- Do not replace a conflicting user term with a new term unless that replacement is directly present in the visual analysis; otherwise remove the conflicting term and let the later enrichment step fill from visual evidence.
 
-This is a binary decision per field — keep it all or clear it all. Never partially edit the user's text.
 For non-text fields (price, SKU, numeric values): always keep unchanged.
 
 Return ONLY valid JSON with the same structure as the user-provided data. No markdown, no comments."""
@@ -109,7 +519,7 @@ Return ONLY valid JSON with the same structure as the user-provided data. No mar
         model=llm_config['model'],
         messages=[{"role": "system", "content": ""}, {"role": "user", "content": prompt}],
         temperature=0.1, top_p=0.9, max_tokens=2048, stream=True,
-        extra_body={"reasoning_budget": 16384, "chat_template_kwargs": {"enable_thinking": True}}
+        extra_body={"chat_template_kwargs": {"enable_thinking": False}}
     )
 
     text = "".join(chunk.choices[0].delta.content for chunk in completion if chunk.choices[0].delta and chunk.choices[0].delta.content)
@@ -146,6 +556,8 @@ def _call_nemotron_enhance_vlm(
         raise RuntimeError(NGC_API_KEY_NOT_SET_ERROR)
 
     info = LOCALE_CONFIG.get(locale, {"language": "English", "region": "United States", "country": "United States", "context": "American English"})
+    localized_terminology_rule = _localized_terminology_rule(info)
+    localized_terminology_line = f"9. {localized_terminology_rule}" if localized_terminology_rule else ""
     llm_config = get_config().get_llm_config()
     client = OpenAI(base_url=llm_config['url'], api_key=api_key)
 
@@ -154,10 +566,16 @@ def _call_nemotron_enhance_vlm(
     existing_title = product_data.get("title", "") if product_data else ""
     existing_desc = product_data.get("description", "") if product_data else ""
 
-    title_instruction = (
-        f'The user provided this title: "{existing_title}". Use it as the BASE and enrich it with visual details (color, shape, design) from the analysis. Keep all user words unless printed label text on the product clearly contradicts them.'
-        if existing_title else "Create a compelling product name."
-    )
+    if existing_title and localized_terminology_rule:
+        title_instruction = (
+            f'The user provided this title after contradiction filtering: "{existing_title}". Treat the remaining user title terms as validated anchors, not as complete truth. Use semantic judgment to preserve compatible user intent, brand/model/product-line wording, and factual title details even when they are not visible. Localize common product-type words using established retail terminology when needed. Add only customer-facing product identity and relevant factual details from the VISUAL ANALYSIS. Do not add packaging/container appearance such as cap color, bottle color, box color, label color, banner color, background color, shape, or label placement to the title unless it is a real retail differentiator. If readable label text contradicts a remaining user title term, use the readable-label identity. Do not combine conflicting product identities in the final title. If the visual analysis has useful title-worthy details, the final title must be more specific than, and not identical to, the user-provided title.'
+        )
+    elif existing_title:
+        title_instruction = (
+            f'The user provided this title after contradiction filtering: "{existing_title}". Treat the remaining user title terms as validated anchors, not as complete truth. Use semantic judgment to preserve compatible user intent, brand/model/product-line wording, and factual title details even when they are not visible. Do not replace user title words with unrelated synonyms. Add only customer-facing product identity and relevant factual details from the VISUAL ANALYSIS. Do not add packaging/container appearance such as cap color, bottle color, box color, label color, banner color, background color, shape, or label placement to the title unless it is a real retail differentiator. If readable label text contradicts a remaining user title term, use the readable-label identity. Do not combine conflicting product identities in the final title. If the visual analysis has useful title-worthy details, the final title must be more specific than, and not identical to, the user-provided title.'
+        )
+    else:
+        title_instruction = "Create a compelling product name."
     desc_instruction = (
         f'The user provided this description: "{existing_desc}". Use it as the BASE and expand it with visual details from the analysis. Keep all user terms unless printed label text on the product clearly contradicts them.'
         if existing_desc else "Focus on what makes this product appealing."
@@ -170,20 +588,27 @@ def _call_nemotron_enhance_vlm(
 VISUAL ANALYSIS (what the camera sees):
 {vlm_json}
 {product_section}
-ALLOWED CATEGORIES: {json.dumps(PRODUCT_CATEGORIES)}
+ALLOWED CATEGORIES: {json.dumps(CATEGORY_OUTPUT_VALUES)}
+ALLOWED COLORS: {json.dumps(ALLOWED_COLORS)}
 
 STRICT RULES:
 1. NEVER invent or fabricate details on your own. Only use facts from the VISUAL ANALYSIS or the EXISTING PRODUCT DATA above.
-2. Printed text readable on the product (brand names, product names, dosages, model numbers) is ground truth. Drop user words that contradict printed label text.
+2. Printed text readable on the product is ground truth for visible product identity and visible attributes. Drop user words that contradict printed label text.
 3. Material descriptions from the visual analysis are visual guesses — the camera cannot verify composition. Always use the user's material term when provided.
 4. The VISUAL ANALYSIS is authoritative for appearance (colors, shape, design) and printed text. The EXISTING PRODUCT DATA is authoritative for material composition and internal specs.
+5. {"In augmentation mode, filtered user-provided title words are validated anchors: keep compatible terms when natural for the target locale and not visibly contradicted, localize common product-type terms when needed, and add only title-worthy product identity or factual details around them." if localized_terminology_rule else "In augmentation mode, filtered user-provided title words are validated anchors: keep compatible terms when not visibly contradicted, then add only title-worthy product identity or factual details around them."}
+6. Do not state measurable values or technical attributes unless they are readable in the image or explicitly provided by the user.
+7. Do not use size/weight claims such as compact, large, spacious, lightweight, or heavy unless scale is visible or the user provided that detail.
+8. Colors must be selected from ALLOWED COLORS only. Do not output materials, finishes, textures, or product types as colors; choose the closest visible generic color instead.
+9. Do not include packaging/container appearance in titles: cap color, bottle color, box color, label color, banner color, background color, shape, label placement, or similar visual packaging details belong in description/tags, not title, unless they are official product variants or necessary retail differentiators.
+{localized_terminology_line}
 
 YOUR TASK:
 - title: {title_instruction} Write in {info['language']}.
 - description: Write a rich, persuasive product description. Merge visual details with user-provided information. {desc_instruction} Write in {info['language']}.
 - categories: Pick from allowed list only. English. Array format.
 - tags: {"Keep all existing user tags AND add more from the visual analysis." if product_data else "Generate 10 relevant search tags."} English.
-- colors: Use the VLM colors. English.
+- colors: Use visible product colors from ALLOWED COLORS only. English.
 {f"Keep any other fields from the existing data (price, SKU, etc.) unchanged." if product_data else ""}
 
 Return ONLY valid JSON. No markdown, no comments."""
@@ -194,7 +619,7 @@ Return ONLY valid JSON. No markdown, no comments."""
         model=llm_config['model'],
         messages=[{"role": "system", "content": "/no_think"}, {"role": "user", "content": prompt}],
         temperature=0.1, top_p=0.9, max_tokens=2048, stream=True,
-        extra_body={"reasoning_budget": 16384, "chat_template_kwargs": {"enable_thinking": False}}
+        extra_body={"chat_template_kwargs": {"enable_thinking": False}}
     )
 
     text = "".join(chunk.choices[0].delta.content for chunk in completion if chunk.choices[0].delta and chunk.choices[0].delta.content)
@@ -206,6 +631,77 @@ Return ONLY valid JSON. No markdown, no comments."""
         return parsed
     logger.warning("[Step 1] JSON parse failed, using VLM output")
     return vlm_output
+
+
+def _call_nemotron_resolve_merge_conflicts(
+    vlm_output: Dict[str, Any],
+    original_product_data: Dict[str, Any],
+    filtered_product_data: Dict[str, Any],
+    merged_content: Dict[str, Any],
+    locale: str = "en-US",
+) -> Dict[str, Any]:
+    """Remove contradictions that survive the initial user-data merge."""
+    logger.info("[Merge QA] Resolving merge conflicts: merged_keys=%s, locale=%s", list(merged_content.keys()), locale)
+
+    if not (api_key := os.getenv("NGC_API_KEY")):
+        raise RuntimeError(NGC_API_KEY_NOT_SET_ERROR)
+
+    info = LOCALE_CONFIG.get(locale, {"language": "English", "region": "United States", "country": "United States", "context": "American English"})
+    llm_config = get_config().get_llm_config()
+    client = OpenAI(base_url=llm_config['url'], api_key=api_key)
+
+    prompt = f"""/no_think You are a product catalog merge QA validator. Review the merged catalog content and remove contradictions between user-provided data and visual/readable-label evidence.
+
+VISUAL ANALYSIS (ground truth for visible facts and readable label text):
+{json.dumps(vlm_output, indent=2, ensure_ascii=False)}
+
+ORIGINAL USER DATA (may contain valid non-visible metadata and may also contain stale terms):
+{json.dumps(original_product_data, indent=2, ensure_ascii=False)}
+
+FILTERED USER DATA (best-effort cleanup from an earlier step; it may be incomplete):
+{json.dumps(filtered_product_data, indent=2, ensure_ascii=False)}
+
+MERGED CATALOG CONTENT TO VALIDATE:
+{json.dumps(merged_content, indent=2, ensure_ascii=False)}
+
+TARGET LANGUAGE / REGION: {info['language']} ({info['region']}, {info['context']})
+
+RULES:
+- Return the exact same JSON keys as MERGED CATALOG CONTENT. Do not add or remove fields.
+- Use semantic judgment to decide which user-provided terms are relevant, compatible, conflicting, generic, redundant, or irrelevant for the sold product.
+- Preserve compatible user-provided metadata even when it is not visible, including brand/manufacturer/product-line terms when they fit the product.
+- If a compatible term from ORIGINAL USER DATA was dropped by an earlier step, restore it where it naturally belongs.
+- Readable label text and clear visual evidence are authoritative for visible product identity and visible facts.
+- If the merged title, description, categories, tags, or enhanced_product contains a user-derived product identity term that conflicts with readable label text or the visually identified product type, remove it or replace it with the supported visual/readable-label term.
+- Do not combine two conflicting product identities in the title, description, tags, or enhanced_product.
+- Do not remove a term merely because it is absent from the image; remove it only when it conflicts with the visual/readable-label identity.
+- If the visual/readable-label evidence makes a generic user title more specific, combine the specific visual identity with compatible user-provided information instead of replacing the title wholesale.
+- Title should contain only customer-facing product identity and relevant factual details. Remove packaging/container appearance from title, such as cap color, bottle color, box color, label color, banner color, background color, shape, or label placement, unless it is a real retail differentiator.
+- Keep the output in {info['language']} for customer-facing title and description.
+
+Return ONLY valid JSON. No markdown, no comments."""
+
+    completion = client.chat.completions.create(
+        model=llm_config['model'],
+        messages=[{"role": "system", "content": "/no_think"}, {"role": "user", "content": prompt}],
+        temperature=0.0, top_p=1, max_tokens=2048, stream=True,
+        extra_body={"chat_template_kwargs": {"enable_thinking": False}}
+    )
+
+    text = "".join(
+        chunk.choices[0].delta.content
+        for chunk in completion
+        if chunk.choices[0].delta and chunk.choices[0].delta.content
+    )
+    logger.info("[Merge QA] Nemotron response received: %d chars", len(text))
+
+    parsed = parse_llm_json(text, extract_braces=True, strip_comments=True)
+    if isinstance(parsed, dict):
+        logger.info("[Merge QA] Conflict validation complete: keys=%s", list(parsed.keys()))
+        return parsed
+
+    logger.warning("[Merge QA] JSON parse failed, keeping merged content unchanged")
+    return merged_content
 
 
 def _call_nemotron_apply_branding(
@@ -229,12 +725,20 @@ def _call_nemotron_apply_branding(
         raise RuntimeError(NGC_API_KEY_NOT_SET_ERROR)
 
     info = LOCALE_CONFIG.get(locale, {"language": "English", "region": "United States", "country": "United States", "context": "American English"})
+    localized_terminology_rule = _localized_terminology_rule(info)
+    localized_terminology_bullet = f"- {localized_terminology_rule}" if localized_terminology_rule else ""
     llm_config = get_config().get_llm_config()
     client = OpenAI(base_url=llm_config['url'], api_key=api_key)
 
     content_json = json.dumps(enhanced_content, indent=2, ensure_ascii=False)
 
     prompt = f"""/no_think You are a brand compliance specialist. Apply the following brand-specific instructions to enhance product catalog content.
+
+OUTPUT LANGUAGE LOCK:
+- Title and description must remain in {info['language']} for {info['region']} ({info['context']}).
+- Brand instructions may be written in any language. Treat them only as style guidance; do not infer the output language from them.
+- Do not output title or description in any language other than {info['language']}.
+{localized_terminology_bullet}
 
 BRAND INSTRUCTIONS:
 {brand_instructions}
@@ -243,7 +747,7 @@ ENHANCED PRODUCT CONTENT (already well-written, needs brand alignment):
 {content_json}
 
 ALLOWED CATEGORIES (must use one or more from this list):
-{json.dumps(PRODUCT_CATEGORIES)}
+{json.dumps(CATEGORY_OUTPUT_VALUES)}
 
 {'═' * 80}
 CRITICAL RULES:
@@ -257,13 +761,14 @@ CRITICAL RULES:
 
 2. **Description Field Formatting**:
    - Follow the brand instructions for format and structure — if they ask for paragraphs, write paragraphs; if they ask for sections or bullet points, use sections and bullet points
+   - If brand instructions ask for a richer, longer, more detailed, premium, luxurious, elevated, or more persuasive description, expand the description using only product facts and visible/design details already present in the enhanced content. Add 1-3 additional sentences when enough source detail exists.
    - Keep everything in the description field as a single string value
    - Separate sections or paragraphs with double newlines (\\n\\n) for readability
 
 3. **Apply Brand Voice** (in {info['language']} for {info['region']}):
-   - Apply brand voice/tone to title, description, categories, and tags
+   - Apply brand voice/tone to title and description while preserving the target language above
    - Use brand-preferred terminology and expressions
-   - Do NOT add ingredients, specifications, or features not present in the enhanced content above. Only rephrase and style what is already there
+   - Do NOT add ingredients, specifications, or features not present in the enhanced content above. Rephrase, style, and when requested, safely expand only what is already there
 
 4. **Categories**:
    - Validate against the allowed categories list above
@@ -278,6 +783,8 @@ CRITICAL RULES:
 6. **Preserve All Other Fields**:
    - If enhanced content has fields like price, SKU, colors, specs - preserve them exactly
    - Only modify: title, description, categories, tags
+   - Do NOT add new measurable specs such as capacity, dimensions, volume, weight, power rating, counts, compatibility, or model/spec values
+   - Do NOT add size/weight claims such as compact, large, spacious, lightweight, or heavy unless they already appear in the enhanced content
 
 {'═' * 80}
 OUTPUT FORMAT:
@@ -293,7 +800,7 @@ Return ONLY valid JSON. No markdown, no commentary, no comments (// or /* */).""
         model=llm_config['model'],
         messages=[{"role": "system", "content": "/no_think"}, {"role": "user", "content": prompt}],
         temperature=0.1, top_p=0.9, max_tokens=2048, stream=True,
-        extra_body={"reasoning_budget": 16384, "chat_template_kwargs": {"enable_thinking": False}}
+        extra_body={"chat_template_kwargs": {"enable_thinking": False}}
     )
 
     text = "".join(chunk.choices[0].delta.content for chunk in completion if chunk.choices[0].delta and chunk.choices[0].delta.content)
@@ -343,6 +850,8 @@ def _call_nemotron_generate_faqs(
         raise RuntimeError(NGC_API_KEY_NOT_SET_ERROR)
 
     info = LOCALE_CONFIG.get(locale, {"language": "English", "region": "United States", "country": "United States", "context": "American English"})
+    localized_terminology_rule = _localized_terminology_rule(info)
+    localized_terminology_bullet = f"- {localized_terminology_rule}" if localized_terminology_rule else ""
     llm_config = get_config().get_llm_config()
     client = OpenAI(base_url=llm_config['url'], api_key=api_key)
 
@@ -369,6 +878,7 @@ RULES:
 - Answers must be helpful, concise (1-3 sentences), and factual.
 - ONLY reference details present in the product data or manual knowledge above. Do NOT fabricate specifications.
 - Write questions and answers in {info['language']} appropriate for {info['region']}.
+{localized_terminology_bullet}
 
 OUTPUT FORMAT:
 Return ONLY a valid JSON array. No markdown, no commentary.
@@ -389,6 +899,7 @@ RULES:
 - Answers must be helpful, concise (1-3 sentences), and factual.
 - ONLY reference details present in the product data above. Do NOT fabricate specifications.
 - Write questions and answers in {info['language']} appropriate for {info['region']}.
+{localized_terminology_bullet}
 
 OUTPUT FORMAT:
 Return ONLY a valid JSON array. No markdown, no commentary.
@@ -401,7 +912,7 @@ Example: [{{"question": "...", "answer": "..."}}, ...]"""
         model=llm_config['model'],
         messages=[{"role": "system", "content": "/no_think"}, {"role": "user", "content": prompt}],
         temperature=0.1, top_p=0.9, max_tokens=max_tokens, stream=True,
-        extra_body={"reasoning_budget": 16384, "chat_template_kwargs": {"enable_thinking": False}}
+        extra_body={"chat_template_kwargs": {"enable_thinking": False}}
     )
 
     text = "".join(
@@ -488,7 +999,7 @@ Example: {{"brand": "...", "condition": "new", "material": null, "age_group": "a
         model=llm_config['model'],
         messages=[{"role": "system", "content": "/no_think"}, {"role": "user", "content": prompt}],
         temperature=0.1, top_p=0.9, max_tokens=2048, stream=True,
-        extra_body={"reasoning_budget": 16384, "chat_template_kwargs": {"enable_thinking": False}}
+        extra_body={"chat_template_kwargs": {"enable_thinking": False}}
     )
 
     text = "".join(
@@ -542,12 +1053,12 @@ def _call_nemotron_enhance(
                     repr(product_data.get("title", "")), repr(filtered_product_data.get("title", "")))
 
     # Step 1: Only run enhancement when there is user data with actual content to merge
-    has_content = filtered_product_data and any(
-        v for k, v in filtered_product_data.items()
-        if isinstance(v, str) and v.strip()
-    )
+    filtered_has_content = _has_merge_text_content(filtered_product_data)
+    original_has_content = _has_merge_text_content(product_data)
+    has_content = bool(filtered_has_content or original_has_content)
     if has_content:
-        enhanced = _call_nemotron_enhance_vlm(vlm_output, filtered_product_data, locale)
+        merge_product_data = filtered_product_data if filtered_has_content else product_data
+        enhanced = _call_nemotron_enhance_vlm(vlm_output, merge_product_data, locale)
         logger.info("Step 1 complete (enhanced + localized to %s): enhanced_keys=%s", locale, list(enhanced.keys()))
     else:
         enhanced = vlm_output
@@ -559,6 +1070,23 @@ def _call_nemotron_enhance(
         logger.info("Step 2 complete: brand-aligned content ready")
     else:
         logger.info("Step 2 skipped: no brand_instructions provided")
+
+    if product_data and has_content:
+        enhanced = _call_nemotron_resolve_merge_conflicts(
+            vlm_output,
+            product_data,
+            filtered_product_data,
+            enhanced,
+            locale,
+        )
+        logger.info("Merge QA complete: contradictions resolved")
+        enhanced = _call_nemotron_repair_visual_identity_regression(
+            vlm_output,
+            product_data,
+            filtered_product_data,
+            enhanced,
+            locale,
+        )
     
     logger.info("Nemotron enhancement pipeline complete: final_keys=%s", list(enhanced.keys()))
     return enhanced
@@ -579,14 +1107,21 @@ def _call_vlm(image_bytes: bytes, content_type: str, locale: str = "en-US") -> D
     vlm_config = get_config().get_vlm_config()
     client = OpenAI(base_url=vlm_config['url'], api_key=api_key)
 
-    prompt_text = "Describe this product in detail: appearance, shape, colors, materials, visible text, brand names, labels, and any distinctive design features."
+    prompt_text = (
+        "Describe only visible facts about this product: appearance, shape, colors, visible text, "
+        "brand/labels, controls, and distinctive design. Include numbers/specs only if clearly readable "
+        "as printed text; never infer capacity, size, model, power, weight, or volume."
+    )
 
     completion = client.chat.completions.create(
         model=vlm_config['model'],
-        messages=[{"role": "user", "content": [
-            {"type": "image_url", "image_url": {"url": f"data:{content_type};base64,{base64.b64encode(image_bytes).decode()}"}},
-            {"type": "text", "text": prompt_text}
-        ]}],
+        messages=[
+            {"role": "system", "content": "/no_think"},
+            {"role": "user", "content": [
+                {"type": "image_url", "image_url": {"url": f"data:{content_type};base64,{base64.b64encode(image_bytes).decode()}"}},
+                {"type": "text", "text": prompt_text}
+            ]}
+        ],
         temperature=0.1, top_p=0.9, max_tokens=4096, stream=True
     )
 
@@ -608,24 +1143,28 @@ def _call_nemotron_structure_vlm(vlm_text: str, locale: str = "en-US") -> Dict[s
         raise RuntimeError(NGC_API_KEY_NOT_SET_ERROR)
 
     info = LOCALE_CONFIG.get(locale, {"language": "English", "region": "United States", "country": "United States", "context": "American English"})
+    localized_terminology_block = _localized_terminology_block(info)
     llm_config = get_config().get_llm_config()
     client = OpenAI(base_url=llm_config['url'], api_key=api_key)
 
-    categories_str = json.dumps(PRODUCT_CATEGORIES)
+    categories_str = json.dumps(CATEGORY_OUTPUT_VALUES)
+    colors_str = json.dumps(ALLOWED_COLORS)
 
-    prompt = f"""/no_think Convert the visual description below into e-commerce product catalog fields. Write in polished, professional catalog language in {info['language']} for {info['region']} ({info['context']}). Do NOT invent features, materials, or specifications not mentioned in the description.
+    prompt = f"""/no_think Convert the visual description below into e-commerce product catalog fields. Write in polished, professional catalog language in {info['language']} for {info['region']} ({info['context']}). Do NOT invent features, materials, or specifications not mentioned in the description. Do NOT state capacity, dimensions, volume, weight, power rating, counts, compatibility, or model/spec values unless the visual description explicitly says the value appears as readable printed text. If the visual description mentions a number/spec but does not say it is readable printed text, omit it. Do NOT use size/weight claims like compact, large, spacious, lightweight, or heavy unless scale is visible in the visual description.
+{localized_terminology_block}
 
 VISUAL DESCRIPTION:
 {vlm_text}
 
 ALLOWED CATEGORIES: {categories_str}
+ALLOWED COLORS: {colors_str}
 
 RULES:
-- title: Compelling product name using only details from the description. Write in {info['language']}.
-- description: Write as customer-facing e-commerce catalog copy in {info['language']}. Highlight the product's appeal, materials, design, and features. Do NOT describe the label or packaging text placement (no "brand name is displayed on", "text reads", "prominently displayed", "printed in white"). Instead, naturally incorporate brand and product names into the copy.
+- title: Clear catalog title, not creative copy. Use only customer-facing product identity: brand/model names, official product name, product type, variant, flavor, scent, formulation, count, dosage, rating, size, material, compatibility, and model/spec values when explicitly readable or provided. Do not include packaging/container appearance such as cap color, bottle color, box color, label color, banner color, background color, shape, or label placement unless it is an official product variant or necessary retail differentiator. Do not copy visible English generic product-type label text as the localized product type; translate generic product-type words into {info['language']}. Do not include capacities, dimensions, model values, or other specs unless the visual description says they are readable printed text. Write in {info['language']}.
+- description: Write as customer-facing e-commerce catalog copy in {info['language']}. Highlight the product's appeal, visible design, and visible features. Do NOT describe the label or packaging text placement (no "brand name is displayed on", "text reads", "prominently displayed", "printed in white"). Instead, naturally incorporate brand and product names into the copy.
 - categories: Pick 1-2 from the allowed list. Use "uncategorized" if none fit. English.
 - tags: 10 search tags derived from the text. English.
-- colors: 1-2 product colors mentioned in the text. English.
+- colors: 1-2 visible product colors selected from ALLOWED COLORS only. Do not output materials, finishes, textures, or product types as colors; choose the closest visible generic color instead. English.
 
 Return ONLY valid JSON:
 {{"title": "...", "description": "...", "categories": [...], "tags": [...], "colors": [...]}}"""
@@ -633,8 +1172,8 @@ Return ONLY valid JSON:
     completion = client.chat.completions.create(
         model=llm_config['model'],
         messages=[{"role": "system", "content": "/no_think"}, {"role": "user", "content": prompt}],
-        temperature=0.1, top_p=0.9, max_tokens=2048, stream=True,
-        extra_body={"reasoning_budget": 16384, "chat_template_kwargs": {"enable_thinking": False}}
+        temperature=0.0, top_p=1, max_tokens=2048, stream=True,
+        extra_body={"chat_template_kwargs": {"enable_thinking": False}}
     )
 
     text = "".join(
@@ -681,23 +1220,25 @@ def build_enriched_vlm_result(
     logger.info("Nemotron enhance complete: keys=%s", list(enhanced.keys()))
 
     categories = (
-        enhanced.get("categories")
-        if enhanced.get("categories") and isinstance(enhanced.get("categories"), list)
-        else vlm_result.get("categories", ["uncategorized"])
+        _normalize_categories(enhanced.get("categories"))
+        or _normalize_categories(vlm_result.get("categories"))
+        or [FALLBACK_CATEGORY]
     )
+    colors = _normalize_colors(enhanced.get("colors")) or _normalize_colors(vlm_result.get("colors"))
 
     result = {
         "title": enhanced.get("title", vlm_result.get("title", "")),
         "description": enhanced.get("description", vlm_result.get("description", "")),
         "categories": categories,
         "tags": enhanced.get("tags", vlm_result.get("tags", [])),
-        "colors": enhanced.get("colors", vlm_result.get("colors", [])),
+        "colors": colors,
     }
 
     if product_data:
-        result["enhanced_product"] = {**product_data, **enhanced}
+        result["enhanced_product"] = {**product_data, **enhanced, "categories": categories, "colors": colors}
 
     return result
+
 
 def run_vlm_analysis(
     image_bytes: bytes,

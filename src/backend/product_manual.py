@@ -85,6 +85,15 @@ def _get_api_key() -> str:
 
 
 EMBEDDING_BATCH_SIZE = 128
+EMBEDDING_INPUT_MAX_WORDS = 180
+
+
+def _limit_embedding_input(text: str) -> str:
+    """Keep embedding inputs comfortably below the model token limit."""
+    words = text.split()
+    if len(words) <= EMBEDDING_INPUT_MAX_WORDS:
+        return text
+    return " ".join(words[:EMBEDDING_INPUT_MAX_WORDS])
 
 
 def _embed_texts(texts: Sequence[str], input_type: str) -> List[List[float]]:
@@ -100,12 +109,12 @@ def _embed_texts(texts: Sequence[str], input_type: str) -> List[List[float]]:
 
     all_embeddings: List[List[float]] = []
     for i in range(0, len(texts), EMBEDDING_BATCH_SIZE):
-        batch = list(texts[i : i + EMBEDDING_BATCH_SIZE])
+        batch = [_limit_embedding_input(text) for text in texts[i : i + EMBEDDING_BATCH_SIZE]]
         response = client.embeddings.create(
             input=batch,
             model=embedding_config["model"],
             encoding_format="float",
-            extra_body={"input_type": input_type, "truncate": "NONE"},
+            extra_body={"input_type": input_type, "truncate": "END"},
         )
         all_embeddings.extend(item.embedding for item in response.data)
     return all_embeddings
@@ -226,7 +235,7 @@ Example: [{{"topic": "battery_life", "query": "..."}}]"""
         model=llm_config["model"],
         messages=[{"role": "system", "content": "/no_think"}, {"role": "user", "content": prompt}],
         temperature=0.3, top_p=0.9, max_tokens=1024, stream=True,
-        extra_body={"reasoning_budget": 16384, "chat_template_kwargs": {"enable_thinking": False}},
+        extra_body={"chat_template_kwargs": {"enable_thinking": False}},
     )
 
     text = "".join(
