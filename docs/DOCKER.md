@@ -14,6 +14,7 @@ The application consists of the following services:
 - **Trellis NIM** (Port 8004): 3D asset generation model
 - **Embeddings NIM** (Post 8005): Embeddings for policy compliance
 - **Milvus Stack** (Ports 19530, 9091, 9001): Persistent vector search for loaded policy PDFs
+- **External Search API**: Exa is used by the product web insights agent
 
 ## Prerequisites
 
@@ -21,6 +22,7 @@ The application consists of the following services:
 - NVIDIA 4xH100 (80GB) GPU with Docker GPU support (nvidia-docker2)
 - NVIDIA NGC API Key
 - HuggingFace Token (for Flux model)
+- Exa API Key (for product web insights)
 - 512GB disk space
 
 ## Setup
@@ -35,6 +37,9 @@ NGC_API_KEY=your_ngc_api_key_here
 
 # HuggingFace Token (required for Flux model)
 HF_TOKEN=your_huggingface_token_here
+
+# Exa API Key (required for product web insights)
+EXA_API_KEY=your_exa_api_key_here
 ```
 
 ### 2. Create Cache Directory

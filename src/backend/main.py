@@ -30,9 +30,10 @@ from openai import APIConnectionError
 from backend.policy import evaluate_policy_compliance
 from backend.policy_library import PolicyLibrary
 from backend.product_manual import process_manual_pdf, generate_manual_queries, extract_manual_knowledge
-from backend.vlm import extract_vlm_observation, build_enriched_vlm_result, _call_nemotron_generate_faqs, _call_nemotron_extract_schema_fields
+from backend.vlm import extract_vlm_observation, extract_rich_product_json, build_enriched_vlm_result, _call_nemotron_generate_faqs, _call_nemotron_extract_schema_fields
 from backend.image import generate_image_variation
 from backend.trellis import generate_3d_asset
+from backend.web_insights import build_product_web_insights, WebInsightsDependencyError
 from backend.config import get_config
 
 load_dotenv()
@@ -327,6 +328,43 @@ async def vlm_faqs(
         return JSONResponse({"detail": str(exc)}, status_code=500)
 
 
+@app.post("/vlm/rich-product")
+async def vlm_rich_product(
+    image: UploadFile = File(...),
+    locale: str = Form("en-US"),
+) -> JSONResponse:
+    """Return a rich, image-grounded product JSON object from the VLM."""
+    try:
+        if locale not in VALID_LOCALES:
+            logger.error("/vlm/rich-product error: invalid locale=%s", locale)
+            return JSONResponse({"detail": f"Invalid locale. Supported locales: {sorted(VALID_LOCALES)}"}, status_code=400)
+
+        validation_result, error_response = await _validate_image(image, "/vlm/rich-product")
+        if error_response:
+            return error_response
+        image_bytes, content_type = validation_result
+
+        rich_product = await asyncio.to_thread(
+            extract_rich_product_json,
+            image_bytes,
+            content_type,
+            locale,
+        )
+        logger.info("/vlm/rich-product success: keys=%s locale=%s", list(rich_product.keys()), locale)
+        return JSONResponse(rich_product)
+    except ValueError as exc:
+        logger.warning("/vlm/rich-product validation error: %s", exc)
+        return JSONResponse({"detail": str(exc)}, status_code=502)
+    except (APIConnectionError, httpx.ConnectError) as exc:
+        logger.exception("/vlm/rich-product connection error: %s", exc)
+        return JSONResponse({
+            "detail": "Unable to connect to the NIM endpoint. Please verify that the NVIDIA NIM container is running."
+        }, status_code=503)
+    except Exception as exc:
+        logger.exception("/vlm/rich-product exception: %s", exc)
+        return JSONResponse({"detail": str(exc)}, status_code=500)
+
+
 @app.post("/vlm/manual/extract")
 async def vlm_manual_extract(
     file: UploadFile = File(...),
@@ -398,6 +436,56 @@ async def vlm_manual_extract(
         }, status_code=503)
     except Exception as exc:
         logger.exception("/vlm/manual/extract exception: %s", exc)
+        return JSONResponse({"detail": str(exc)}, status_code=500)
+
+
+@app.post("/research/product-insights")
+async def product_insights(
+    title: str = Form(""),
+    description: str = Form(""),
+    categories: str = Form("[]"),
+    tags: str = Form("[]"),
+    locale: str = Form("en-US"),
+    max_results: int | None = Form(None),
+) -> JSONResponse:
+    """Generate source-backed product web insights using Deep Agents and Exa."""
+    try:
+        if locale not in VALID_LOCALES:
+            logger.error("/research/product-insights error: invalid locale=%s", locale)
+            return JSONResponse({"detail": f"Invalid locale. Supported locales: {sorted(VALID_LOCALES)}"}, status_code=400)
+        if not title or not title.strip():
+            return JSONResponse({"detail": "title is required"}, status_code=400)
+        if max_results is not None and max_results < 1:
+            return JSONResponse({"detail": "max_results must be greater than 0"}, status_code=400)
+
+        parsed_categories = json.loads(categories)
+        parsed_tags = json.loads(tags)
+        if not isinstance(parsed_categories, list) or not isinstance(parsed_tags, list):
+            return JSONResponse({"detail": "categories and tags must be JSON arrays"}, status_code=400)
+
+        result = await asyncio.to_thread(
+            build_product_web_insights,
+            title=title.strip(),
+            description=description,
+            categories=[str(item) for item in parsed_categories],
+            tags=[str(item) for item in parsed_tags],
+            locale=locale,
+            max_results=max_results,
+        )
+        return JSONResponse(result)
+    except WebInsightsDependencyError as exc:
+        logger.exception("/research/product-insights dependency error: %s", exc)
+        return JSONResponse({"detail": str(exc)}, status_code=503)
+    except (APIConnectionError, httpx.ConnectError) as exc:
+        logger.exception("/research/product-insights connection error: %s", exc)
+        return JSONResponse({
+            "detail": "Unable to connect to a web insights dependency. Please verify the LLM and Exa configuration."
+        }, status_code=503)
+    except json.JSONDecodeError as exc:
+        logger.error("/research/product-insights JSON parse error: %s", exc)
+        return JSONResponse({"detail": "Invalid JSON in request fields."}, status_code=400)
+    except Exception as exc:
+        logger.exception("/research/product-insights exception: %s", exc)
         return JSONResponse({"detail": str(exc)}, status_code=500)
 
 

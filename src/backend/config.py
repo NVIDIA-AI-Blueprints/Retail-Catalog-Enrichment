@@ -102,6 +102,20 @@ class Config:
             "min_relevance_score": float(config.get("min_relevance_score") or 0.25),
         }
 
+    def get_web_insights_config(self) -> Dict[str, Any]:
+        config = self._get_optional_section_config('web_insights')
+        return {
+            "max_results": int(os.getenv("WEB_INSIGHTS_MAX_RESULTS") or config.get("max_results") or 8),
+            "max_sources": int(os.getenv("WEB_INSIGHTS_MAX_SOURCES") or config.get("max_sources") or 8),
+            "min_sources": int(os.getenv("WEB_INSIGHTS_MIN_SOURCES") or config.get("min_sources") or 2),
+            "search_type": os.getenv("WEB_INSIGHTS_SEARCH_TYPE") or config.get("search_type") or "auto",
+            "highlights_max_characters": int(
+                os.getenv("WEB_INSIGHTS_HIGHLIGHTS_MAX_CHARACTERS")
+                or config.get("highlights_max_characters")
+                or 4000
+            ),
+        }
+
 
 _config_instance: Optional[Config] = None
 

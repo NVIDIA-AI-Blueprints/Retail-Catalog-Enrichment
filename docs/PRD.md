@@ -10,34 +10,31 @@
 
 Product catalogs often contain minimal, low-quality information with basic product images and sparse descriptions. This limits customer engagement, search discoverability, and overall user experience. Manual enrichment of catalog data is time-consuming, error-prone, and doesn't scale. Human categorization and tagging of products is particularly susceptible to inconsistencies, subjective interpretations, and classification errors that can negatively impact search functionality and user experience.
 
-Additionally, product catalogs quickly become outdated as market trends, customer preferences, and styling conventions evolve. Catalog managers lack visibility into how customers are actually using products in real-world contexts, what terminology resonates with target audiences, and what trends are emerging on social media platforms. This disconnect between catalog content and market reality leads to missed opportunities for engagement and conversion.
+Additionally, product catalogs quickly become outdated as market trends, customer preferences, and styling conventions evolve. Catalog managers lack visibility into how customers are actually using products in real-world contexts, what terminology resonates with target audiences, and what pros, cons, complaints, and purchase considerations appear across public web sources. This disconnect between catalog content and market reality leads to missed opportunities for engagement and conversion.
 
 ## Solution Overview
 
-A GenAI-powered catalog enrichment system that transforms basic product images into comprehensive, rich catalog entries with enhanced titles, descriptions, categories, tags, variation images (2D/3D), and short video clips. The system leverages social media content analysis to incorporate trending styles, real-world usage patterns, and customer sentiment into product enrichment, ensuring catalog data stays current with market trends.
+A GenAI-powered catalog enrichment system that transforms basic product images into comprehensive, rich catalog entries with enhanced titles, descriptions, categories, tags, variation images (2D/3D), and short video clips. The system uses product web research to surface public-source pros, cons, usage patterns, and customer insights, ensuring catalog managers can keep content aligned with current market context.
 
 ## Core User Flow
 
 1. **Input**: User submits product image along with existing product JSON data and optional locale specification
-2. **Social Media Analysis** (Optional): System retrieves and analyzes social media content for similar products to extract:
-   - Trending styles and terminology
-   - Real-world usage scenarios and contexts
-   - Customer sentiment and common feedback
-   - Popular color combinations and styling preferences
-   - Complementary products and accessories
-3. **Content Augmentation**: System uses NVIDIA Nemotron VLM to enhance existing product data by:
+2. **Content Augmentation**: System uses NVIDIA Nemotron VLM to enhance existing product data by:
    - Enriching product title with more descriptive details (localized to target region)
    - Expanding product description with richer, more verbose content (using regional terminology)
    - Improving and refining attributes (e.g., expanding "Black" to "Matte Black with Silver Hardware")
    - Enhancing categories and subcategories based on visual analysis
    - Generating more comprehensive and accurate tags
    - Validating and correcting product specifications against visual evidence
-   - Incorporating trending terminology and insights from social media analysis (when available)
+3. **Product Web Research** (Optional): System uses a Deep Agents research agent with Exa search to gather public web context for the enriched title:
+   - Pros and cons reported by product pages, reviews, and relevant articles
+   - Real-world usage scenarios and purchase considerations
+   - Customer sentiment themes and common feedback
+   - Source-backed insights for catalog managers to review
 4. **Cultural Prompt Planning**: System uses NVIDIA Nemotron LLM to create culturally-aware prompts for image generation based on:
    - Product analysis
    - Target locale/country cultural context
    - Regional aesthetic preferences
-   - Social media trend insights (when available)
 5. **Localized Image Generation**: System creates variation images using FLUX models with culturally-appropriate backgrounds
 6. **Quality Assessment**: System evaluates generated images using VLM-based reflection to verify:
    - Product consistency and fidelity
@@ -46,7 +43,7 @@ A GenAI-powered catalog enrichment system that transforms basic product images i
    - Background quality and realism
 7. **3D Asset Creation**: System generates 3D product assets using Microsoft's TRELLIS model
 8. **Video Generation**: System produces 3-5 second product video clips using open-source models
-9. **Output**: Culturally-enriched catalog entry with quality-assessed generated assets optimized for target market, enhanced with social media insights
+9. **Output**: Culturally-enriched catalog entry with quality-assessed generated assets optimized for target market, plus a source-backed Web Insights tab for market context
 
 ## Functional Requirements
 
@@ -170,6 +167,17 @@ A GenAI-powered catalog enrichment system that transforms basic product images i
 - UI displays schemas in a Protocols tab with ACP/UCP sub-tabs, syntax-highlighted JSON, and copy-to-clipboard
 - Schema generation fires in the background after FAQ generation completes, ensuring FAQs are included in both schemas
 
+### FR-14: Product Web Insights
+- Generate a source-backed product research summary from the enriched product title
+- Use LangChain Deep Agents SDK as the research agent harness
+- Use NVIDIA Nemotron Nano LLM as the agent model through the existing LLM configuration
+- Use Exa as the initial external web search API provider
+- Search for product and brand information including pros, cons, customer feedback, real-world usage, and purchase considerations
+- Return grouped insight sections: summary, pros, cons, use cases, customer insights, purchase considerations, search queries, sources, and warnings
+- Keep web insights informational by default; do not automatically overwrite enriched catalog fields, FAQs, or protocol schemas
+- UI displays web research in a dedicated Web Insights tab next to FAQs and Protocols
+- Web insights load in the background and fail independently from FAQ generation, protocol schema generation, image generation, and 3D generation
+
 ## Technical Requirements
 
 ### TR-1: Model Integration
@@ -208,6 +216,15 @@ A GenAI-powered catalog enrichment system that transforms basic product images i
 - Data caching and refresh strategies for social media content
 - Privacy compliance framework (GDPR, CCPA) for user-generated content
 - Content filtering to exclude inappropriate or irrelevant material
+
+### TR-6: Product Web Research Agent
+- Add `deepagents`, LangChain chat model integration dependencies, and `exa-py`
+- Configure the agent with Nemotron Nano and an Exa-backed search tool
+- Use concise Exa highlights for normal operation, with deeper search modes only when source coverage is low
+- Validate and repair agent output into the API response schema before returning it to clients
+- Enforce source attribution for market claims and user-visible insight bullets
+- Add timeout, rate-limit, and missing-key error handling for Exa calls
+- Add unit tests for query planning, output normalization, missing API key behavior, and UI rendering states
 
 ## User Stories
 
@@ -286,6 +303,13 @@ A GenAI-powered catalog enrichment system that transforms basic product images i
 **I want to** upload a product manual PDF and have the system generate richer FAQs that include specific details like specs, care instructions, safety warnings, and warranty information  
 **So that** my product FAQ sections provide genuine value beyond what the description already covers, reducing customer support inquiries
 
+### US-11: Product Web Insights
+**As a** catalog manager
+
+**I want to** see public web research about a product's pros, cons, customer feedback, and usage patterns after enrichment
+
+**So that** I can understand market context before deciding whether to adjust copy, FAQs, merchandising notes, or campaign messaging
+
 ## Success Criteria
 
 - **Processing Time**: <1 minute per product for complete enrichment (including quality assessment)
@@ -300,6 +324,9 @@ A GenAI-powered catalog enrichment system that transforms basic product images i
 - **Social Media Integration Accuracy**: Extracted trends and sentiment achieve >85% relevance to target product category
 - **Trend Freshness**: Social media insights refreshed within 24-48 hours of platform posting
 - **Content Diversity**: Aggregate insights from minimum of 50+ relevant social media posts per product category
+- **Web Insight Relevance**: At least 80% of returned insight bullets are judged relevant to the enriched product title and brand
+- **Source Coverage**: Web Insights includes at least 2 relevant sources when public information is available
+- **Independent Failure**: Exa or web research failures do not block VLM analysis, FAQs, protocols, image generation, or 3D generation
 
 ## Implementation TODOs
 
@@ -316,6 +343,7 @@ A GenAI-powered catalog enrichment system that transforms basic product images i
 - [x] ~~FR-11: Policy Compliance Checking~~ *(PDF policy library with Milvus embeddings, semantic retrieval, compliance classification)*
 - [x] ~~FR-12: Product Manual PDF Enhancement for FAQs~~ *(Stateless targeted RAG via /vlm/manual/extract, dynamic query generation, up to 10 manual-enriched FAQs)*
 - [x] ~~FR-13: Protocol Schema Export (ACP & UCP)~~ *(Single /protocols/generate endpoint with LLM field extraction, syntax-highlighted UI with ACP/UCP sub-tabs)*
+- [x] ~~FR-14: Product Web Insights~~ *(Deep Agents + Exa research endpoint with source-backed dashboard UI tab)*
 
 - [ ] TR-1: Model Integration
   - [x] ~~NVIDIA Nemotron VLM API integration~~
@@ -333,3 +361,9 @@ A GenAI-powered catalog enrichment system that transforms basic product images i
   - [ ] Sentiment analysis and NLP processing
   - [ ] Trend detection algorithms
   - [ ] Privacy compliance framework
+- [x] ~~TR-6: Product Web Research Agent~~
+  - [x] ~~Add Deep Agents and Exa dependencies~~
+  - [x] ~~Implement Exa search tool wrapper~~
+  - [x] ~~Implement `/research/product-insights`~~
+  - [x] ~~Add Web Insights frontend API client and dashboard tab~~
+  - [x] ~~Add backend and frontend tests~~

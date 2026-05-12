@@ -21,6 +21,9 @@ dependencies = [
   "pyyaml==6.0.3",
   "pypdf==6.1.1",
   "numpy>=1.26.0",
+  "deepagents==0.5.7",
+  "langchain-openai==1.1.9",
+  "exa-py==2.12.1",
 ]
 
 [tool.hatch.build.targets.wheel]

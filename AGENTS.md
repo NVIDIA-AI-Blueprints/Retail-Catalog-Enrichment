@@ -87,6 +87,15 @@ uvicorn --app-dir src backend.main:app --host 0.0.0.0 --port 8000 --reload
     - `colors`: array (extracted color palette, e.g. ["black", "gold"])
     - `enhanced_product`: object (if product_data was provided)
 
+**Rich VLM Product JSON:**
+- POST `/vlm/rich-product`
+  - Request: `multipart/form-data` with fields:
+    - `image` (file): Product image
+    - `locale` (string, optional): Regional locale code (default: "en-US")
+  - Response: Arbitrary JSON object generated directly by Nemotron VLM with rich, visually grounded product attributes
+  - Used by the UI's Raw data tab next to Details
+  - Does not persist artifacts or modify the enriched catalog fields
+
 **Image Generation:**
 - POST `/generate/variation`
   - Request: `multipart/form-data` with fields:

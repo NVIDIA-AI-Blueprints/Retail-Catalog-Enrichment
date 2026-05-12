@@ -28,7 +28,9 @@ A GenAI-powered catalog enrichment system that transforms basic product images i
 - **Product FAQ Generation**: Automatically generate product FAQs from enriched catalog data, with optional product manual PDF upload for richer FAQs (up to 10) via stateless targeted RAG
 - **Policy Compliance**: Upload policy PDFs and automatically check product listings against them using RAG + Milvus
 - **Protocol Schema Export**: Export enriched product data as ACP (Agentic Commerce Protocol) and UCP (Unified Commerce Protocol) compliant schemas with LLM-extracted structured attributes
-- **Modular API**: Separate endpoints for VLM analysis, FAQ generation, image generation, 3D asset generation, and protocol schema export
+- **Rich VLM Product JSON**: Generate an image-grounded JSON object with detailed visual product attributes in a dedicated UI tab
+- **Product Web Insights**: Use a Deep Agents research agent with Exa search to summarize current product pros, cons, use cases, and online insights in a dedicated UI tab
+- **Modular API**: Separate endpoints for VLM analysis, rich product JSON, FAQ generation, product web insights, image generation, 3D asset generation, and protocol schema export
 
 ## Documentation
 
@@ -37,6 +39,7 @@ A GenAI-powered catalog enrichment system that transforms basic product images i
 - **[Product Requirements (PRD)](docs/PRD.md)** - Product requirements and feature specifications
 - **[Policy Compliance](docs/POLICY_COMPLIANCE.md)** - How policy compliance checking works
 - **[Product Manual for FAQs](docs/PRODUCT_MANUAL_FAQS.md)** - How product manual PDFs enrich FAQ generation
+- **[Product Web Insights](docs/WEB_INSIGHTS.md)** - Proposed Deep Agents + Exa product research feature
 - **[AI Agent Guidelines](AGENTS.md)** - Instructions for AI assistants working on this project
 
 ## Tech Stack
@@ -55,6 +58,8 @@ A GenAI-powered catalog enrichment system that transforms basic product images i
 - NVIDIA Nemotron VLM (vision-language model)
 - NVIDIA Nemotron LLM (prompt planning)
 - NVIDIA Embeddings (Policy Compliance)
+- LangChain Deep Agents SDK (product web research agent)
+- Exa API (external web search and retrieved content)
 - FLUX models (image generation)
 - Microsoft TRELLIS (3D generation)
 
@@ -93,6 +98,7 @@ For self-hosting the NIM microservices locally, the following GPU requirements a
 - [`uv`](https://docs.astral.sh/uv/) package manager
 - NVIDIA API key for VLM/LLM services
 - HuggingFace token for FLUX image generation
+- Exa API key for product web insights
 
 ### Environment Setup
 
@@ -105,6 +111,7 @@ cp .env.example .env
 **Getting API Keys:**
 - NVIDIA API Key: [Get one here](https://build.nvidia.com/)
 - HuggingFace Token: [Get one here](https://huggingface.co/settings/tokens)
+- Exa API Key: [Get one here](https://dashboard.exa.ai/)
 
 The FLUX.1-Kontext-Dev NIM uses a model that is for non-commercial use. Contact sales@blackforestlabs.ai for commercial terms.
 
@@ -224,8 +231,10 @@ For complete Docker deployment instructions, see the **[Docker Deployment Guide]
 The system provides the following endpoints:
 
 - `POST /vlm/analyze` - Fast VLM/LLM analysis
+- `POST /vlm/rich-product` - Rich image-grounded product JSON from Nemotron VLM
 - `POST /vlm/faqs` - Product FAQ generation (supports optional manual knowledge)
 - `POST /vlm/manual/extract` - Extract knowledge from a product manual PDF for FAQ enrichment
+- `POST /research/product-insights` - Source-backed product web insights dashboard using Deep Agents + Exa
 - `POST /generate/variation` - Image generation with FLUX
 - `POST /generate/3d` - 3D asset generation with TRELLIS
 - `POST /protocols/generate` - ACP & UCP protocol schema generation
