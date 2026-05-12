@@ -25,6 +25,7 @@ services:
       - NVIDIA_API_KEY=${NVIDIA_API_KEY:-}
       - NVIDIA_API_BASE_URL=${NVIDIA_API_BASE_URL:-https://integrate.api.nvidia.com/v1}
       - HF_TOKEN=${HF_TOKEN}
+      - EXA_API_KEY=${EXA_API_KEY:-}
       - MILVUS_HOST=${MILVUS_HOST:-milvus-standalone}
       - MILVUS_PORT=${MILVUS_PORT:-19530}
     volumes:

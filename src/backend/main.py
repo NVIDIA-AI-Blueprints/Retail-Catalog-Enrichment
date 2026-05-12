@@ -19,6 +19,7 @@ import json
 import logging
 import time
 from contextlib import asynccontextmanager
+from typing import Any
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, UploadFile, File, Form
@@ -773,29 +774,87 @@ def _empty_measurement():
     return {"value": None, "unit": None}
 
 
+def _is_blank_value(value: Any) -> bool:
+    if value is None:
+        return True
+    if isinstance(value, str):
+        return not value.strip()
+    return False
+
+
+def _first_non_blank(*values: Any, default: Any = None) -> Any:
+    for value in values:
+        if not _is_blank_value(value):
+            return value.strip() if isinstance(value, str) else value
+    return default
+
+
+def _list_or_empty(value: Any) -> list:
+    return value if isinstance(value, list) else []
+
+
+def _short_text(value: Any, max_length: int = 65) -> str | None:
+    text = _first_non_blank(value)
+    if not isinstance(text, str):
+        return None
+    if len(text) <= max_length:
+        return text
+    trimmed = text[:max_length].rstrip()
+    if " " in trimmed:
+        trimmed = trimmed.rsplit(" ", 1)[0].rstrip()
+    return trimmed or text[:max_length].rstrip()
+
+
+def _build_protocol_context(enriched: dict, extracted: dict) -> dict:
+    """Normalize shared ACP/UCP inputs before schema-specific shaping."""
+    categories = _list_or_empty(enriched.get("categories"))
+    tags = _list_or_empty(enriched.get("tags"))
+    colors = _list_or_empty(enriched.get("colors"))
+    title = _first_non_blank(enriched.get("title"), extracted.get("title"), default="")
+    description = _first_non_blank(enriched.get("description"), extracted.get("description"), default="")
+    product_details = _list_or_empty(extracted.get("product_details"))
+    product_highlights = _list_or_empty(extracted.get("product_highlights")) or tags
+
+    return {
+        "title": title,
+        "description": description,
+        "categories": categories,
+        "tags": tags,
+        "colors": colors,
+        "brand": _first_non_blank(extracted.get("brand")),
+        "condition": _first_non_blank(extracted.get("condition"), default="new"),
+        "material": _first_non_blank(extracted.get("material")),
+        "age_group": _first_non_blank(extracted.get("age_group")),
+        "gender": _first_non_blank(extracted.get("gender")),
+        "short_title": _first_non_blank(extracted.get("short_title"), _short_text(title)),
+        "google_product_category": _first_non_blank(extracted.get("google_product_category")),
+        "product_details": product_details,
+        "product_highlights": product_highlights,
+    }
+
+
 def _build_acp_schema(enriched: dict, faqs: list, extracted: dict) -> dict:
     """Build an ACP schema instance, merging enriched data with LLM-extracted fields."""
-    details = extracted.get("product_details", [])
-    highlights = extracted.get("product_highlights", [])
+    context = _build_protocol_context(enriched, extracted)
 
     return {
         "product": {
             "id": None,
-            "title": enriched.get("title", ""),
-            "description": enriched.get("description", ""),
-            "brand": extracted.get("brand"),
+            "title": context["title"],
+            "description": context["description"],
+            "brand": context["brand"],
             "attributes": {
-                "colors": enriched.get("colors", []),
-                "material": extracted.get("material"),
+                "colors": context["colors"],
+                "material": context["material"],
                 "size": None,
                 "weight": _empty_measurement(),
-                "condition": extracted.get("condition", "new"),
-                "age_group": extracted.get("age_group"),
-                "gender": extracted.get("gender"),
+                "condition": context["condition"],
+                "age_group": context["age_group"],
+                "gender": context["gender"],
                 "pattern": None,
             },
-            "categories": enriched.get("categories", []),
-            "tags": enriched.get("tags", []),
+            "categories": context["categories"],
+            "tags": context["tags"],
             "images": {
                 "primary": None,
                 "additional": [],
@@ -814,8 +873,8 @@ def _build_acp_schema(enriched: dict, faqs: list, extracted: dict) -> dict:
                 "height": _empty_measurement(),
                 "weight": _empty_measurement(),
             },
-            "details": details if isinstance(details, list) else [],
-            "highlights": highlights if isinstance(highlights, list) else [],
+            "details": context["product_details"],
+            "highlights": context["product_highlights"],
         },
         "pricing": {
             "currency": None,
@@ -880,7 +939,7 @@ def _build_acp_schema(enriched: dict, faqs: list, extracted: dict) -> dict:
             "ads_redirect": None,
             "custom_labels": [None, None, None, None, None],
             "promotion_ids": [],
-            "short_title": extracted.get("short_title"),
+            "short_title": context["short_title"],
             "excluded_destinations": [],
             "included_destinations": [],
             "shopping_ads_excluded_countries": [],
@@ -909,24 +968,22 @@ def _build_acp_schema(enriched: dict, faqs: list, extracted: dict) -> dict:
 
 def _build_ucp_schema(enriched: dict, faqs: list, extracted: dict) -> dict:
     """Build a UCP schema instance, merging enriched data with LLM-extracted fields."""
-    colors = enriched.get("colors", [])
-    categories = enriched.get("categories", [])
-    tags = enriched.get("tags", [])
-    details = extracted.get("product_details", [])
-    highlights = extracted.get("product_highlights", tags)
+    context = _build_protocol_context(enriched, extracted)
+    colors = context["colors"]
+    categories = context["categories"]
 
     return {
         # ── Basic product data ──
         "id": None,
-        "title": None,
+        "title": context["title"],
         "structured_title": {
             "digital_source_type": "trained_algorithmic_media",
-            "content": enriched.get("title", ""),
+            "content": context["title"],
         },
-        "description": None,
+        "description": context["description"],
         "structured_description": {
             "digital_source_type": "trained_algorithmic_media",
-            "content": enriched.get("description", ""),
+            "content": context["description"],
         },
         "link": None,
         "image_link": None,
@@ -961,17 +1018,17 @@ def _build_ucp_schema(enriched: dict, faqs: list, extracted: dict) -> dict:
         "maximum_retail_price": _empty_money(),
 
         # ── Product category ──
-        "google_product_category": extracted.get("google_product_category"),
+        "google_product_category": context["google_product_category"],
         "product_type": " > ".join(categories) if categories else None,
 
         # ── Product identifiers ──
-        "brand": extracted.get("brand"),
+        "brand": context["brand"],
         "gtin": None,
         "mpn": None,
         "identifier_exists": False,
 
         # ── Detailed product description ──
-        "condition": extracted.get("condition", "new"),
+        "condition": context["condition"],
         "adult": False,
         "multipack": None,
         "is_bundle": False,
@@ -979,10 +1036,10 @@ def _build_ucp_schema(enriched: dict, faqs: list, extracted: dict) -> dict:
         "energy_efficiency_class": None,
         "min_energy_efficiency_class": None,
         "max_energy_efficiency": None,
-        "age_group": extracted.get("age_group"),
+        "age_group": context["age_group"],
         "color": " / ".join(colors) if colors else None,
-        "gender": extracted.get("gender"),
-        "material": extracted.get("material"),
+        "gender": context["gender"],
+        "material": context["material"],
         "pattern": None,
         "size": None,
         "size_type": [],
@@ -992,8 +1049,8 @@ def _build_ucp_schema(enriched: dict, faqs: list, extracted: dict) -> dict:
         "product_width": _empty_measurement(),
         "product_height": _empty_measurement(),
         "product_weight": _empty_measurement(),
-        "product_detail": details if isinstance(details, list) else [],
-        "product_highlight": highlights if isinstance(highlights, list) else [],
+        "product_detail": context["product_details"],
+        "product_highlight": context["product_highlights"],
         "faqs": [{"question": f["question"], "answer": f["answer"]} for f in faqs],
 
         # ── Shopping campaigns and other configurations ──
@@ -1005,7 +1062,7 @@ def _build_ucp_schema(enriched: dict, faqs: list, extracted: dict) -> dict:
         "custom_label_4": None,
         "promotion_id": [],
         "lifestyle_image_link": None,
-        "short_title": extracted.get("short_title"),
+        "short_title": context["short_title"],
 
         # ── Marketplaces ──
         "external_seller_id": None,

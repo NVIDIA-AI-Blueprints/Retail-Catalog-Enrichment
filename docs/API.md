@@ -746,7 +746,7 @@ curl -X POST \
 
 ### Notes
 
-- Requires `EXA_API_KEY` and the existing Nemotron LLM configuration.
+- Uses `EXA_API_KEY` and the existing Nemotron LLM configuration when Web Insights is enabled. If `EXA_API_KEY` is not configured, the endpoint returns a 200 response with `status: "disabled"`, empty insight arrays, and a user-facing configuration message.
 - Uses the Deep Agents SDK as the research harness and Exa as the retrieval tool.
 - LLM-generated dashboard scores are returned only as source-backed directional signals; thin coverage returns warnings and neutral metric fallbacks.
 - Web claims should be treated as external context. Sources are returned for auditability but are not listed in the default dashboard view.

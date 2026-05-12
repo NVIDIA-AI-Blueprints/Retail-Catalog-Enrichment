@@ -104,10 +104,50 @@ SCOPE_DEFAULTS = {
 MISSING_SCOPE_NOTE = (
     "The research agent did not return a supported identity scope; insights are treated as category-level context."
 )
+EXA_API_KEY_NOT_CONFIGURED_MESSAGE = (
+    "Web Insights are unavailable because EXA_API_KEY is not configured. "
+    "Add EXA_API_KEY to the backend environment to enable product web research."
+)
 
 
 class WebInsightsDependencyError(RuntimeError):
     """Raised when the web insights external dependencies are unavailable."""
+
+
+def build_web_insights_disabled_response(
+    *,
+    locale: str = "en-US",
+    reason: str = EXA_API_KEY_NOT_CONFIGURED_MESSAGE,
+) -> dict[str, Any]:
+    """Return a non-error Web Insights payload for optional dependency gaps."""
+    return {
+        "status": "disabled",
+        "disabled_reason": reason,
+        "summary": "",
+        "pros": [],
+        "cons": [],
+        "use_cases": [],
+        "customer_insights": [],
+        "purchase_considerations": [],
+        "search_queries": [],
+        "sources": [],
+        "warnings": [reason],
+        "locale": locale,
+        "research_scope": "insufficient_identity",
+        "identity_confidence": "none",
+        "detected_brand": None,
+        "detected_model": None,
+        "scope_note": reason,
+        "identity_evidence": [],
+        "report": {
+            "executive_summary": "",
+            "positioning_tags": [],
+            "metrics": _default_metrics(),
+            "retail_insights": [],
+            "primary_use_cases": [],
+            "customer_sentiment_summary": "",
+        },
+    }
 
 
 def build_product_web_insights(
@@ -120,11 +160,12 @@ def build_product_web_insights(
     max_results: Optional[int] = None,
 ) -> dict[str, Any]:
     """Run a Deep Agents product research pass and return normalized insights."""
-    if not (api_key := os.getenv("NGC_API_KEY")):
-        raise WebInsightsDependencyError(NGC_API_KEY_NOT_SET_ERROR)
     exa_api_key = os.getenv("EXA_API_KEY")
     if not exa_api_key:
-        raise WebInsightsDependencyError("EXA_API_KEY is not set")
+        logger.info("[Web Insights] disabled because EXA_API_KEY is not configured")
+        return build_web_insights_disabled_response(locale=locale)
+    if not (api_key := os.getenv("NGC_API_KEY")):
+        raise WebInsightsDependencyError(NGC_API_KEY_NOT_SET_ERROR)
 
     config = get_config()
     llm_config = config.get_llm_config()

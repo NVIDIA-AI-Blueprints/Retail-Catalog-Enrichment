@@ -47,6 +47,7 @@ interface Props {
   enableVariation1: boolean;
   enableVariation2: boolean;
   enable3D: boolean;
+  enableWebInsights: boolean;
   isAnalyzingFields: boolean;
   isGeneratingImage: boolean;
   manualFilename: string | null;
@@ -61,6 +62,7 @@ interface Props {
   onEnableVariation1Change: (value: boolean) => void;
   onEnableVariation2Change: (value: boolean) => void;
   onEnable3DChange: (value: boolean) => void;
+  onEnableWebInsightsChange: (value: boolean) => void;
 }
 
 const MANUAL_UPLOAD_STAGES = [
@@ -152,6 +154,7 @@ export function AdvancedOptionsCard({
   enableVariation1,
   enableVariation2,
   enable3D,
+  enableWebInsights,
   isAnalyzingFields,
   isGeneratingImage,
   manualFilename,
@@ -166,6 +169,7 @@ export function AdvancedOptionsCard({
   onEnableVariation1Change,
   onEnableVariation2Change,
   onEnable3DChange,
+  onEnableWebInsightsChange,
 }: Props) {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const disabled = isAnalyzingFields || isGeneratingImage;
@@ -471,6 +475,27 @@ export function AdvancedOptionsCard({
                     </Text>
                   </Stack>
                   <Switch checked={enable3D} onCheckedChange={onEnable3DChange} disabled={disabled} />
+                </div>
+              </Stack>
+            </div>
+
+            <div style={innerCardStyle}>
+              <Stack gap="1" style={{ marginBottom: '14px' }}>
+                <Text kind="body/semibold/md" className="text-primary">Research options</Text>
+                <Text kind="body/regular/sm" className="text-subtle">
+                  Toggle optional source-backed enrichment.
+                </Text>
+              </Stack>
+
+              <Stack gap="3">
+                <div style={toggleRowStyle}>
+                  <Stack gap="1">
+                    <Text kind="body/semibold/sm" className="text-primary">Web Insights</Text>
+                    <Text kind="body/regular/sm" className="text-subtle" style={{ fontSize: '12px' }}>
+                      Research source-backed product context with Exa.
+                    </Text>
+                  </Stack>
+                  <Switch checked={enableWebInsights} onCheckedChange={onEnableWebInsightsChange} disabled={disabled} />
                 </div>
               </Stack>
             </div>

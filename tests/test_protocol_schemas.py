@@ -103,6 +103,24 @@ class TestBuildAcpSchema:
         assert schema["product"]["brand"] is None
         assert schema["product"]["attributes"]["material"] is None
         assert schema["product"]["attributes"]["condition"] == "new"
+        assert schema["campaigns"]["short_title"] == sample_vlm_response["title"]
+
+    def test_null_extracted_values_do_not_suppress_enriched_fallbacks(self, sample_vlm_response):
+        extracted = {
+            "condition": None,
+            "short_title": "",
+            "product_details": None,
+            "product_highlights": None,
+        }
+
+        schema = _build_acp_schema(sample_vlm_response, [], extracted)
+
+        assert schema["product"]["title"] == sample_vlm_response["title"]
+        assert schema["product"]["description"] == sample_vlm_response["description"]
+        assert schema["product"]["attributes"]["condition"] == "new"
+        assert schema["product"]["details"] == []
+        assert schema["product"]["highlights"] == sample_vlm_response["tags"]
+        assert schema["campaigns"]["short_title"] == sample_vlm_response["title"]
 
     def test_nested_measurement_structure(self, sample_vlm_response):
         schema = _build_acp_schema(sample_vlm_response, [], {})
@@ -145,8 +163,10 @@ class TestBuildUcpSchema:
     def test_structured_title_and_description(self, sample_vlm_response):
         schema = _build_ucp_schema(sample_vlm_response, [], {})
 
+        assert schema["title"] == sample_vlm_response["title"]
         assert schema["structured_title"]["digital_source_type"] == "trained_algorithmic_media"
         assert schema["structured_title"]["content"] == sample_vlm_response["title"]
+        assert schema["description"] == sample_vlm_response["description"]
         assert schema["structured_description"]["digital_source_type"] == "trained_algorithmic_media"
         assert schema["structured_description"]["content"] == sample_vlm_response["description"]
 
@@ -256,6 +276,23 @@ class TestBuildUcpSchema:
     def test_empty_tags_returns_empty_list(self):
         schema = _build_ucp_schema({"title": "t", "description": "d", "colors": [], "categories": [], "tags": []}, [], {})
         assert schema["product_highlight"] == []
+
+    def test_null_extracted_values_do_not_suppress_enriched_fallbacks(self, sample_vlm_response):
+        extracted = {
+            "condition": None,
+            "short_title": "",
+            "product_details": None,
+            "product_highlights": None,
+        }
+
+        schema = _build_ucp_schema(sample_vlm_response, [], extracted)
+
+        assert schema["title"] == sample_vlm_response["title"]
+        assert schema["description"] == sample_vlm_response["description"]
+        assert schema["condition"] == "new"
+        assert schema["product_detail"] == []
+        assert schema["product_highlight"] == sample_vlm_response["tags"]
+        assert schema["short_title"] == sample_vlm_response["title"]
 
     def test_all_ucp_sections_present(self, sample_vlm_response):
         """Verify all 9 UCP sections have at least one representative field."""

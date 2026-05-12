@@ -305,7 +305,9 @@ class TestExtractRichProductJson:
 
         assert result == rich_response
         call_args = mock_client.chat.completions.create.call_args
-        prompt = call_args.kwargs["messages"][0]["content"][1]["text"]
+        messages = call_args.kwargs["messages"]
+        assert messages[0] == {"role": "system", "content": "/no_think"}
+        prompt = messages[1]["content"][1]["text"]
         assert "JSON object only" in prompt
         assert "GENERIC PRODUCT SCHEMA" in prompt
         assert '"product_identity"' in prompt

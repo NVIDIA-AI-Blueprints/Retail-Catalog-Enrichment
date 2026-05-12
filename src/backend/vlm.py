@@ -56,7 +56,8 @@ PRODUCT_CATEGORIES = [
     "office",
     "skincare",
     "bags",
-    "outdoor"
+    "outdoor",
+    "supplements"
 ]
 FALLBACK_CATEGORY = "uncategorized"
 CATEGORY_OUTPUT_VALUES = PRODUCT_CATEGORIES + [FALLBACK_CATEGORY]
@@ -1308,10 +1309,13 @@ def extract_rich_product_json(image_bytes: bytes, content_type: str, locale: str
 
     completion = client.chat.completions.create(
         model=vlm_config['model'],
-        messages=[{"role": "user", "content": [
-            {"type": "image_url", "image_url": {"url": f"data:{content_type};base64,{base64.b64encode(image_bytes).decode()}"}},
-            {"type": "text", "text": prompt_text}
-        ]}],
+        messages=[
+            {"role": "system", "content": "/no_think"},
+            {"role": "user", "content": [
+                {"type": "image_url", "image_url": {"url": f"data:{content_type};base64,{base64.b64encode(image_bytes).decode()}"}},
+                {"type": "text", "text": prompt_text}
+            ]}
+        ],
         temperature=0.1, top_p=0.9, max_tokens=8192, stream=True
     )
 

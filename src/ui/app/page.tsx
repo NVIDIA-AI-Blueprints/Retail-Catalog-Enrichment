@@ -12,6 +12,30 @@ import { ProductFields, AugmentedData, PolicyDocument, PolicyUploadResult, Manua
 import { analyzeImage, generateFaqs, generateRichProductJson, generateProtocolSchemas, generateWebInsights, clearPolicies, generateImageVariation, generate3DModel, listPolicies, prepareProductData, uploadPolicies, extractManualKnowledge } from '@/lib/api';
 import type { ProtocolSchemas } from '@/lib/api';
 
+const WEB_INSIGHTS_DISABLED_BY_USER = 'Web Insights are turned off in Advanced Options.';
+
+function createDisabledWebInsights(locale: string, message: string): NonNullable<AugmentedData['webInsights']> {
+  return {
+    status: 'disabled',
+    disabled_reason: message,
+    summary: '',
+    pros: [],
+    cons: [],
+    use_cases: [],
+    customer_insights: [],
+    purchase_considerations: [],
+    search_queries: [],
+    sources: [],
+    warnings: [message],
+    locale,
+    research_scope: 'insufficient_identity',
+    identity_confidence: 'none',
+    detected_brand: null,
+    detected_model: null,
+    scope_note: message,
+    identity_evidence: [],
+  };
+}
 
 function Home() {
   const [uploadedImage, setUploadedImage] = useState<string | null>(null);
@@ -47,6 +71,7 @@ function Home() {
   const [enableVariation1, setEnableVariation1] = useState<boolean>(true);
   const [enableVariation2, setEnableVariation2] = useState<boolean>(true);
   const [enable3D, setEnable3D] = useState<boolean>(true);
+  const [enableWebInsights, setEnableWebInsights] = useState<boolean>(true);
   const [manualKnowledge, setManualKnowledge] = useState<ManualKnowledge | null>(null);
   const [manualFilename, setManualFilename] = useState<string | null>(null);
   const [manualChunkCount, setManualChunkCount] = useState<number | null>(null);
@@ -129,6 +154,7 @@ function Home() {
     setEnableVariation1(true);
     setEnableVariation2(true);
     setEnable3D(true);
+    setEnableWebInsights(true);
     setManualKnowledge(null);
     setManualFilename(null);
     setManualChunkCount(null);
@@ -303,6 +329,14 @@ function Home() {
       setIsLoadingFaqs(true);
       setIsLoadingProtocols(true);
       const runWebInsights = () => {
+        if (!enableWebInsights) {
+          setAugmentedData(prev => prev ? {
+            ...prev,
+            webInsights: createDisabledWebInsights(locale, WEB_INSIGHTS_DISABLED_BY_USER),
+          } : prev);
+          return Promise.resolve();
+        }
+
         setIsLoadingWebInsights(true);
         return generateWebInsights({
           title: enrichedData.title,
@@ -314,26 +348,10 @@ function Home() {
           setAugmentedData(prev => prev ? { ...prev, webInsights } : prev);
         }).catch((err) => {
           console.error('Error generating web insights:', err);
+          const message = err instanceof Error ? err.message : 'Failed to generate web insights';
           setAugmentedData(prev => prev ? {
             ...prev,
-            webInsights: {
-              summary: '',
-              pros: [],
-              cons: [],
-              use_cases: [],
-              customer_insights: [],
-              purchase_considerations: [],
-              search_queries: [],
-              sources: [],
-              warnings: [err instanceof Error ? err.message : 'Failed to generate web insights'],
-              locale,
-              research_scope: 'insufficient_identity',
-              identity_confidence: 'none',
-              detected_brand: null,
-              detected_model: null,
-              scope_note: 'Web insights could not be generated for this product.',
-              identity_evidence: [],
-            }
+            webInsights: createDisabledWebInsights(locale, message),
           } : prev);
         }).finally(() => {
           setIsLoadingWebInsights(false);
@@ -578,6 +596,7 @@ function Home() {
                 enableVariation1={enableVariation1}
                 enableVariation2={enableVariation2}
                 enable3D={enable3D}
+                enableWebInsights={enableWebInsights}
                 isAnalyzingFields={isAnalyzingFields}
                 isGeneratingImage={isGeneratingImage}
                 manualFilename={manualFilename}
@@ -594,6 +613,7 @@ function Home() {
                 onEnableVariation1Change={setEnableVariation1}
                 onEnableVariation2Change={setEnableVariation2}
                 onEnable3DChange={setEnable3D}
+                onEnableWebInsightsChange={setEnableWebInsights}
               />
             </div>
 

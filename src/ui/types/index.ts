@@ -78,6 +78,8 @@ export type WebInsightsResearchScope = 'product_specific' | 'brand_level' | 'cat
 
 export type WebInsightsIdentityConfidence = 'high' | 'medium' | 'low' | 'none';
 
+export type WebInsightsStatus = 'ready' | 'disabled';
+
 export interface WebInsightsReport {
   executive_summary: string;
   positioning_tags: string[];
@@ -93,6 +95,8 @@ export interface WebInsightsReport {
 }
 
 export interface WebInsights {
+  status?: WebInsightsStatus;
+  disabled_reason?: string | null;
   summary: string;
   pros: string[];
   cons: string[];

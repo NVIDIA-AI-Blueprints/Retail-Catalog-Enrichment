@@ -174,12 +174,14 @@ The Exa tool should prefer concise highlights over full page text for latency an
 
 ## Configuration
 
-Required environment variables:
+Required environment variables for the full Web Insights flow:
 
 ```bash
 NGC_API_KEY=...
 EXA_API_KEY=...
 ```
+
+If `EXA_API_KEY` is not configured, `/research/product-insights` returns a non-error disabled payload. The UI should show a configuration message in the Web Insights tab and the rest of the enrichment flow should continue.
 
 The Nemotron endpoint and model should come from the existing `llm` section in `shared/config/config.yaml` unless a later implementation needs a separate `research_llm` section.
 
@@ -207,6 +209,7 @@ The **Web Insights** tab should include:
 
 - loading state: `Researching product insights...`
 - empty state when no research has run
+- unavailable state when `EXA_API_KEY` is not configured
 - a compact scope note for brand-level, category-level, or insufficient-identity research
 - compact metric blocks for customer sentiment, build quality, price segment, and retail confidence
 - executive summary with positioning tags

@@ -353,6 +353,7 @@ function WebInsightsTabContent({
 
   const report = insights.report || fallbackReport(insights);
   const researchScope = insights.research_scope || 'product_specific';
+  const isDisabled = insights.status === 'disabled';
   const showScopeBanner = researchScope !== 'product_specific';
   const hasReportContent = Boolean(
     report.executive_summary ||
@@ -360,7 +361,8 @@ function WebInsightsTabContent({
     report.retail_insights.length > 0 ||
     report.primary_use_cases.length > 0
   );
-  const emptyStateDetail = insights.warnings[0] || insights.scope_note || insights.summary;
+  const emptyStateTitle = isDisabled ? 'Web Insights Unavailable' : 'No Source-Backed Report Yet';
+  const emptyStateDetail = insights.disabled_reason || insights.warnings[0] || insights.scope_note || insights.summary;
   const panelStyle = {
     border: '1px solid rgba(255,255,255,0.08)',
     borderRadius: '8px',
@@ -409,7 +411,7 @@ function WebInsightsTabContent({
           }}
         >
           <Text kind="title/sm" className="text-primary" style={{ display: 'block', marginBottom: '12px', lineHeight: 1.2 }}>
-            No Source-Backed Report Yet
+            {emptyStateTitle}
           </Text>
           <Text kind="body/regular/md" style={{ display: 'block', color: '#AAB3C2', fontSize: '15px', lineHeight: 1.6 }}>
             {emptyStateDetail || 'Web insights are unavailable for this product.'}

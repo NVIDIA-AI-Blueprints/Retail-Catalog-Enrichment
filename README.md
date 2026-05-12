@@ -98,7 +98,7 @@ For self-hosting the NIM microservices locally, the following GPU requirements a
 - [`uv`](https://docs.astral.sh/uv/) package manager
 - NVIDIA API key for VLM/LLM services
 - HuggingFace token for FLUX image generation
-- Exa API key for product web insights
+- Optional Exa API key for product web insights
 
 ### Environment Setup
 
@@ -111,7 +111,7 @@ cp .env.example .env
 **Getting API Keys:**
 - NVIDIA API Key: [Get one here](https://build.nvidia.com/)
 - HuggingFace Token: [Get one here](https://huggingface.co/settings/tokens)
-- Exa API Key: [Get one here](https://dashboard.exa.ai/)
+- Exa API Key: [Get one here](https://dashboard.exa.ai/) if you want Web Insights enabled
 
 The FLUX.1-Kontext-Dev NIM uses a model that is for non-commercial use. Contact sales@blackforestlabs.ai for commercial terms.
 

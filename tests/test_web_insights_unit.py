@@ -17,12 +17,12 @@ import json
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
-import pytest
 from fastapi.testclient import TestClient
 
 from backend.config import Config
 from backend.main import app
 from backend.web_insights import (
+    EXA_API_KEY_NOT_CONFIGURED_MESSAGE,
     WebInsightsDependencyError,
     _normalize_exa_result,
     _parse_agent_json,
@@ -643,12 +643,17 @@ def test_normalize_output_missing_identity_scope_defaults_to_category_level():
     assert output["report"]["metrics"]["retail_confidence"]["score"] is None
 
 
-def test_build_product_web_insights_requires_exa_api_key(monkeypatch):
-    monkeypatch.setenv("NGC_API_KEY", "test-ngc")
+def test_build_product_web_insights_returns_disabled_when_exa_api_key_missing(monkeypatch):
+    monkeypatch.delenv("NGC_API_KEY", raising=False)
     monkeypatch.delenv("EXA_API_KEY", raising=False)
 
-    with pytest.raises(WebInsightsDependencyError, match="EXA_API_KEY is not set"):
-        build_product_web_insights(title="Test product")
+    output = build_product_web_insights(title="Test product", locale="en-US")
+
+    assert output["status"] == "disabled"
+    assert output["disabled_reason"] == EXA_API_KEY_NOT_CONFIGURED_MESSAGE
+    assert output["warnings"] == [EXA_API_KEY_NOT_CONFIGURED_MESSAGE]
+    assert output["sources"] == []
+    assert output["report"]["retail_insights"] == []
 
 
 @patch("backend.web_insights.create_deep_agent")
@@ -922,6 +927,21 @@ def test_product_insights_endpoint_success():
     assert response.status_code == 200
     assert response.json() == expected
     mock_build.assert_called_once()
+
+
+def test_product_insights_endpoint_returns_disabled_when_exa_api_key_missing(monkeypatch):
+    monkeypatch.delenv("NGC_API_KEY", raising=False)
+    monkeypatch.delenv("EXA_API_KEY", raising=False)
+
+    client = TestClient(app)
+    response = client.post("/research/product-insights", data={"title": "Product", "locale": "en-US"})
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "disabled"
+    assert data["disabled_reason"] == EXA_API_KEY_NOT_CONFIGURED_MESSAGE
+    assert data["warnings"] == [EXA_API_KEY_NOT_CONFIGURED_MESSAGE]
+    assert data["sources"] == []
 
 
 def test_product_insights_endpoint_validation_errors():
