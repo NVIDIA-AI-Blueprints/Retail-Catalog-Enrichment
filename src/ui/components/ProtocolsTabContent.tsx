@@ -49,6 +49,84 @@ function highlightJson(json: string): ReactNode[] {
   return nodes;
 }
 
+interface JsonObjectViewerProps {
+  value: unknown;
+  maxHeight?: string;
+}
+
+export function JsonObjectViewer({ value, maxHeight = '400px' }: JsonObjectViewerProps) {
+  const [copied, setCopied] = useState(false);
+  const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (copyTimeoutRef.current) clearTimeout(copyTimeoutRef.current);
+    };
+  }, []);
+
+  const jsonString = useMemo(() => JSON.stringify(value ?? {}, null, 2), [value]);
+  const highlightedJson = useMemo(() => highlightJson(jsonString), [jsonString]);
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(jsonString);
+      setCopied(true);
+      if (copyTimeoutRef.current) clearTimeout(copyTimeoutRef.current);
+      copyTimeoutRef.current = setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // Clipboard API requires secure context
+    }
+  };
+
+  return (
+    <div
+      style={{
+        position: 'relative',
+        backgroundColor: 'rgba(0, 0, 0, 0.3)',
+        borderRadius: '12px',
+        padding: '16px',
+        maxHeight,
+        overflowY: 'auto',
+      }}
+      className="border border-base"
+    >
+      <button
+        onClick={handleCopy}
+        style={{
+          position: 'absolute',
+          top: '10px',
+          right: '10px',
+          background: 'rgba(255, 255, 255, 0.06)',
+          border: '1px solid rgba(255, 255, 255, 0.12)',
+          color: copied ? '#76B900' : 'rgba(255, 255, 255, 0.5)',
+          padding: '4px 10px',
+          borderRadius: '6px',
+          cursor: 'pointer',
+          fontSize: '12px',
+          fontFamily: 'inherit',
+          transition: 'color 0.15s, border-color 0.15s',
+          borderColor: copied ? 'rgba(118, 185, 0, 0.4)' : 'rgba(255, 255, 255, 0.12)',
+        }}
+      >
+        {copied ? 'Copied!' : 'Copy'}
+      </button>
+      <pre
+        className="text-primary"
+        style={{
+          fontFamily: 'monospace',
+          fontSize: '13px',
+          lineHeight: 1.6,
+          margin: 0,
+          whiteSpace: 'pre-wrap',
+          wordBreak: 'break-word',
+        }}
+      >
+        {highlightedJson}
+      </pre>
+    </div>
+  );
+}
+
 interface ProtocolsTabContentProps {
   protocolSchemas?: ProtocolSchemas | null;
   isLoading?: boolean;

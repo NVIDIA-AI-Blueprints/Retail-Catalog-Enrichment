@@ -35,14 +35,18 @@ Health check endpoint for monitoring service status.
 
 The API provides a modular approach for optimal performance and flexibility:
 
-**1) Fast VLM Analysis (POST `/vlm/analyze`)** - Get product fields quickly
-**2) FAQ Generation (POST `/vlm/faqs`)** - Generate product FAQs from enriched data
-**2.5) Manual Knowledge Extraction (POST `/vlm/manual/extract`)** - Extract knowledge from a product manual PDF to enrich FAQs
-**3) Image Generation (POST `/generate/variation`)** - Generate 2D variations on demand  
-**4) 3D Asset Generation (POST `/generate/3d`)** - Generate 3D models on demand
+- **1) Fast VLM Analysis (POST `/vlm/analyze`)** - Get product fields quickly
+- **2) Rich VLM Product JSON (POST `/vlm/rich-product`)** - Get a detailed image-grounded JSON object directly from Nemotron VLM
+- **3) FAQ Generation (POST `/vlm/faqs`)** - Generate product FAQs from enriched data
+- **3.5) Manual Knowledge Extraction (POST `/vlm/manual/extract`)** - Extract knowledge from a product manual PDF to enrich FAQs
+- **4) Product Web Insights (POST `/research/product-insights`)** - Research public web information about the enriched product
+- **5) Image Generation (POST `/generate/variation`)** - Generate 2D variations on demand
+- **6) 3D Asset Generation (POST `/generate/3d`)** - Generate 3D models on demand
+- **7) Protocol Schema Generation (POST `/protocols/generate`)** - Generate ACP and UCP schemas
 
 **Benefits of this approach:**
 - Display product information immediately to users
+- Load rich VLM JSON, FAQs, web insights, and protocol schemas independently
 - Generate images and 3D assets in the background or on-demand
 - Cache VLM results and generate multiple variations
 - Better error handling for each step
@@ -275,6 +279,106 @@ curl -X POST \
 
 ---
 
+## 2.5️⃣ Rich VLM Product JSON: `/vlm/rich-product`
+
+Ask Nemotron VLM to describe the uploaded product image as a rich JSON object. This endpoint is image-only: it does not merge user-entered product data, apply brand instructions, run policy checks, or modify the enriched catalog fields returned by `/vlm/analyze`.
+
+The response schema is intentionally flexible because the VLM may return different useful attributes depending on what is visible in the product image. The UI displays this object in the **Raw data** tab next to **Details**.
+
+**Endpoint**: `POST /vlm/rich-product`  
+**Content-Type**: `multipart/form-data`
+
+### Request Parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `image` | file | Yes | Product image file (JPEG, PNG) |
+| `locale` | string | No | Regional locale code (default: `en-US`) |
+
+### Response Schema
+
+```json
+{
+  "visible_product": true,
+  "product_identity": {
+    "product_type": "string|null",
+    "brand_visible": "string|null",
+    "model_or_variant_visible": "string|null",
+    "visible_text": ["string"],
+    "logo_or_markings": ["string"]
+  },
+  "visual_summary": {
+    "short_description": "string|null",
+    "primary_category_guess": "string|null",
+    "confidence_notes": ["string"]
+  },
+  "appearance": {
+    "colors": ["string"],
+    "shape": "string|null",
+    "pattern": "string|null",
+    "finish_or_texture": ["string"],
+    "materials_visible": ["string"],
+    "style_or_design": ["string"]
+  },
+  "physical_structure": {
+    "visible_components": ["string"],
+    "closures_or_openings": ["string"],
+    "controls_or_interfaces": ["string"],
+    "ports_or_connectors": ["string"],
+    "attachments_or_accessories": ["string"]
+  },
+  "packaging_and_labels": {
+    "packaging_visible": "string|null",
+    "label_claims_visible": ["string"],
+    "warnings_or_symbols_visible": ["string"]
+  },
+  "condition_and_context": {
+    "apparent_condition": "string|null",
+    "use_context_visible": "string|null",
+    "background_or_staging": "string|null"
+  },
+  "commerce_relevant_attributes": {
+    "category_candidates": ["string"],
+    "search_keywords_from_image": ["string"],
+    "notable_visual_features": ["string"]
+  },
+  "uncertainties": ["string"]
+}
+```
+
+The endpoint asks the VLM to use this generic schema across product categories. Non-applicable or non-visible fields should be `null` or empty arrays.
+
+If the VLM returns content that cannot be parsed as a JSON object, the endpoint still returns `200` with the raw response preserved:
+
+```json
+{
+  "parse_status": "unstructured",
+  "warning": "VLM returned content that could not be parsed as a JSON object; raw response preserved.",
+  "raw_response": "string"
+}
+```
+
+If the VLM starts a JSON object but truncates before closing it, the backend attempts a best-effort recovery and removes duplicate primitive array values:
+
+```json
+{
+  "parse_status": "recovered_from_partial_json",
+  "warning": "VLM returned incomplete JSON; the backend closed the object and removed duplicate array values.",
+  "recovered_data": {}
+}
+```
+
+### Usage Example
+
+```bash
+curl -X POST \
+  -F "image=@bag.jpg;type=image/jpeg" \
+  -F "locale=en-US" \
+  http://localhost:8000/vlm/rich-product
+```
+
+---
+
 ## 3️⃣ FAQ Generation: `/vlm/faqs`
 
 Generate frequently asked questions and answers for a product based on its enriched catalog data. Designed to be called after `/vlm/analyze` completes, using the enriched result as input.
@@ -439,7 +543,218 @@ done
 
 ---
 
-## 4️⃣ Image Generation: `/generate/variation`
+## 4️⃣ Product Web Insights: `/research/product-insights`
+
+Research public web information about a product using a Deep Agents research agent with Exa search. Exa retrieves search results, highlights, and text excerpts only; Nemotron/Deep Agent performs the summarization and dashboard synthesis. Designed to be called after `/vlm/analyze` completes, using the enriched title as the primary product and brand disambiguation input.
+
+The endpoint is informational. It returns source-backed insights for display in the UI and does not automatically modify the enriched title, description, FAQs, or protocol schemas.
+
+**Endpoint**: `POST /research/product-insights`
+**Content-Type**: `multipart/form-data`
+
+### Request Parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `title` | string | Yes | Enriched product title from VLM analysis. Used as the primary product and brand search signal. |
+| `description` | string | No | Enriched product description. Used only for disambiguation. |
+| `categories` | JSON string | No | Categories array (default: `[]`) |
+| `tags` | JSON string | No | Tags array (default: `[]`) |
+| `locale` | string | No | Regional locale code (default: `en-US`) |
+| `max_results` | integer | No | Maximum Exa results per query (default: 8, max: 20) |
+
+### Response Schema
+
+```json
+{
+  "summary": "string",
+  "pros": ["string"],
+  "cons": ["string"],
+  "use_cases": ["string"],
+  "customer_insights": ["string"],
+  "purchase_considerations": ["string"],
+  "search_queries": ["string"],
+  "sources": [
+    {
+      "title": "string",
+      "url": "string",
+      "published_date": "string|null",
+      "snippet": "string"
+    }
+  ],
+  "warnings": ["string"],
+  "locale": "en-US",
+  "research_scope": "product_specific|brand_level|category_level|insufficient_identity",
+  "identity_confidence": "high|medium|low|none",
+  "detected_brand": "string|null",
+  "detected_model": "string|null",
+  "scope_note": "string",
+  "identity_evidence": ["string"],
+  "report": {
+    "executive_summary": "string",
+    "positioning_tags": ["string"],
+    "metrics": {
+      "customer_sentiment": {
+        "label": "Positive",
+        "score": 82,
+        "scale": "percent",
+        "rationale": "string"
+      },
+      "build_quality": {
+        "label": "Premium",
+        "score": 8.4,
+        "scale": "label",
+        "rationale": "string"
+      },
+      "price_segment": {
+        "label": "High-end",
+        "score": null,
+        "scale": "label",
+        "rationale": "string"
+      },
+      "retail_confidence": {
+        "label": "Strong",
+        "score": 8.9,
+        "scale": "rating_10",
+        "rationale": "string"
+      }
+    },
+    "retail_insights": [
+      {
+        "type": "positive",
+        "title": "string",
+        "detail": "string"
+      }
+    ],
+    "primary_use_cases": [
+      {
+        "title": "string",
+        "detail": "string"
+      }
+    ],
+    "customer_sentiment_summary": "string"
+  }
+}
+```
+
+The flat fields remain for compatibility. The UI prefers `report` when present and falls back to the flat fields for older or mocked responses. The identity fields describe whether research is product-specific, brand-level, category-level, or too ambiguous. Brand/model detection is source-evidence-based, not a deterministic title-token heuristic. For titles where sources do not reliably confirm a brand or model, the endpoint returns category-level context, clears brand/model, and suppresses product-specific numeric sentiment or confidence scores.
+
+### Usage Example
+
+```bash
+curl -X POST \
+  -F "title=JBL Flip 6 Portable Bluetooth Speaker" \
+  -F "description=A compact waterproof Bluetooth speaker with bold sound." \
+  -F 'categories=["electronics"]' \
+  -F 'tags=["bluetooth","speaker","portable","waterproof"]' \
+  -F "locale=en-US" \
+  http://localhost:8000/research/product-insights
+```
+
+### Example Response
+
+```json
+{
+  "summary": "Public sources commonly position this product as a rugged portable speaker for travel, poolside use, and everyday listening.",
+  "pros": [
+    "Portable size and durable design are recurring positive themes.",
+    "Water resistance is frequently highlighted for outdoor use."
+  ],
+  "cons": [
+    "Some sources mention limited stereo separation from the compact form factor."
+  ],
+  "use_cases": [
+    "Poolside listening",
+    "Travel and camping",
+    "Small room audio"
+  ],
+  "customer_insights": [
+    "Buyers often compare battery life, durability, and bass response against similar portable speakers."
+  ],
+  "purchase_considerations": [
+    "Clarify waterproof rating, battery runtime, and compatibility details in downstream catalog copy."
+  ],
+  "search_queries": [
+    "JBL Flip 6 Portable Bluetooth Speaker review",
+    "JBL Flip 6 Portable Bluetooth Speaker pros cons",
+    "JBL Flip 6 Portable Bluetooth Speaker how people use"
+  ],
+  "sources": [
+    {
+      "title": "JBL Flip 6 product page",
+      "url": "https://example.com/product",
+      "published_date": null,
+      "snippet": "Short source excerpt or highlight."
+    }
+  ],
+  "warnings": [],
+  "locale": "en-US",
+  "research_scope": "product_specific",
+  "identity_confidence": "high",
+  "detected_brand": "JBL",
+  "detected_model": "Flip 6",
+  "scope_note": "Sources appear to match a specific product identity.",
+  "identity_evidence": [
+    "Official and retailer pages match the JBL Flip 6 title and product type."
+  ],
+  "report": {
+    "executive_summary": "Public sources position the product as a rugged portable speaker for travel, poolside use, and everyday listening.",
+    "positioning_tags": ["Rugged portable audio", "Outdoor use", "Water resistant"],
+    "metrics": {
+      "customer_sentiment": {
+        "label": "Positive",
+        "score": 84,
+        "scale": "percent",
+        "rationale": "Available review snippets skew toward durability and portability."
+      },
+      "build_quality": {
+        "label": "Durable",
+        "score": 8.2,
+        "scale": "label",
+        "rationale": "Sources repeatedly mention rugged construction and water resistance."
+      },
+      "price_segment": {
+        "label": "Mid-market",
+        "score": null,
+        "scale": "label",
+        "rationale": "Retail listings place it among mainstream portable speakers."
+      },
+      "retail_confidence": {
+        "label": "Strong",
+        "score": 8.1,
+        "scale": "rating_10",
+        "rationale": "Source coverage is relevant and consistent."
+      }
+    },
+    "retail_insights": [
+      {
+        "type": "positive",
+        "title": "Durable positioning",
+        "detail": "Public sources emphasize portability and rugged everyday use."
+      }
+    ],
+    "primary_use_cases": [
+      {
+        "title": "Outdoor listening",
+        "detail": "Sources describe poolside, travel, and camping use cases."
+      }
+    ],
+    "customer_sentiment_summary": "Buyers tend to compare durability, battery life, and sound quality against similar portable speakers."
+  }
+}
+```
+
+### Notes
+
+- Uses `EXA_API_KEY` and the existing Nemotron LLM configuration when Web Insights is enabled. If `EXA_API_KEY` is not configured, the endpoint returns a 200 response with `status: "disabled"`, empty insight arrays, and a user-facing configuration message.
+- Uses the Deep Agents SDK as the research harness and Exa as the retrieval tool.
+- LLM-generated dashboard scores are returned only as source-backed directional signals; thin coverage returns warnings and neutral metric fallbacks.
+- Web claims should be treated as external context. Sources are returned for auditability but are not listed in the default dashboard view.
+- Failure to generate web insights should not block FAQs, protocol schemas, image generation, or 3D generation.
+
+---
+
+## 5️⃣ Image Generation: `/generate/variation`
 
 Generate culturally-appropriate product variations using FLUX models based on VLM analysis results.
 
@@ -510,7 +825,7 @@ curl -X POST \
 
 ---
 
-## 5️⃣ 3D Asset Generation: `/generate/3d`
+## 6️⃣ 3D Asset Generation: `/generate/3d`
 
 Generate interactive 3D GLB models from 2D product images using Microsoft's TRELLIS model.
 
@@ -583,7 +898,7 @@ curl -X POST \
 
 ---
 
-## 6️⃣ Protocol Schema Generation: `/protocols/generate`
+## 7️⃣ Protocol Schema Generation: `/protocols/generate`
 
 Generate ACP (Agentic Commerce Protocol) and UCP (Unified Commerce Protocol) schema instances from enriched product data. Uses an LLM call to extract structured attributes (brand, material, product details, etc.) from the enriched title and description, then merges them into both schema templates.
 

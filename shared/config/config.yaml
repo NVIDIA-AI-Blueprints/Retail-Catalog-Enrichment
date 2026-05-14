@@ -36,3 +36,10 @@ product_manual:
   chunk_overlap_words: 50
   top_k_per_query: 3
   min_relevance_score: 0.25
+
+web_insights:
+  max_results: 8
+  max_sources: 8
+  min_sources: 2
+  search_type: "auto"
+  highlights_max_characters: 4000

@@ -33,6 +33,7 @@ from backend.vlm import (
     _call_nemotron_repair_visual_identity_regression,
     _has_visual_identity_regression,
     extract_vlm_observation,
+    extract_rich_product_json,
     build_enriched_vlm_result,
     run_vlm_analysis
 )
@@ -263,6 +264,146 @@ class TestCallNemotronStructureVlm:
 
         with pytest.raises(RuntimeError, match="NGC_API_KEY is not set"):
             _call_nemotron_structure_vlm("Some text")
+
+
+class TestExtractRichProductJson:
+    """Tests for direct rich JSON extraction from the VLM."""
+
+    @patch('backend.vlm.OpenAI')
+    @patch('backend.vlm.get_config')
+    def test_extract_rich_product_json_success(self, mock_get_config, mock_openai_class, sample_image_bytes, mock_env_vars):
+        mock_config = Mock()
+        mock_config.get_vlm_config.return_value = {'url': 'http://test:8000/v1', 'model': 'test-vlm-model'}
+        mock_get_config.return_value = mock_config
+
+        mock_client = Mock()
+        mock_openai_class.return_value = mock_client
+
+        rich_response = {
+            "visible_product": True,
+            "product_identity": {
+                "product_type": "handbag",
+                "brand_visible": None,
+                "model_or_variant_visible": None,
+                "visible_text": [],
+                "logo_or_markings": [],
+            },
+            "appearance": {
+                "colors": ["black", "gold"],
+                "shape": "structured rectangular silhouette",
+            },
+        }
+        mock_chunk = Mock()
+        mock_delta = Mock()
+        mock_delta.content = f"```json\n{json.dumps(rich_response)}\n```"
+        mock_choice = Mock()
+        mock_choice.delta = mock_delta
+        mock_chunk.choices = [mock_choice]
+        mock_client.chat.completions.create.return_value = [mock_chunk]
+
+        result = extract_rich_product_json(sample_image_bytes, "image/png", "en-US")
+
+        assert result == rich_response
+        call_args = mock_client.chat.completions.create.call_args
+        messages = call_args.kwargs["messages"]
+        assert messages[0] == {"role": "system", "content": "/no_think"}
+        prompt = messages[1]["content"][1]["text"]
+        assert "JSON object only" in prompt
+        assert "GENERIC PRODUCT SCHEMA" in prompt
+        assert '"product_identity"' in prompt
+        assert '"physical_structure"' in prompt
+        assert "do not create category-specific top-level sections" in prompt
+        assert "never copy the brand into this field" in prompt
+        assert "completeness is preferred" in prompt
+        assert "each array should contain unique useful entries only" in prompt
+        assert call_args.kwargs["max_tokens"] == 8192
+        assert "ANTI-HALLUCINATION RULES" in prompt
+        assert "Only describe facts visible in the image" in prompt
+        assert "dimensions, weight, capacity, warranty, certifications" in prompt
+
+    @patch('backend.vlm.OpenAI')
+    @patch('backend.vlm.get_config')
+    def test_extract_rich_product_json_dedupes_repeated_array_values(self, mock_get_config, mock_openai_class, sample_image_bytes, mock_env_vars):
+        mock_config = Mock()
+        mock_config.get_vlm_config.return_value = {'url': 'http://test:8000/v1', 'model': 'test-vlm-model'}
+        mock_get_config.return_value = mock_config
+
+        mock_client = Mock()
+        mock_openai_class.return_value = mock_client
+
+        repeated_response = {
+            "attributes": {
+                "features": ["removable side shelf", "removable side shelf", "removable main shelf"],
+            },
+        }
+        mock_chunk = Mock()
+        mock_delta = Mock()
+        mock_delta.content = json.dumps(repeated_response)
+        mock_choice = Mock()
+        mock_choice.delta = mock_delta
+        mock_chunk.choices = [mock_choice]
+        mock_client.chat.completions.create.return_value = [mock_chunk]
+
+        result = extract_rich_product_json(sample_image_bytes, "image/png", "en-US")
+
+        assert result["attributes"]["features"] == ["removable side shelf", "removable main shelf"]
+
+    @patch('backend.vlm.OpenAI')
+    @patch('backend.vlm.get_config')
+    def test_extract_rich_product_json_recovers_incomplete_repetitive_json(self, mock_get_config, mock_openai_class, sample_image_bytes, mock_env_vars):
+        mock_config = Mock()
+        mock_config.get_vlm_config.return_value = {'url': 'http://test:8000/v1', 'model': 'test-vlm-model'}
+        mock_get_config.return_value = mock_config
+
+        mock_client = Mock()
+        mock_openai_class.return_value = mock_client
+
+        partial_response = (
+            '{"visible_product": true, "attributes": {'
+            '"features": ["removable side shelf", "removable side shelf", "removable main shelf"'
+        )
+        mock_chunk = Mock()
+        mock_delta = Mock()
+        mock_delta.content = partial_response
+        mock_choice = Mock()
+        mock_choice.delta = mock_delta
+        mock_chunk.choices = [mock_choice]
+        mock_client.chat.completions.create.return_value = [mock_chunk]
+
+        result = extract_rich_product_json(sample_image_bytes, "image/png", "en-US")
+
+        assert result["parse_status"] == "recovered_from_partial_json"
+        assert result["recovered_data"]["attributes"]["features"] == ["removable side shelf", "removable main shelf"]
+
+    @patch('backend.vlm.OpenAI')
+    @patch('backend.vlm.get_config')
+    def test_extract_rich_product_json_preserves_non_json_response(self, mock_get_config, mock_openai_class, sample_image_bytes, mock_env_vars):
+        mock_config = Mock()
+        mock_config.get_vlm_config.return_value = {'url': 'http://test:8000/v1', 'model': 'test-vlm-model'}
+        mock_get_config.return_value = mock_config
+
+        mock_client = Mock()
+        mock_openai_class.return_value = mock_client
+
+        raw_response = "This is a rich description, but it is not JSON."
+        mock_chunk = Mock()
+        mock_delta = Mock()
+        mock_delta.content = raw_response
+        mock_choice = Mock()
+        mock_choice.delta = mock_delta
+        mock_chunk.choices = [mock_choice]
+        mock_client.chat.completions.create.return_value = [mock_chunk]
+
+        result = extract_rich_product_json(sample_image_bytes, "image/png", "en-US")
+
+        assert result["parse_status"] == "unstructured"
+        assert result["raw_response"] == raw_response
+
+    def test_extract_rich_product_json_raises_without_api_key(self, sample_image_bytes, monkeypatch):
+        monkeypatch.delenv("NGC_API_KEY", raising=False)
+
+        with pytest.raises(RuntimeError, match="NGC_API_KEY is not set"):
+            extract_rich_product_json(sample_image_bytes, "image/png", "en-US")
 
 
 class TestCallNemotronFilterUserData:

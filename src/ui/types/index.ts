@@ -47,6 +47,75 @@ export interface FAQ {
   answer: string;
 }
 
+export type RichProductJson = Record<string, unknown>;
+
+export interface WebInsightSource {
+  title: string;
+  url: string;
+  published_date: string | null;
+  snippet: string;
+}
+
+export interface WebInsightMetric {
+  label: string;
+  score: number | null;
+  scale: 'percent' | 'rating_10' | 'label';
+  rationale: string;
+}
+
+export interface RetailInsight {
+  type: 'positive' | 'negative';
+  title: string;
+  detail: string;
+}
+
+export interface InsightUseCase {
+  title: string;
+  detail: string;
+}
+
+export type WebInsightsResearchScope = 'product_specific' | 'brand_level' | 'category_level' | 'insufficient_identity';
+
+export type WebInsightsIdentityConfidence = 'high' | 'medium' | 'low' | 'none';
+
+export type WebInsightsStatus = 'ready' | 'disabled';
+
+export interface WebInsightsReport {
+  executive_summary: string;
+  positioning_tags: string[];
+  metrics: {
+    customer_sentiment: WebInsightMetric;
+    build_quality: WebInsightMetric;
+    price_segment: WebInsightMetric;
+    retail_confidence: WebInsightMetric;
+  };
+  retail_insights: RetailInsight[];
+  primary_use_cases: InsightUseCase[];
+  customer_sentiment_summary: string;
+}
+
+export interface WebInsights {
+  status?: WebInsightsStatus;
+  disabled_reason?: string | null;
+  summary: string;
+  pros: string[];
+  cons: string[];
+  use_cases: string[];
+  customer_insights: string[];
+  purchase_considerations: string[];
+  search_queries: string[];
+  sources: WebInsightSource[];
+  warnings: string[];
+  locale: string;
+  research_scope?: WebInsightsResearchScope;
+  identity_confidence?: WebInsightsIdentityConfidence;
+  detected_brand?: string | null;
+  detected_model?: string | null;
+  scope_note?: string;
+  identity_evidence?: string[];
+  report?: WebInsightsReport;
+}
+
 export type ManualKnowledge = Record<string, string>;
 
 export interface ManualExtractResult {
@@ -62,7 +131,10 @@ export interface AugmentedData {
   tags: string[];
   categories?: string[];
   policyDecision?: PolicyDecision;
+  richProductJson?: RichProductJson;
+  richProductJsonError?: string;
   faqs?: FAQ[];
+  webInsights?: WebInsights;
 }
 
 export interface ImageMetadata {

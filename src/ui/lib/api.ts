@@ -1,4 +1,4 @@
-import { ProductFields, AugmentedData, NIMHealthStatus, PolicyDocument, PolicyUploadResult, ManualKnowledge, ManualExtractResult } from '../types';
+import { ProductFields, AugmentedData, NIMHealthStatus, PolicyDocument, PolicyUploadResult, ManualKnowledge, ManualExtractResult, WebInsights, RichProductJson } from '../types';
 
 const API_BASE = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
 
@@ -71,6 +71,58 @@ export async function generateFaqs(params: GenerateFaqsParams): Promise<{ questi
 
   const data = await response.json();
   return data.faqs || [];
+}
+
+interface GenerateRichProductJsonParams {
+  file: File;
+  locale: string;
+}
+
+export async function generateRichProductJson(params: GenerateRichProductJsonParams): Promise<RichProductJson> {
+  const formData = new FormData();
+  formData.append('image', params.file);
+  formData.append('locale', params.locale);
+
+  const response = await fetch(`${API_BASE}/vlm/rich-product`, {
+    method: 'POST',
+    body: formData
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.detail || 'Failed to generate rich product JSON');
+  }
+
+  return response.json();
+}
+
+interface GenerateWebInsightsParams {
+  title: string;
+  description: string;
+  categories: string[];
+  tags: string[];
+  locale: string;
+}
+
+export async function generateWebInsights(params: GenerateWebInsightsParams): Promise<WebInsights> {
+  const formData = new FormData();
+  formData.append('title', params.title);
+  formData.append('description', params.description);
+  formData.append('categories', JSON.stringify(params.categories));
+  formData.append('tags', JSON.stringify(params.tags));
+  formData.append('locale', params.locale);
+
+  const response = await fetch(`${API_BASE}/research/product-insights`, {
+    method: 'POST',
+    body: formData
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.detail || 'Failed to generate web insights');
+  }
+
+  return response.json();
 }
 
 export async function extractManualKnowledge(

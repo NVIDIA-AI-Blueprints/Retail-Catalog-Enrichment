@@ -56,7 +56,8 @@ PRODUCT_CATEGORIES = [
     "office",
     "skincare",
     "bags",
-    "outdoor"
+    "outdoor",
+    "supplements"
 ]
 FALLBACK_CATEGORY = "uncategorized"
 CATEGORY_OUTPUT_VALUES = PRODUCT_CATEGORIES + [FALLBACK_CATEGORY]
@@ -460,6 +461,88 @@ def _call_nemotron_repair_visual_identity_regression(
         retry or repaired,
     )
 
+
+
+def _dedupe_array_values(value: Any) -> Any:
+    """Recursively remove duplicate primitive values from arrays."""
+    if isinstance(value, dict):
+        return {key: _dedupe_array_values(item) for key, item in value.items()}
+    if isinstance(value, list):
+        deduped = []
+        seen_primitives = set()
+        for item in value:
+            cleaned = _dedupe_array_values(item)
+            if isinstance(cleaned, (str, int, float, bool)) or cleaned is None:
+                marker = json.dumps(cleaned, sort_keys=True, ensure_ascii=False)
+                if marker in seen_primitives:
+                    continue
+                seen_primitives.add(marker)
+            deduped.append(cleaned)
+        return deduped
+    return value
+
+
+def _complete_partial_json_object(text: str) -> Optional[Dict[str, Any]]:
+    """Best-effort recovery for VLM output truncated after a JSON object starts."""
+    start = text.find("{")
+    if start == -1:
+        return None
+
+    candidate = text[start:]
+    stack: list[str] = []
+    in_string = False
+    escape = False
+    balanced_chars = []
+
+    for char in candidate:
+        balanced_chars.append(char)
+        if in_string:
+            if escape:
+                escape = False
+            elif char == "\\":
+                escape = True
+            elif char == '"':
+                in_string = False
+            continue
+
+        if char == '"':
+            in_string = True
+        elif char == "{":
+            stack.append("}")
+        elif char == "[":
+            stack.append("]")
+        elif char in ("}", "]"):
+            if stack and stack[-1] == char:
+                stack.pop()
+
+    if in_string:
+        balanced_chars.append('"')
+
+    while balanced_chars and balanced_chars[-1] in (",", " ", "\n", "\t", "\r"):
+        balanced_chars.pop()
+
+    repaired = "".join(balanced_chars) + "".join(reversed(stack))
+    repaired = re.sub(r",\s*([\]}])", r"\1", repaired)
+
+    try:
+        parsed = json.loads(repaired)
+    except json.JSONDecodeError:
+        return None
+    return parsed if isinstance(parsed, dict) else None
+
+
+def _has_degenerate_repetition(text: str) -> bool:
+    """Detect runaway repeated string values in malformed model output."""
+    string_values = re.findall(r'"([^"\\]{3,160})"', text)
+    if len(string_values) < 20:
+        return False
+    counts: dict[str, int] = {}
+    for value in string_values:
+        normalized = value.strip().lower()
+        if not normalized:
+            continue
+        counts[normalized] = counts.get(normalized, 0) + 1
+    return bool(counts and max(counts.values()) >= 10)
 
 def _call_nemotron_filter_user_data(
     vlm_output: Dict[str, Any],
@@ -1129,6 +1212,151 @@ def _call_vlm(image_bytes: bytes, content_type: str, locale: str = "en-US") -> D
     logger.info("VLM free-text response received: %d chars", len(text))
 
     return _call_nemotron_structure_vlm(text.strip(), locale)
+
+
+def extract_rich_product_json(image_bytes: bytes, content_type: str, locale: str = "en-US") -> Dict[str, Any]:
+    """Ask the VLM for a rich, visually grounded product JSON object."""
+    if not image_bytes:
+        raise ValueError("image_bytes is required")
+    if not isinstance(content_type, str) or not content_type.startswith("image/"):
+        raise ValueError("content_type must be an image/* MIME type")
+
+    logger.info(
+        "Calling VLM rich product JSON: bytes=%d, content_type=%s, locale=%s",
+        len(image_bytes or b""),
+        content_type,
+        locale,
+    )
+
+    api_key = os.getenv("NGC_API_KEY")
+    if not api_key:
+        raise RuntimeError(NGC_API_KEY_NOT_SET_ERROR)
+
+    vlm_config = get_config().get_vlm_config()
+    client = OpenAI(base_url=vlm_config['url'], api_key=api_key)
+    info = LOCALE_CONFIG.get(locale, {"language": "English", "region": "United States"})
+
+    prompt_text = (
+        "Describe this product with rich information in a JSON object only. "
+        "Return exactly one JSON object that starts with { and ends with }. "
+        "Never return an array, markdown, XML, prose, explanations, or code fences. "
+        "Use the generic product schema below exactly. "
+        "If no product is visible, set visible_product to false and use null or empty arrays for the remaining fields. "
+        "Do not shorten the response just to be concise; completeness is preferred. "
+        "Do not repeat identical or near-identical values; each array should contain unique useful entries only. "
+        "If the same visible feature appears multiple times, include it once. "
+        "Stop after all visible facts are represented and close the JSON object. "
+        f"Use clear English field names and write textual values in {info['language']} for {info['region']}. "
+        "Do not include markdown or commentary.\n\n"
+        "GENERIC PRODUCT SCHEMA:\n"
+        "{\n"
+        '  "visible_product": true,\n'
+        '  "product_identity": {\n'
+        '    "product_type": null,\n'
+        '    "brand_visible": null,\n'
+        '    "model_or_variant_visible": null,\n'
+        '    "visible_text": [],\n'
+        '    "logo_or_markings": []\n'
+        "  },\n"
+        '  "visual_summary": {\n'
+        '    "short_description": null,\n'
+        '    "primary_category_guess": null,\n'
+        '    "confidence_notes": []\n'
+        "  },\n"
+        '  "appearance": {\n'
+        '    "colors": [],\n'
+        '    "shape": null,\n'
+        '    "pattern": null,\n'
+        '    "finish_or_texture": [],\n'
+        '    "materials_visible": [],\n'
+        '    "style_or_design": []\n'
+        "  },\n"
+        '  "physical_structure": {\n'
+        '    "visible_components": [],\n'
+        '    "closures_or_openings": [],\n'
+        '    "controls_or_interfaces": [],\n'
+        '    "ports_or_connectors": [],\n'
+        '    "attachments_or_accessories": []\n'
+        "  },\n"
+        '  "packaging_and_labels": {\n'
+        '    "packaging_visible": null,\n'
+        '    "label_claims_visible": [],\n'
+        '    "warnings_or_symbols_visible": []\n'
+        "  },\n"
+        '  "condition_and_context": {\n'
+        '    "apparent_condition": null,\n'
+        '    "use_context_visible": null,\n'
+        '    "background_or_staging": null\n'
+        "  },\n"
+        '  "commerce_relevant_attributes": {\n'
+        '    "category_candidates": [],\n'
+        '    "search_keywords_from_image": [],\n'
+        '    "notable_visual_features": []\n'
+        "  },\n"
+        '  "uncertainties": []\n'
+        "}\n\n"
+        "SCHEMA RULES:\n"
+        "- Use the keys above; do not create category-specific top-level sections.\n"
+        "- Put non-applicable fields as null or empty arrays.\n"
+        "- model_or_variant_visible must be a distinct visible model or variant string; never copy the brand into this field.\n"
+        "- visible_text should contain readable text exactly as visible when possible.\n\n"
+        "ANTI-HALLUCINATION RULES:\n"
+        "- Only describe facts visible in the image.\n"
+        "- Do not infer dimensions, weight, capacity, warranty, certifications, compatibility, materials, model numbers, "
+        "care instructions, origin, price, or performance claims unless they are clearly visible as printed text in the image.\n"
+        "- If a useful attribute is not visible or readable, set it to null, an empty array, or omit it."
+    )
+
+    completion = client.chat.completions.create(
+        model=vlm_config['model'],
+        messages=[
+            {"role": "system", "content": "/no_think"},
+            {"role": "user", "content": [
+                {"type": "image_url", "image_url": {"url": f"data:{content_type};base64,{base64.b64encode(image_bytes).decode()}"}},
+                {"type": "text", "text": prompt_text}
+            ]}
+        ],
+        temperature=0.1, top_p=0.9, max_tokens=8192, stream=True
+    )
+
+    text = "".join(
+        chunk.choices[0].delta.content
+        for chunk in completion
+        if chunk.choices[0].delta and chunk.choices[0].delta.content
+    )
+    logger.info("VLM rich product JSON response received: %d chars", len(text))
+
+    parsed = parse_llm_json(text, extract_braces=True, strip_comments=True)
+    if isinstance(parsed, dict):
+        cleaned = _dedupe_array_values(parsed)
+        logger.info("VLM rich product JSON parsed successfully: keys=%s", list(cleaned.keys()))
+        return cleaned
+
+    recovered = _complete_partial_json_object(text)
+    if isinstance(recovered, dict):
+        cleaned_recovered = _dedupe_array_values(recovered)
+        logger.warning("VLM rich product JSON recovered from incomplete response: keys=%s", list(cleaned_recovered.keys()))
+        return {
+            "parse_status": "recovered_from_partial_json",
+            "warning": "VLM returned incomplete JSON; the backend closed the object and removed duplicate array values.",
+            "recovered_data": cleaned_recovered,
+        }
+
+    preview = text.strip().replace("\n", "\\n")[:500]
+    logger.warning("VLM rich product JSON parse failed; response_preview=%r", preview)
+    if _has_degenerate_repetition(text):
+        return {
+            "parse_status": "unstructured_repetitive",
+            "warning": "VLM returned repetitive content that could not be parsed as a JSON object; raw response excerpt preserved.",
+            "raw_response_excerpt": text.strip()[:4000],
+            "raw_response_omitted": True,
+        }
+
+    return {
+        "parse_status": "unstructured",
+        "warning": "VLM returned content that could not be parsed as a JSON object; raw response preserved.",
+        "raw_response": text.strip(),
+    }
 
 
 def _call_nemotron_structure_vlm(vlm_text: str, locale: str = "en-US") -> Dict[str, Any]:

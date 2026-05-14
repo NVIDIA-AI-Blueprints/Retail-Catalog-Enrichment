@@ -1,7 +1,9 @@
 import type { NextConfig } from 'next';
+import path from 'node:path';
 
 const nextConfig: NextConfig = {
   output: 'standalone',
+  outputFileTracingRoot: path.resolve(__dirname),
   transpilePackages: ['@kui/foundations-react-external'],
   experimental: {
     externalDir: true,
@@ -15,7 +17,6 @@ const nextConfig: NextConfig = {
 };
 
 export default nextConfig;
-
 
 
 
