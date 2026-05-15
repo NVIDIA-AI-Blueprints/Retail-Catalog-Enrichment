@@ -100,9 +100,10 @@ jobs:
             echo "Running: $NOTEBOOK_NAME"
             echo "================================"
             
-            # Skip cloud NIM config and container teardown cells for 1_Deploy_Catalog_Enrichment.ipynb
+            # Skip git clone (CI already checked out) and docker compose teardown so stacks stay up for NIM checks.
+            # Teardown is cell 50 (docker compose down); cell 48 is markdown — skipping 48 does not prevent teardown.
             if [[ "$NOTEBOOK_NAME" == "1_Deploy_Catalog_Enrichment" ]]; then
-              skip_cells "$TEMP_NOTEBOOK" 7 48
+              skip_cells "$TEMP_NOTEBOOK" 7 50
               
               echo "Modifying notebook for CI environment..."
               
@@ -110,6 +111,48 @@ jobs:
               echo "  - Changing cache directory to local path..."
               sed -i 's|"local_nim_cache = os.path.expanduser(\\"~/.cache/nim\\")\\n"|"local_nim_cache = os.path.join(os.getcwd(), \\".cache\\", \\"nim\\")\\n"|g' "$TEMP_NOTEBOOK"
               echo "    ✅ Modified cache directory path"
+              
+              # Modification 2: Bypass optional EXA_API_KEY prompt in CI (papermill has no stdin)
+              echo "  - Patching optional EXA_API_KEY prompt for CI..."
+              EXA_PATCH_SCRIPT=$(mktemp)
+              printf '%s\n' \
+                'import nbformat' \
+                'import sys' \
+                '' \
+                'path = sys.argv[1]' \
+                'nb = nbformat.read(path, as_version=4)' \
+                '' \
+                'new_source = """import os' \
+                '' \
+                'exa_api_key = os.environ.get("EXA_API_KEY", "")' \
+                '' \
+                'if exa_api_key:' \
+                '    print("EXA_API_KEY configured. Web Insights search will be enabled.")' \
+                'else:' \
+                '    print("EXA_API_KEY not set. Web Insights will be unavailable, but the rest of the blueprint will run.")' \
+                '"""' \
+                '' \
+                'patched = False' \
+                'for cell in nb.cells:' \
+                '    if cell.cell_type == "code" and "EXA_API_KEY" in cell.source and "getpass.getpass" in cell.source:' \
+                '        cell.source = new_source' \
+                '        patched = True' \
+                '        break' \
+                'if not patched:' \
+                '    for cell in nb.cells:' \
+                '        if cell.cell_type == "code" and "Optional: Enter your Exa API key" in cell.source:' \
+                '            cell.source = new_source' \
+                '            patched = True' \
+                '            break' \
+                'if not patched:' \
+                '    raise RuntimeError("Could not find EXA_API_KEY prompt cell to patch")' \
+                '' \
+                'nbformat.write(nb, path)' \
+                'print("Patched EXA_API_KEY prompt cell for CI")' \
+                > "$EXA_PATCH_SCRIPT"
+              python3 "$EXA_PATCH_SCRIPT" "$TEMP_NOTEBOOK"
+              rm -f "$EXA_PATCH_SCRIPT"
+              echo "    ✅ Patched EXA_API_KEY prompt"
               
               echo "✅ All notebook modifications complete"
             fi
