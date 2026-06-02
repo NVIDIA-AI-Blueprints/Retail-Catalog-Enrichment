@@ -33,7 +33,7 @@
     "tsup": "^8.5.0",
     "typescript": "^5",
     "vite-tsconfig-paths": "^5.1.4",
-    "vitest": "^3.2.4",
+    "vitest": "^4.1.0",
     "@kui/foundations": "^0.307.0",
     "@vfe/ts-config": "^1.0.0"
   },
