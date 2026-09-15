@@ -136,6 +136,8 @@ Notes:
 - repeated uploads of the same PDF are deduplicated by content hash
 - `already_loaded=true` means the document was already present in the library
 - `processed=true` means the upload was newly parsed, normalized, embedded, and indexed
+- extracted PDF text is treated as untrusted model input and capped at 12,000 characters
+- an upload is not indexed when the model returns a malformed or incomplete policy summary
 
 ### DELETE `/policies`
 
@@ -168,8 +170,8 @@ Extract product fields using NVIDIA Nemotron 3 Nano Omni and, when policies are 
 |-----------|------|----------|-------------|
 | `image` | file | Yes | Product image file (JPEG, PNG) |
 | `locale` | string | No | Regional locale code (default: "en-US") |
-| `product_data` | JSON string | No | Existing product data to augment |
-| `brand_instructions` | string | No | Custom brand voice, tone, style, and taxonomy guidelines |
+| `product_data` | JSON string | No | Existing product data object to augment |
+| `brand_instructions` | string | No | Brand voice, tone, formatting, vocabulary, and taxonomy guidance (maximum 2,000 characters) |
 
 When one or more policy PDFs have been loaded through `/policies`, this endpoint also:
 - retrieves semantically relevant normalized policy records from Milvus using the VLM title/description/categories/tags/colors
@@ -186,6 +188,16 @@ When one or more policy PDFs have been loaded through `/policies`, this endpoint
   "tags": ["string"]
 }
 ```
+
+`product_data` must decode to a JSON object. `title` and `description` must be
+strings, `categories`/`tags`/`colors` must be arrays of strings, and `price`
+must be numeric when supplied. Extra catalog metadata such as SKU and nested
+specifications is preserved. To bound model input, titles are capped at 500
+characters, other strings at 4,000 characters, arrays at 50 items, and the
+normalized object at 32,000 characters.
+
+Brand guidance remains free text, but it is treated only as styling guidance;
+it cannot authorize field additions or changes to protected product metadata.
 
 ### Response Schema
 

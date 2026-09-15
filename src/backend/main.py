@@ -30,6 +30,11 @@ from openai import APIConnectionError
 
 from backend.policy import evaluate_policy_compliance
 from backend.policy_library import PolicyLibrary
+from backend.prompt_security import (
+    MAX_PRODUCT_DATA_FORM_CHARS,
+    sanitize_brand_instructions,
+    sanitize_product_data,
+)
 from backend.product_manual import process_manual_pdf, generate_manual_queries, extract_manual_knowledge
 from backend.vlm import extract_vlm_observation, extract_rich_product_json, build_enriched_vlm_result, _call_nemotron_generate_faqs, _call_nemotron_extract_schema_fields
 from backend.image import generate_image_variation
@@ -179,11 +184,15 @@ async def vlm_analyze(
         product_json = None
         if product_data:
             try:
-                product_json = json.loads(product_data)
-                logger.info(f"Parsed product_data: {product_json}")
-            except Exception as e:
+                if len(product_data) > MAX_PRODUCT_DATA_FORM_CHARS:
+                    raise ValueError(f"product_data exceeds {MAX_PRODUCT_DATA_FORM_CHARS} characters")
+                product_json = sanitize_product_data(json.loads(product_data))
+                logger.info("Parsed product_data fields: %s", list(product_json.keys()))
+            except ValueError as e:
                 logger.error(f"/vlm/analyze error: invalid JSON in product_data: {e}")
                 return JSONResponse({"detail": f"Invalid JSON in product_data: {e}"}, status_code=400)
+
+        brand_style_guidance = sanitize_brand_instructions(brand_instructions)
         
         validation_result, error_response = await _validate_image(image, "/vlm/analyze")
         if error_response:
@@ -198,7 +207,7 @@ async def vlm_analyze(
             vlm_observation,
             locale,
             product_json,
-            brand_instructions,
+            brand_style_guidance,
         )
         retrieval_task = asyncio.to_thread(
             policy_library.retrieve_context,

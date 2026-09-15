@@ -56,15 +56,23 @@ place.
 1. **Untrusted file processing:** Image and PDF upload endpoints parse caller-
    supplied files. Malformed or oversized inputs could exploit a parser or
    exhaust memory, CPU, storage, or vector-database capacity.
-2. **Sensitive data disclosure to model providers:** Product records, images,
+2. **Prompt injection and model-output integrity:** Product records, brand
+   guidance, and uploaded policy documents can contain text that attempts to
+   redirect model behavior. Catalog augmentation, brand styling, and policy-
+   review flows place dynamic values in bounded JSON data envelopes,
+   keep task instructions in the system role, and validate model output before
+   using it. These controls reduce but do not eliminate prompt-injection risk;
+   model-generated catalog and compliance results still require review before
+   consequential use.
+3. **Sensitive data disclosure to model providers:** Product records, images,
    manuals, brand instructions, and web-research prompts may be sent to the
    configured model or search endpoints. Operators must not submit data those
    providers are not approved to process.
-3. **Credential or infrastructure exposure:** API keys are supplied through the
+4. **Credential or infrastructure exposure:** API keys are supplied through the
    environment, while model, Milvus, and MinIO services use network interfaces.
    Publishing those interfaces or leaking environment/configuration data could
    expose credentials, stored policy content, or expensive compute capacity.
-4. **Dependency and model supply chain:** The blueprint relies on Python and
+5. **Dependency and model supply chain:** The blueprint relies on Python and
    JavaScript packages plus externally supplied container images and model
    artifacts. A compromised dependency or untrusted replacement image could
    execute with the permissions and data available to its container.
