@@ -40,7 +40,16 @@ HF_TOKEN=your_huggingface_token_here
 
 # Exa API Key (optional; without it, the Web Insights tab shows a disabled message)
 EXA_API_KEY=your_exa_api_key_here
+
+# Optional. Published ports bind to localhost when omitted.
+# Only use 0.0.0.0 behind authentication, TLS, rate limiting, and network controls.
+# CATALOG_BIND_ADDRESS=0.0.0.0
 ```
+
+This repository is a reference blueprint and does not provide application-level
+authentication or rate limiting. Its Compose files bind all published ports to
+`127.0.0.1` by default. Do not expose the stack directly to an untrusted
+network. See [Security Policy](../SECURITY.md) before changing the bind address.
 
 ### 2. Create Cache Directory
 
@@ -130,11 +139,14 @@ docker-compose up -d
 Once all services are running:
 
 - **Frontend UI**: http://localhost:3000
-- **Backend API**: http://localhost:8000
-- **Health Check**: http://localhost:8000/health
+- **Backend API through the gateway**: http://localhost:3000/api
+- **Health Check through the gateway**: http://localhost:3000/api/health
 - **Milvus gRPC**: localhost:19530
 - **Milvus health**: localhost:9091
 - **MinIO Console**: http://localhost:9001
+
+The MinIO credentials in the Compose file are demonstration defaults. Replace
+them before any shared or production-like deployment.
 
 ## GPU Configuration
 

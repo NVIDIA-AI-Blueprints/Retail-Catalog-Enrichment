@@ -28,7 +28,7 @@ services:
       - minio_data:/minio_data
     command: minio server /minio_data --console-address ":9001"
     ports:
-      - "9001:9001"
+      - "${CATALOG_BIND_ADDRESS:-127.0.0.1}:9001:9001"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
       interval: 30s
@@ -42,8 +42,8 @@ services:
     container_name: milvus-standalone
     command: ["milvus", "run", "standalone"]
     ports:
-      - "19530:19530"
-      - "9091:9091"
+      - "${CATALOG_BIND_ADDRESS:-127.0.0.1}:19530:19530"
+      - "${CATALOG_BIND_ADDRESS:-127.0.0.1}:9091:9091"
     environment:
       ETCD_ENDPOINTS: milvus-etcd:2379
       MINIO_ADDRESS: milvus-minio:9000

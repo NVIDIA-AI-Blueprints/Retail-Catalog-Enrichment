@@ -1,0 +1,34 @@
+version: "1.0"
+project: "Retail-Catalog-Enrichment"
+last_updated: "2026-09-15T11:07:58-07:00"
+
+repository_exposure_classification:
+  visibility: "Public"
+  basis: "Published in the NVIDIA-AI-Blueprints GitHub organization"
+  confirmed_by: "Retail Catalog Enrichment maintainers"
+  date: "2026-09-15"
+
+service_exposure_classification:
+  tier: "External / Regulated"
+  confidence: "high"
+  basis: "Publicly distributed reference blueprint with deployable network services; default deployment is local evaluation"
+  confirmed_by: "Retail Catalog Enrichment maintainers"
+  date: "2026-09-15"
+
+false_positives: []
+
+accepted_risks:
+  - slug: "threat-unauthenticated-resource-use-and-policy-deletion"
+    threat: "Unauthenticated callers can invoke compute-intensive enrichment endpoints or modify and clear the policy library"
+    severity: "high"
+    reason: "Accepted only for local, single-user, or equivalently controlled blueprint evaluation; direct exposure to untrusted networks is unsupported"
+    triaged_by: "Retail Catalog Enrichment maintainers"
+    date: "2026-09-15"
+  - slug: "assumption-no-in-application-rate-limiting"
+    assumption: "No in-application rate limiting"
+    severity: "high"
+    reason: "The reference blueprint delegates abuse prevention to the operator-provided gateway or network boundary"
+    triaged_by: "Retail Catalog Enrichment maintainers"
+    date: "2026-09-15"
+
+suppressed_cves: []
