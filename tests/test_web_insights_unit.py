@@ -978,4 +978,4 @@ def test_product_insights_endpoint_dependency_error():
         response = client.post("/research/product-insights", data={"title": "Product"})
 
     assert response.status_code == 503
-    assert response.json()["detail"] == "EXA_API_KEY is not set"
+    assert response.json()["detail"] == "An internal error occurred. Please try again later."
