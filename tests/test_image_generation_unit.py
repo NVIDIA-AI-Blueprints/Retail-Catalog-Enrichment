@@ -219,6 +219,8 @@ class TestCallFluxEdit:
         # Assertions
         assert isinstance(result, dict)
         mock_client_instance.post.assert_called_once()
+        request_payload = mock_client_instance.post.call_args.kwargs["json"]
+        assert "disable_safety_checker" not in request_payload
     
     @pytest.mark.asyncio
     @patch('backend.image.httpx.AsyncClient')

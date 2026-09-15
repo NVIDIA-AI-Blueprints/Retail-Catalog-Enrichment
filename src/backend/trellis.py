@@ -64,8 +64,7 @@ async def generate_3d_asset(
         "ss_cfg_scale": ss_cfg_scale,
         "slat_sampling_steps": slat_sampling_steps,
         "ss_sampling_steps": ss_sampling_steps,
-        "seed": seed,
-        "disable_safety_checker": True
+        "seed": seed
     }
     
     headers = {"Accept": "application/octet-stream", "Content-Type": "application/json"}
@@ -99,7 +98,6 @@ async def generate_3d_asset(
                 "ss_cfg_scale": ss_cfg_scale,
                 "slat_sampling_steps": slat_sampling_steps,
                 "ss_sampling_steps": ss_sampling_steps,
-                "disable_safety_checker": 1,
                 "seed": seed,
                 "size_bytes": len(glb_data)
             }
@@ -114,4 +112,3 @@ async def generate_3d_asset(
     except httpx.RequestError as e:
         logger.error(f"TRELLIS request failed: {e}")
         raise
-

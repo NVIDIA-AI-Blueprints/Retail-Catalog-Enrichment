@@ -74,6 +74,9 @@ class TestGenerate3DAsset:
         assert result["glb_data"] == fake_glb_data
         assert result["metadata"]["seed"] == 42
         assert result["metadata"]["size_bytes"] == len(fake_glb_data)
+        request_payload = mock_client_instance.post.call_args.kwargs["json"]
+        assert "disable_safety_checker" not in request_payload
+        assert "disable_safety_checker" not in result["metadata"]
     
     @pytest.mark.asyncio
     @patch('backend.trellis.httpx.AsyncClient')
@@ -419,4 +422,3 @@ class TestGenerate3DAsset:
         # Should fall back to response.content
         assert result["glb_data"] == fake_glb_data
         assert result["artifact_id"] == "trellis_888"
-
