@@ -41,6 +41,10 @@ HF_TOKEN=your_huggingface_token_here
 # Exa API Key (optional; without it, the Web Insights tab shows a disabled message)
 EXA_API_KEY=your_exa_api_key_here
 
+# Unique credentials required by both MinIO and Milvus
+MINIO_ACCESS_KEY=your_unique_minio_access_key
+MINIO_SECRET_KEY=your_unique_minio_secret_key
+
 # Optional. Published ports bind to localhost when omitted.
 # Only use 0.0.0.0 behind authentication, TLS, rate limiting, and network controls.
 # CATALOG_BIND_ADDRESS=0.0.0.0
@@ -145,8 +149,9 @@ Once all services are running:
 - **Milvus health**: localhost:9091
 - **MinIO Console**: http://localhost:9001
 
-The MinIO credentials in the Compose file are demonstration defaults. Replace
-them before any shared or production-like deployment.
+The policy RAG stack requires unique MinIO credentials in `.env` and passes the
+same values to Milvus. Compose refuses to start the stack when either value is
+missing.
 
 ## GPU Configuration
 

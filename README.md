@@ -203,6 +203,8 @@ For complete Docker deployment instructions, see the **[Docker Deployment Guide]
    ```bash
    NGC_API_KEY=your_ngc_api_key_here
    HF_TOKEN=your_huggingface_token_here
+   MINIO_ACCESS_KEY=your_unique_minio_access_key
+   MINIO_SECRET_KEY=your_unique_minio_secret_key
    ```
 
 2. **Create cache directories**:

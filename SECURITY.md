@@ -99,7 +99,7 @@ place.
   regulated data.
 - The host, Docker daemon, shared `catalog-network`, mounted volumes, and local
   environment files are trusted and accessible only to authorized users.
-- Operators replace demonstration credentials and apply least privilege before
+- Operators supply unique service credentials and apply least privilege before
   adapting the blueprint for a shared or production-like environment.
 
 ## Deployment Scope
