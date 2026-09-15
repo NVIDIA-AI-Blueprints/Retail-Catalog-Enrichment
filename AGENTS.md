@@ -342,7 +342,7 @@ Given the catalog enrichment focus, pay special attention to:
 ### Data Security
 - **PII Protection** - Identify and protect personally identifiable information
 - **Data Classification** - Understand and respect data sensitivity levels
-- **Access Controls** - Implement appropriate authentication and authorization
+- **Access Controls** - For remote or production-like deployments, require operator-provided authentication and authorization
 - **Data Encryption** - Encrypt sensitive data in transit and at rest
 
 ### API Security
