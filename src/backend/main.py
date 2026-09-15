@@ -372,7 +372,7 @@ async def vlm_rich_product(
         return JSONResponse(rich_product)
     except ValueError as exc:
         logger.warning("/vlm/rich-product validation error: %s", exc)
-        return JSONResponse({"detail": str(exc)}, status_code=502)
+        return JSONResponse({"detail": INTERNAL_ERROR_DETAIL}, status_code=502)
     except (APIConnectionError, httpx.ConnectError) as exc:
         logger.exception("/vlm/rich-product connection error: %s", exc)
         return JSONResponse({
@@ -380,7 +380,7 @@ async def vlm_rich_product(
         }, status_code=503)
     except Exception as exc:
         logger.exception("/vlm/rich-product exception: %s", exc)
-        return JSONResponse({"detail": str(exc)}, status_code=500)
+        return JSONResponse({"detail": INTERNAL_ERROR_DETAIL}, status_code=500)
 
 
 @app.post("/vlm/manual/extract")
@@ -446,7 +446,7 @@ async def vlm_manual_extract(
 
     except ValueError as exc:
         logger.warning("/vlm/manual/extract validation error: %s", exc)
-        return JSONResponse({"detail": str(exc)}, status_code=400)
+        return JSONResponse({"detail": INTERNAL_ERROR_DETAIL}, status_code=400)
     except (APIConnectionError, httpx.ConnectError) as exc:
         logger.exception("/vlm/manual/extract connection error: %s", exc)
         return JSONResponse({
@@ -454,7 +454,7 @@ async def vlm_manual_extract(
         }, status_code=503)
     except Exception as exc:
         logger.exception("/vlm/manual/extract exception: %s", exc)
-        return JSONResponse({"detail": str(exc)}, status_code=500)
+        return JSONResponse({"detail": INTERNAL_ERROR_DETAIL}, status_code=500)
 
 
 @app.post("/research/product-insights")
@@ -493,7 +493,7 @@ async def product_insights(
         return JSONResponse(result)
     except WebInsightsDependencyError as exc:
         logger.exception("/research/product-insights dependency error: %s", exc)
-        return JSONResponse({"detail": str(exc)}, status_code=503)
+        return JSONResponse({"detail": INTERNAL_ERROR_DETAIL}, status_code=503)
     except (APIConnectionError, httpx.ConnectError) as exc:
         logger.exception("/research/product-insights connection error: %s", exc)
         return JSONResponse({
@@ -504,7 +504,7 @@ async def product_insights(
         return JSONResponse({"detail": "Invalid JSON in request fields."}, status_code=400)
     except Exception as exc:
         logger.exception("/research/product-insights exception: %s", exc)
-        return JSONResponse({"detail": str(exc)}, status_code=500)
+        return JSONResponse({"detail": INTERNAL_ERROR_DETAIL}, status_code=500)
 
 
 @app.get("/policies")
@@ -513,7 +513,7 @@ async def list_policies() -> JSONResponse:
         return JSONResponse({"documents": policy_library.list_documents()})
     except Exception as exc:
         logger.exception("/policies list exception: %s", exc)
-        return JSONResponse({"detail": str(exc)}, status_code=500)
+        return JSONResponse({"detail": INTERNAL_ERROR_DETAIL}, status_code=500)
 
 
 @app.post("/policies")
@@ -533,7 +533,7 @@ async def upload_policies(
         return JSONResponse({"documents": policy_library.list_documents(), "results": results})
     except Exception as exc:
         logger.exception("/policies upload exception: %s", exc)
-        return JSONResponse({"detail": str(exc)}, status_code=500)
+        return JSONResponse({"detail": INTERNAL_ERROR_DETAIL}, status_code=500)
 
 
 @app.delete("/policies")
@@ -543,7 +543,7 @@ async def clear_policies() -> JSONResponse:
         return JSONResponse({"status": "ok"})
     except Exception as exc:
         logger.exception("/policies clear exception: %s", exc)
-        return JSONResponse({"detail": str(exc)}, status_code=500)
+        return JSONResponse({"detail": INTERNAL_ERROR_DETAIL}, status_code=500)
 
 
 @app.post("/generate/variation")
@@ -613,7 +613,7 @@ async def generate_variation(
         }, status_code=503)
     except Exception as exc:
         logger.exception(f"/generate/variation exception: {exc}")
-        return JSONResponse({"detail": str(exc)}, status_code=500)
+        return JSONResponse({"detail": INTERNAL_ERROR_DETAIL}, status_code=500)
 
 
 async def _validate_image(image: UploadFile, endpoint: str):
@@ -1155,4 +1155,4 @@ async def protocols_generate(
         return JSONResponse({"detail": "Invalid JSON in request fields."}, status_code=400)
     except Exception as exc:
         logger.exception("/protocols/generate exception: %s", exc)
-        return JSONResponse({"detail": str(exc)}, status_code=500)
+        return JSONResponse({"detail": INTERNAL_ERROR_DETAIL}, status_code=500)
