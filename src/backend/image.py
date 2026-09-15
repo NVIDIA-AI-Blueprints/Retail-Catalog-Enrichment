@@ -238,7 +238,7 @@ async def _call_flux_edit(image_bytes: bytes, content_type: str, prompt: str, st
         response = await client.post(
             flux_config['url'],
             headers={"Authorization": f"Bearer {api_key}", "Accept": "application/json", "Content-Type": "application/json"},
-            json={"prompt": prompt, "image": data_url, "aspect_ratio": "match_input_image", "disable_safety_checker": 1,
+            json={"prompt": prompt, "image": data_url, "aspect_ratio": "match_input_image",
                   "steps": int(steps or 30), "cfg_scale": float(cfg_scale or 3.5), "seed": int(seed if seed is not None else 0)}
         )
     

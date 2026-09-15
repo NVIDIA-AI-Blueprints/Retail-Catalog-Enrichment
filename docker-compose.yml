@@ -159,7 +159,6 @@ services:
     environment:
       - NGC_API_KEY=${NGC_API_KEY}
       - NIM_MODEL_VARIANT=large:image
-      - NIM_ALLOW_UNCHECKED_GENERATION=1
     volumes:
       - ${LOCAL_NIM_CACHE:-~/.cache/nim}:/opt/nim/.cache
     deploy:
@@ -184,7 +183,6 @@ services:
     environment:
       - NGC_API_KEY=${NGC_API_KEY}
       - HF_TOKEN=${HF_TOKEN}
-      - NIM_ALLOW_UNCHECKED_GENERATION=1
     volumes:
       - ${LOCAL_NIM_CACHE:-~/.cache/nim}:/opt/nim/.cache
     deploy:
