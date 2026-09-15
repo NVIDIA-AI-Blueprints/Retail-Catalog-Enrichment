@@ -48,6 +48,7 @@ logger = logging.getLogger("catalog_enrichment.api")
 VALID_LOCALES = {"en-US", "en-GB", "en-AU", "en-CA", "es-ES", "es-MX", "es-AR", "es-CO", "fr-FR", "fr-CA"}
 policy_library = PolicyLibrary()
 NIM_HEALTH_CACHE_TTL_SECONDS = 30
+INTERNAL_ERROR_DETAIL = "An internal error occurred. Please try again later."
 _nim_health_cache: dict | None = None
 _nim_health_cache_expires_at = 0.0
 
@@ -285,7 +286,7 @@ async def vlm_analyze(
         }, status_code=503)
     except Exception as exc:
         logger.exception(f"/vlm/analyze exception: {exc}")
-        return JSONResponse({"detail": str(exc)}, status_code=500)
+        return JSONResponse({"detail": INTERNAL_ERROR_DETAIL}, status_code=500)
 
 
 @app.post("/vlm/faqs")
@@ -342,7 +343,7 @@ async def vlm_faqs(
         }, status_code=503)
     except Exception as exc:
         logger.exception("/vlm/faqs exception: %s", exc)
-        return JSONResponse({"detail": str(exc)}, status_code=500)
+        return JSONResponse({"detail": INTERNAL_ERROR_DETAIL}, status_code=500)
 
 
 @app.post("/vlm/rich-product")
@@ -776,7 +777,7 @@ async def generate_3d(
         }, status_code=exc.response.status_code)
     except Exception as exc:
         logger.exception(f"/generate/3d exception: {exc}")
-        return JSONResponse({"detail": str(exc)}, status_code=500)
+        return JSONResponse({"detail": INTERNAL_ERROR_DETAIL}, status_code=500)
 
 
 # ---------------------------------------------------------------------------
