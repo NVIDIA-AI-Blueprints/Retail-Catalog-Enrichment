@@ -57,7 +57,7 @@ When relevant policy chunks are retrieved, the system runs a compliance classifi
 2. **Policy context** is assembled from the retrieved chunks plus their parent document summaries
 3. **LLM classification** -- Nemotron evaluates the product against the retrieved policy rules and returns a structured decision
 4. **Consistency check** -- The system verifies the decision is internally consistent (e.g., `status: "fail"` must have at least one matched policy). If inconsistent, a repair call is attempted
-5. **Fallback** -- If classification or repair fails, the system falls back to a pass with a warning
+5. **Fail closed** -- If classification or repair fails, the request returns an error instead of reporting an unverified pass
 
 ### Decision Output
 
@@ -155,7 +155,7 @@ See [API Documentation](API.md) for full endpoint details:
 - Policy text is truncated to 12,000 characters during normalization. Very long policy documents may lose content from later sections.
 - Scanned/image-based PDFs with no extractable text are not supported.
 - The compliance classifier is an LLM-based judgment call, not a deterministic rule engine. Edge cases may produce inconsistent results.
-- The system errs on the side of passing when the model response is malformed or inconsistent, logging a warning.
+- Malformed or incomplete policy summaries are not indexed. Malformed or internally inconsistent compliance decisions fail the request instead of being reported as a pass.
 
 ## Source Files
 
