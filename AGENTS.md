@@ -63,7 +63,7 @@ cd catalog-enrichment
 uv pip install -e .
 uv venv .venv
 source .venv/bin/activate
-uvicorn --app-dir src backend.main:app --host 0.0.0.0 --port 8000 --reload
+uvicorn --app-dir src backend.main:app --host 127.0.0.1 --port 8000 --reload
 ```
 
 #### API Endpoints
@@ -347,8 +347,8 @@ Given the catalog enrichment focus, pay special attention to:
 
 ### API Security
 - Validate all input data
-- Implement rate limiting to prevent abuse
-- Use HTTPS for all external communications
+- Keep blueprint services bound to localhost by default
+- For remote or production-like deployments, require operator-provided authentication, authorization, rate limiting, HTTPS, and network controls
 - Log security events for monitoring
 
 ### Development Security

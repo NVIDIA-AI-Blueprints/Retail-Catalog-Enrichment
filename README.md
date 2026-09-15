@@ -171,7 +171,7 @@ Make sure you have accepted [https://huggingface.co/black-forest-labs/FLUX.1-Kon
 
 5. **Run the backend**:
    ```bash
-   uvicorn --app-dir src backend.main:app --host 0.0.0.0 --port 8000 --reload
+   uvicorn --app-dir src backend.main:app --host 127.0.0.1 --port 8000 --reload
    ```
 
 6. **Run the frontend** (optional):
@@ -186,6 +186,14 @@ The frontend at `http://localhost:3000`.
 ### Docker Deployment (Self-Hosted NIMs)
 
 The Docker deployment includes all required self-hosted NVIDIA NIM containers (Nemotron 3 Nano Omni, Nemotron 3.5 Lightning, FLUX, and TRELLIS). If you want to use uploaded policy PDFs in the UI, start the companion Milvus stack from `docker-compose.rag.yml` as well. The `shared/config/config.yaml` is pre-configured with the correct service URLs for Docker networking.
+
+Published ports bind to `127.0.0.1` by default because this repository is a
+reference blueprint without application-level authentication or rate limiting.
+Do not expose the stack directly to an untrusted network. A controlled remote
+deployment may set `CATALOG_BIND_ADDRESS=0.0.0.0` only when an authenticated,
+TLS-enabled, rate-limited gateway or equivalent network controls protect every
+published service. See [SECURITY.md](SECURITY.md) for the supported deployment
+scope and security assumptions.
 
 For complete Docker deployment instructions, see the **[Docker Deployment Guide](docs/DOCKER.md)**.
 
@@ -221,8 +229,8 @@ For complete Docker deployment instructions, see the **[Docker Deployment Guide]
 
 6. **Access the application**:
    - Frontend: `http://localhost:3000`
-   - Backend API: `http://localhost:8000`
-   - Health Check: `http://localhost:8000/health`
+   - Backend API through the gateway: `http://localhost:3000/api`
+   - Health Check through the gateway: `http://localhost:3000/api/health`
    - Milvus: `localhost:19530`
    - MinIO Console: `http://localhost:9001`
 

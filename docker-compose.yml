@@ -4,7 +4,7 @@ services:
     image: nginx:1.25.3-alpine
     container_name: catalog-enrichment-nginx
     ports:
-      - "3000:80"
+      - "${CATALOG_BIND_ADDRESS:-127.0.0.1}:3000:80"
     volumes:
       - ./nginx.conf:/etc/nginx/nginx.conf:ro
     depends_on:
@@ -68,7 +68,7 @@ services:
     image: nvcr.io/nim/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:1.7.0-variant
     container_name: nim-vlm
     ports:
-      - "8001:8000"
+      - "${CATALOG_BIND_ADDRESS:-127.0.0.1}:8001:8000"
     environment:
       - NGC_API_KEY=${NGC_API_KEY}
     volumes:
@@ -92,7 +92,7 @@ services:
     image: nvcr.io/nim/nvidia/nemotron-3.5-lightning-30b-a3b:2.0.9-variant
     container_name: nim-llm
     ports:
-      - "8002:8000"
+      - "${CATALOG_BIND_ADDRESS:-127.0.0.1}:8002:8000"
     environment:
       - NGC_API_KEY=${NGC_API_KEY}
       # Enables OpenAI-compatible automatic tool calls for NAT agents.
@@ -128,7 +128,7 @@ services:
     image: nvcr.io/nim/nvidia/nv-embedqa-e5-v5:1.6
     container_name: embedqa
     ports:
-      - "8005:8000"
+      - "${CATALOG_BIND_ADDRESS:-127.0.0.1}:8005:8000"
     environment:
       - NGC_API_KEY=${NGC_API_KEY}
     volumes:
@@ -155,7 +155,7 @@ services:
     image: nvcr.io/nim/microsoft/trellis:1.0.1
     container_name: nim-trellis
     ports:
-      - "8004:8000"
+      - "${CATALOG_BIND_ADDRESS:-127.0.0.1}:8004:8000"
     environment:
       - NGC_API_KEY=${NGC_API_KEY}
       - NIM_MODEL_VARIANT=large:image
@@ -180,7 +180,7 @@ services:
     image: nvcr.io/nim/black-forest-labs/flux.1-kontext-dev:1.0.0
     container_name: nim-flux
     ports:
-      - "8003:8000"
+      - "${CATALOG_BIND_ADDRESS:-127.0.0.1}:8003:8000"
     environment:
       - NGC_API_KEY=${NGC_API_KEY}
       - HF_TOKEN=${HF_TOKEN}
