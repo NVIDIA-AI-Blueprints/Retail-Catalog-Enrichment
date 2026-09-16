@@ -33,6 +33,7 @@ from PIL import Image
 from dotenv import load_dotenv
 from openai import OpenAI
 from backend.config import get_config
+from backend.prompt_security import UNTRUSTED_DATA_SYSTEM_RULES, untrusted_data_message
 from backend.utils import parse_llm_json
 from backend.reflection import evaluate_image_quality
 
@@ -68,6 +69,13 @@ def _call_planner_llm(title: str, description: str, categories: List[str], local
         raise RuntimeError("NGC_API_KEY is not set")
 
     country = LOCALE_CONFIG.get(locale, {"country": "United States"})["country"]
+    user_message = untrusted_data_message({
+        "title": title,
+        "description": description,
+        "categories": categories,
+        "target_locale": locale,
+        "target_country": country,
+    })
     
     llm_config = get_config().get_llm_config()
     client = OpenAI(base_url=llm_config['url'], api_key=api_key)
@@ -80,14 +88,9 @@ def _call_planner_llm(title: str, description: str, categories: List[str], local
              "The generated scene must be physically plausible and commercially believable for the product's likely function, scale, support needs, ventilation, safety, and typical use context. "
              "Create backgrounds that reflect the cultural aesthetic and lifestyle of the target region! "
              "IMPORTANT: Always write your plan in ENGLISH, even if the product title/description is in another language. The image generation model only understands English. "
-             "Adhere to the JSON schema with fields: preserve_subject, background_style, camera_angle, lighting, color_palette, negatives, cfg_scale, steps, variants."},
-            {"role": "user", "content": f"""TITLE: {title}
-DESCRIPTION: {description}
-CATEGORIES: {categories}
-TARGET LOCALE: {locale}
-TARGET COUNTRY: {country}
-
-Create a background style that authentically reflects how this product would be used in {country}. Use your knowledge of local architecture, interior design, lifestyle, and cultural preferences for that country.
+             "Adhere to the JSON schema with fields: preserve_subject, background_style, camera_angle, lighting, color_palette, negatives, cfg_scale, steps, variants.\n\n"
+             + UNTRUSTED_DATA_SYSTEM_RULES},
+            {"role": "system", "content": f"""Create a background style that authentically reflects how this product would be used in {country}. Use your knowledge of local architecture, interior design, lifestyle, and cultural preferences for that country.
 
 CULTURAL ELEMENTS & ICONIC LANDMARKS:
 - Incorporate distinctive architectural elements from {country} (e.g., Parisian Haussmannian apartments with wrought iron balconies, Barcelona's modernist architecture, New York's industrial loft style)
@@ -127,7 +130,8 @@ Produce ONLY a JSON object with no markdown formatting or code blocks. Required 
 "cfg_scale": <float between 2.5-4.5>, "steps": <int 25-40>, "variants": 1}}
 
 CRITICAL: Write EVERYTHING in ENGLISH (preserve_subject, background_style, all fields). Return the raw JSON object only - no ```json``` or ``` blocks. Keep the subject unchanged. Do not add extra keys or commentary. Make each background culturally rich AND visually compelling.
-CRITICAL: preserve_subject MUST be a short product name (3-8 words) derived from the TITLE. Do NOT include physical descriptions like colors, materials, labels, cap details, or certifications. The original image already serves as the visual reference - the text only needs to IDENTIFY the product, not DESCRIBE it."""}
+CRITICAL: preserve_subject MUST be a short product name (3-8 words) derived from the title field. Do NOT include physical descriptions like colors, materials, labels, cap details, or certifications. The original image already serves as the visual reference - the text only needs to IDENTIFY the product, not DESCRIBE it."""},
+            {"role": "user", "content": user_message},
         ],
         temperature=0.8, top_p=1, max_tokens=1024, stream=True,
         extra_body={"chat_template_kwargs": {"enable_thinking": False}}
