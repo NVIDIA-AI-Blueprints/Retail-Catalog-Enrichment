@@ -205,6 +205,10 @@ For complete Docker deployment instructions, see the **[Docker Deployment Guide]
    HF_TOKEN=your_huggingface_token_here
    ```
 
+   The local policy RAG stack provides development-only MinIO credentials when
+   `MINIO_ACCESS_KEY` and `MINIO_SECRET_KEY` are omitted. Override both values
+   for any shared or production-like deployment.
+
 2. **Create cache directories**:
    ```bash
    export LOCAL_NIM_CACHE=~/.cache/nim
