@@ -33,7 +33,7 @@
     "class-variance-authority": "^0.7.1",
     "date-fns": "^4.1.0",
     "fast-equals": "^5.3.2",
-    "next": "16.2.12",
+    "next": "16.3.6",
     "react": "19.2.8",
     "react-day-picker": "^9.11.0",
     "react-dom": "19.2.8"
@@ -45,18 +45,19 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
-    "eslint-config-next": "16.2.12",
+    "eslint-config-next": "16.3.6",
     "tailwindcss": "^4",
     "typescript": "^5"
   },
   "pnpm": {
     "overrides": {
       "ajv@>=6.0.0 <6.14.0": "6.14.0",
-      "brace-expansion@>=5.0.0 <5.0.9": "5.0.9",
-      "js-yaml": "4.3.1",
+      "@humanfs/node@<0.16.8": "0.16.8",
+      "brace-expansion@>=5.0.0 <5.0.12": "5.0.12",
+      "js-yaml": "4.3.2",
       "nanoid@>=3.0.0 <3.3.18": "5.1.16",
       "postcss": "8.5.23",
-      "sharp@<0.35.0": "0.35.0",
+      "sharp@<0.35.4": "0.35.4",
       "tar": "7.5.22",
       "flatted": ">=3.4.2",
       "minimatch": "9.0.7",
