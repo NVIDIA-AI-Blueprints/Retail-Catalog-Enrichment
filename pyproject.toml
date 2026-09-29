@@ -19,7 +19,7 @@ dependencies = [
   "pillow==12.3.0",
   "pymilvus==2.5.15",
   "pyyaml==6.0.3",
-  "pypdf==6.15.0",
+  "pypdf==6.16.1",
   "numpy>=1.26.0",
   "deepagents==0.5.7",
   "langgraph-checkpoint>=3.0.0",
@@ -33,6 +33,7 @@ packages = ["src/backend"]
 [tool.uv]
 managed = true
 constraint-dependencies = [
+  "anyio>=4.14.2",
   "click>=8.3.3",
   "cryptography>=50.0.0",
   "grpcio>=1.83.0",
