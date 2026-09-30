@@ -22,6 +22,7 @@ import json
 import pytest
 from unittest.mock import Mock, patch
 from backend.reflection import (
+    REFLECTION_PROMPT_TEMPLATE,
     evaluate_image_quality,
     _encode_image_to_base64,
     _parse_quality_response,
@@ -86,9 +87,9 @@ class TestEvaluateImageQuality:
         call_args = mock_client.chat.completions.create.call_args
         messages = call_args.kwargs["messages"]
         assert _count_message_images(messages) == 2
-        assert call_args.kwargs["extra_body"] == {"chat_template_kwargs": {"enable_thinking": False}}
+        assert call_args.kwargs["extra_body"] == {"chat_template_kwargs": {"enable_thinking": True}}
         assert call_args.kwargs["temperature"] == 0.0
-        assert call_args.kwargs["max_tokens"] == 1024
+        assert call_args.kwargs["max_tokens"] == 8192
 
     @patch('backend.reflection.OpenAI')
     @patch('backend.reflection.get_config')
@@ -581,3 +582,30 @@ class TestParseQualityResponse:
         assert result["issues"] == issues_text
         for i, issue in enumerate(result["issues"]):
             assert issue == issues_text[i]
+
+
+class TestReflectionTextFidelity:
+    """Guards for the text-transcription and anti-anchoring judge instructions."""
+
+    def test_prompt_requires_text_transcription(self):
+        prompt = REFLECTION_PROMPT_TEMPLATE.format(product_name="bag", generation_prompt_section="x")
+
+        assert "original_text" in prompt
+        assert "generated_text" in prompt
+        assert "cap the score at 84 or lower" in prompt
+
+    def test_prompt_does_not_trust_generation_intent(self):
+        prompt = REFLECTION_PROMPT_TEMPLATE.format(product_name="bag", generation_prompt_section="x")
+
+        assert "Do not assume the product was preserved" in prompt
+        assert "does not guarantee the product was preserved" in _format_generation_prompt_section("Keep bag")
+
+    def test_parse_ignores_reasoning_block(self):
+        result = _parse_quality_response(
+            '<think>compare labels</think>{"original_text": ["A"], "generated_text": [], '
+            '"value": 70, "rationale": "text removed", "issues": ["label missing"]}'
+        )
+
+        assert result is not None
+        assert result["score"] == 70.0
+        assert result["issues"] == ["label missing"]

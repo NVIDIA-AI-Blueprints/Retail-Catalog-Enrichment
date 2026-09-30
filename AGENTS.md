@@ -215,6 +215,9 @@ The image variation generation follows a multi-stage pipeline:
    - Uses product title to focus evaluation on the specific product (not background elements)
    - Evaluates product structure & form fidelity (structural elements like straps, handles, pockets must match)
    - Assesses product consistency (colors, materials, textures, reflective properties must match original)
+   - Transcribes visible product text (labels, logos, numbers, sizes) in both images and flags any missing, misspelled, or changed text
+   - Judges only what is visible; the generation prompt describes intended background changes but is not taken as proof the product was preserved
+   - Runs with Nemotron reasoning enabled (the only backend LLM call that does); without it the judge tends to echo the prompt and score 100
    - Evaluates size and scale proportions (product must be realistically sized in new context)
    - Checks anatomical accuracy (if hands are present, verifies natural appearance)
    - Validates background quality (photorealism, appropriate context)
