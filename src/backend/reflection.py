@@ -41,6 +41,13 @@ EXPECTED GENERATION INTENT:
 
 Image 2 is expected to be a variation with a different background, setting, camera angle, lighting, mood, or staging when requested by the generation intent. Do not list expected contextual/background differences as quality issues, and do not lower the score for them by themselves. Penalize the background or staging if it corrupts, hides, occludes, distorts, duplicates, visually blends into, physically misplaces, or otherwise damages the product.
 
+Do not assume the product was preserved just because the generation intent says to keep it unchanged. The intent only describes what was requested; judge ONLY what is actually visible in the images.
+
+Before scoring, transcribe the visible text on the product in each image:
+- original_text: every readable word, number, logo text, and symbol on the product in Image 1, exactly as written (preserve spelling and case).
+- generated_text: the same for the product in Image 2, exactly as written.
+Compare the two lists character by character. Any missing, added, misspelled, garbled, or changed text (including numbers, sizes, and units) is a product-fidelity defect that must be listed as an issue and must cap the score at 84 or lower. If the product has no readable text, use empty lists.
+
 Compare the {product_name} in Image 2 against the same product in Image 1. Judge product fidelity first:
 - Product presence: the same product must be clearly visible in Image 2.
 - Shape and structure: silhouette, components, handles, straps, caps, pockets, buttons, controls, ports, labels, and other visible parts must match.
@@ -66,15 +73,15 @@ Scoring rubric:
 - 0: Product missing/replaced, or both images cannot be inspected and compared.
 
 Return ONLY JSON:
-{{"value": <float>, "rationale": "concise explanation of the score", "issues": ["issue1", "issue2", ...]}}"""
+{{"original_text": ["..."], "generated_text": ["..."], "value": <float>, "rationale": "concise explanation of the score", "issues": ["issue1", "issue2", ...]}}"""
 
 
 def _format_generation_prompt_section(generation_prompt: Optional[str]) -> str:
     """Format the prompt that produced Image 2 for the reflection judge."""
     if isinstance(generation_prompt, str) and generation_prompt.strip():
         return (
-            "Image 2 was generated with this image-edit prompt. Use it to identify intended "
-            "background/context changes versus product-fidelity defects:\n"
+            "Image 2 was generated with this image-edit prompt. Use it only to identify intended "
+            "background/context changes; it does not guarantee the product was preserved:\n"
             f"{generation_prompt.strip()}"
         )
     return (
@@ -164,12 +171,14 @@ def evaluate_image_quality(
             messages=messages,
             temperature=0.0,
             top_p=0.9,
-            max_tokens=1024,
+            max_tokens=8192,
             stream=False,
-            extra_body={"chat_template_kwargs": {"enable_thinking": False}},
+            # Thinking stays enabled for the judge: without it the model echoes the
+            # generation prompt and scores 100 without actually comparing the images.
+            extra_body={"chat_template_kwargs": {"enable_thinking": True}},
         )
         
-        response_text = completion.choices[0].message.content.strip()
+        response_text = (completion.choices[0].message.content or "").strip()
         logger.info(f"VLM response: {response_text}")
         
         result = _parse_quality_response(response_text)
@@ -209,6 +218,8 @@ def _encode_image_to_base64(image_bytes: bytes, target_format: str = "png") -> s
 
 def _parse_quality_response(response_text: str) -> Optional[Dict[str, Any]]:
     """Parse VLM quality response, handling JSON or markdown-wrapped JSON."""
+    if "</think>" in response_text:
+        response_text = response_text.split("</think>", 1)[1]
     data = parse_llm_json(response_text)
     if data is None:
         logger.warning(f"Parse failed - Response: {response_text}")

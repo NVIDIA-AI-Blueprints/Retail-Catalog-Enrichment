@@ -9,6 +9,10 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[1]
 BACKEND_DIR = REPO_ROOT / "src" / "backend"
 
+# The image-variation judge needs reasoning to actually compare the two images;
+# with thinking disabled it echoes the generation prompt and scores everything 100.
+THINKING_ENABLED_FILES = {"reflection.py"}
+
 
 def _attribute_chain(node):
     chain = []
@@ -51,7 +55,7 @@ def _contains_no_think(node):
     )
 
 
-def test_backend_chat_completion_calls_disable_thinking():
+def test_backend_chat_completion_calls_set_expected_thinking():
     failures = []
 
     for path in sorted(BACKEND_DIR.glob("*.py")):
@@ -73,8 +77,11 @@ def test_backend_chat_completion_calls_disable_thinking():
 
             chat_template_kwargs = _dict_value(extra_body, "chat_template_kwargs")
             enable_thinking = _dict_value(chat_template_kwargs, "enable_thinking")
-            if not (isinstance(enable_thinking, ast.Constant) and enable_thinking.value is False):
-                failures.append(f"{path.relative_to(REPO_ROOT)}:{node.lineno} does not disable thinking")
+            expected_thinking = path.name in THINKING_ENABLED_FILES
+            if not (isinstance(enable_thinking, ast.Constant) and enable_thinking.value is expected_thinking):
+                failures.append(
+                    f"{path.relative_to(REPO_ROOT)}:{node.lineno} enable_thinking must be {expected_thinking}"
+                )
 
             if _uses_vlm_model(node):
                 messages = _call_keyword(node, "messages")
