@@ -248,6 +248,8 @@ async def _call_flux_edit(image_bytes: bytes, content_type: str, prompt: str, st
     
     body = response.json()
     logger.info("FLUX response received: keys=%s", list(body.keys()))
+    if "detail" in body:
+        logger.error("FLUX error response: status=%d detail=%s", response.status_code, str(body.get("detail"))[:1000])
     return body
 
 

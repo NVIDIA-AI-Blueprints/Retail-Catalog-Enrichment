@@ -243,8 +243,8 @@ export async function generate3DModel(file: File): Promise<string | null> {
   const response = await fetch(`${API_BASE}/generate/3d`, {
     method: 'POST',
     body: formData,
-    // Increase timeout for large responses (2 minutes)
-    signal: AbortSignal.timeout(120000)
+    // Increase timeout for large responses (5 minutes, matches nginx proxy_read_timeout)
+    signal: AbortSignal.timeout(300000)
   });
 
   if (!response.ok) {
