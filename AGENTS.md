@@ -56,7 +56,7 @@ cd catalog-enrichment
 #### Environment
 - Create `.env` at repo root:
   - `NGC_API_KEY=...`
-  - `NVIDIA_API_BASE_URL=https://integrate.api.nvidia.com/v1` (default)
+  - `NVIDIA_API_BASE_URL=https://integrate.api.nvidia.com/v1` (default; embeddings use it only when `embeddings.url` is not set in `config.yaml`)
 
 #### Run (with uv)
 ```bash
@@ -211,6 +211,7 @@ Supported locales: `en-US`, `en-GB`, `en-AU`, `en-CA`, `es-ES`, `es-MX`, `es-AR`
 The image variation generation follows a multi-stage pipeline:
 1. **Planner Stage**: LLM creates a culturally-aware variation plan with background style, camera angle, and lighting
 2. **FLUX Generation Stage**: Image generation model creates the variation based on the plan
+   - If the FLUX content filter returns `finishReason: CONTENT_FILTERED` (a black placeholder), re-plans and retries once; a second rejection returns `422` and skips the judge
 3. **Reflection Stage**: VLM evaluates the generated image quality by comparing it to the original product
    - Uses product title to focus evaluation on the specific product (not background elements)
    - Evaluates product structure & form fidelity (structural elements like straps, handles, pockets must match)
@@ -221,7 +222,9 @@ The image variation generation follows a multi-stage pipeline:
    - Evaluates size and scale proportions (product must be realistically sized in new context)
    - Checks anatomical accuracy (if hands are present, verifies natural appearance)
    - Validates background quality (photorealism, appropriate context)
-   - Returns quality score (0-100) and list of detected issues
+   - Uses sampled decoding (`temperature=0.6`, `top_p=0.95`); greedy decoding makes the reasoning model loop until it hits the token limit with no answer
+   - Allows 8,192 output tokens for reasoning and the final assessment; retries once for an empty or unusable assessment; logs finish reason, token usage, and reasoning presence for each attempt
+   - Returns quality score (0-100) and list of detected issues; if assessment fails, preserves the generated image and the UI shows “Quality assessment unavailable”
 4. **Return Stage**: Returns the generated image and evaluation data directly without writing image or metadata artifacts to disk
 
 **Quality Scoring**: The reflection module is exceptionally strict, with most images scoring 50-70%. Scores above 85% indicate excellent quality with only minor issues. The evaluation now focuses specifically on the named product to avoid false positives from background variations.

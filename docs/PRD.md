@@ -26,7 +26,7 @@ A GenAI-powered catalog enrichment system that transforms basic product images i
    - Enhancing categories and subcategories based on visual analysis
    - Generating more comprehensive and accurate tags
    - Validating and correcting product specifications against visual evidence
-3. **Product Web Research** (Optional): System uses a Deep Agents research agent with Exa search to gather public web context for the enriched title:
+3. **Product Web Research** (Optional): System runs fixed Exa searches and a single Nemotron synthesis call to gather public web context for the enriched title:
    - Pros and cons reported by product pages, reviews, and relevant articles
    - Real-world usage scenarios and purchase considerations
    - Customer sentiment themes and common feedback
@@ -169,8 +169,8 @@ A GenAI-powered catalog enrichment system that transforms basic product images i
 
 ### FR-14: Product Web Insights
 - Generate a source-backed product research summary from the enriched product title
-- Use LangChain Deep Agents SDK as the research agent harness
-- Use NVIDIA Nemotron 3.5 Lightning as the agent model through the existing LLM configuration
+- Run three fixed title-based Exa searches (title, reviews, price); the model does not choose searches
+- Use NVIDIA Nemotron 3.5 Lightning for a single synthesis call through the existing LLM configuration
 - Use Exa as the initial external web search API provider
 - Search for product and brand information including pros, cons, customer feedback, real-world usage, and purchase considerations
 - Return grouped insight sections: summary, pros, cons, use cases, customer insights, purchase considerations, search queries, sources, and warnings
@@ -218,10 +218,10 @@ A GenAI-powered catalog enrichment system that transforms basic product images i
 - Content filtering to exclude inappropriate or irrelevant material
 
 ### TR-6: Product Web Research Agent
-- Add `deepagents`, LangChain chat model integration dependencies, and `exa-py`
-- Configure the agent with Nemotron 3.5 Lightning and an Exa-backed search tool
-- Use concise Exa highlights for normal operation, with deeper search modes only when source coverage is low
-- Validate and repair agent output into the API response schema before returning it to clients
+- Add `langchain-openai` (chat model client) and `exa-py`
+- Synthesize the report with Nemotron 3.5 Lightning from a source packet built by three fixed Exa searches
+- Use concise Exa highlights for latency and token control
+- Validate and repair model output into the API response schema before returning it to clients
 - Enforce source attribution for market claims and user-visible insight bullets
 - Add timeout, rate-limit, and missing-key error handling for Exa calls
 - Add unit tests for query planning, output normalization, missing API key behavior, and UI rendering states
@@ -343,7 +343,7 @@ A GenAI-powered catalog enrichment system that transforms basic product images i
 - [x] ~~FR-11: Policy Compliance Checking~~ *(PDF policy library with Milvus embeddings, semantic retrieval, compliance classification)*
 - [x] ~~FR-12: Product Manual PDF Enhancement for FAQs~~ *(Stateless targeted RAG via /vlm/manual/extract, dynamic query generation, up to 10 manual-enriched FAQs)*
 - [x] ~~FR-13: Protocol Schema Export (ACP & UCP)~~ *(Single /protocols/generate endpoint with LLM field extraction, syntax-highlighted UI with ACP/UCP sub-tabs)*
-- [x] ~~FR-14: Product Web Insights~~ *(Deep Agents + Exa research endpoint with source-backed dashboard UI tab)*
+- [x] ~~FR-14: Product Web Insights~~ *(Exa + Nemotron research endpoint with source-backed dashboard UI tab)*
 
 - [ ] TR-1: Model Integration
   - [x] ~~NVIDIA Nemotron 3 Nano Omni API integration~~
@@ -362,7 +362,7 @@ A GenAI-powered catalog enrichment system that transforms basic product images i
   - [ ] Trend detection algorithms
   - [ ] Privacy compliance framework
 - [x] ~~TR-6: Product Web Research Agent~~
-  - [x] ~~Add Deep Agents and Exa dependencies~~
+  - [x] ~~Add LangChain OpenAI and Exa dependencies~~
   - [x] ~~Implement Exa search tool wrapper~~
   - [x] ~~Implement `/research/product-insights`~~
   - [x] ~~Add Web Insights frontend API client and dashboard tab~~

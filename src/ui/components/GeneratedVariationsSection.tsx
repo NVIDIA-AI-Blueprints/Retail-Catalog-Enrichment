@@ -180,6 +180,11 @@ export function GeneratedVariationsSection({
                     )}
                   </div>
                 )}
+                {generatedImages[index] && qualityScores[index] == null && (
+                  <Text kind="body/regular/xs" className="text-subtle">
+                    Quality assessment unavailable
+                  </Text>
+                )}
                 {generatedImages[index] && (qualityRationales[index] || (qualityIssues[index] && qualityIssues[index]!.length > 0)) && (
                   <div
                     style={{

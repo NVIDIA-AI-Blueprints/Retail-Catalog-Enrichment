@@ -19,6 +19,8 @@ Unit tests for image quality reflection module.
 Tests the reflection/evaluation system that compares original and generated images.
 """
 import json
+import logging
+from types import SimpleNamespace
 import pytest
 from unittest.mock import Mock, patch
 from backend.reflection import (
@@ -35,6 +37,61 @@ from backend.reflection import (
 class TestEvaluateImageQuality:
     """Tests for evaluate_image_quality function."""
     
+    @pytest.mark.parametrize("bad_answer", ["", "not JSON", '{"issues": []}', '[]'])
+    @patch('backend.reflection.OpenAI')
+    @patch('backend.reflection.get_config')
+    def test_unusable_assessment_retried_once(
+        self, mock_get_config, mock_openai_class, sample_image_bytes, mock_env_vars,
+        caplog, bad_answer,
+    ):
+        mock_get_config.return_value.get_vlm_config.return_value = {
+            "url": "http://test:8000/v1", "model": "test-vlm-model",
+        }
+
+        def completion(content, finish_reason):
+            return SimpleNamespace(
+                choices=[SimpleNamespace(
+                    message=SimpleNamespace(content=content, reasoning_content="private reasoning"),
+                    finish_reason=finish_reason,
+                )],
+                usage=SimpleNamespace(
+                    prompt_tokens=100, completion_tokens=8192, total_tokens=8292,
+                    completion_tokens_details=SimpleNamespace(reasoning_tokens=8192),
+                ),
+            )
+
+        create = mock_openai_class.return_value.chat.completions.create
+        create.side_effect = [
+            completion(bad_answer, "length"),
+            completion('{"value": 82, "rationale": "Product preserved", "issues": []}', "stop"),
+        ]
+        with caplog.at_level(logging.INFO, logger="catalog_enrichment.reflection"):
+            result = evaluate_image_quality(sample_image_bytes, sample_image_bytes, "image/png")
+        assert result["score"] == 82
+        assert create.call_count == 2
+        assert create.call_args_list[0] == create.call_args_list[1]
+        assert "finish_reason=length" in caplog.text
+        assert "completion_tokens=8192" in caplog.text
+        assert "reasoning_tokens=8192" in caplog.text
+        assert "reasoning_present=True" in caplog.text
+        assert "private reasoning" not in caplog.text
+
+    @patch('backend.reflection.OpenAI')
+    @patch('backend.reflection.get_config')
+    def test_empty_assessment_stops_after_two_attempts(
+        self, mock_get_config, mock_openai_class, sample_image_bytes, mock_env_vars,
+    ):
+        mock_get_config.return_value.get_vlm_config.return_value = {
+            "url": "http://test:8000/v1", "model": "test-vlm-model",
+        }
+        create = mock_openai_class.return_value.chat.completions.create
+        create.return_value = SimpleNamespace(
+            choices=[SimpleNamespace(message=SimpleNamespace(content=None), finish_reason="length")],
+            usage=None,
+        )
+        assert evaluate_image_quality(sample_image_bytes, sample_image_bytes, "image/png") is None
+        assert create.call_count == 2
+
     @patch('backend.reflection.OpenAI')
     @patch('backend.reflection.get_config')
     def test_evaluation_success_with_perfect_score(
@@ -79,6 +136,7 @@ class TestEvaluateImageQuality:
         # Assertions
         assert result is not None
         assert isinstance(result, dict)
+        mock_client.chat.completions.create.assert_called_once()
         assert result["score"] == 100.0
         assert "same product structure" in result["rationale"]
         assert result["issues"] == []
@@ -88,7 +146,8 @@ class TestEvaluateImageQuality:
         messages = call_args.kwargs["messages"]
         assert _count_message_images(messages) == 2
         assert call_args.kwargs["extra_body"] == {"chat_template_kwargs": {"enable_thinking": True}}
-        assert call_args.kwargs["temperature"] == 0.0
+        assert call_args.kwargs["temperature"] == 0.6
+        assert call_args.kwargs["top_p"] == 0.95
         assert call_args.kwargs["max_tokens"] == 8192
 
     @patch('backend.reflection.OpenAI')

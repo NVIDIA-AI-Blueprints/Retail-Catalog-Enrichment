@@ -69,7 +69,7 @@ class Config:
     def get_embeddings_config(self) -> Dict[str, str]:
         config = self._get_optional_section_config('embeddings')
         return {
-            "url": os.getenv("NVIDIA_API_BASE_URL") or config.get("url") or "https://integrate.api.nvidia.com/v1",
+            "url": config.get("url") or os.getenv("NVIDIA_API_BASE_URL") or "https://integrate.api.nvidia.com/v1",
             "model": config.get("model") or "nvidia/nv-embedqa-e5-v5",
         }
 

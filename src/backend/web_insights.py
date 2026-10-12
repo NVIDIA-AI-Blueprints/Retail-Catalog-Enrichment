@@ -17,9 +17,9 @@ import json
 import logging
 import os
 import re
+import time
 from typing import Any, Optional
 
-from deepagents import create_deep_agent
 from exa_py import Exa
 from langchain_openai import ChatOpenAI
 
@@ -159,7 +159,7 @@ def build_product_web_insights(
     locale: str = "en-US",
     max_results: Optional[int] = None,
 ) -> dict[str, Any]:
-    """Run a Deep Agents product research pass and return normalized insights."""
+    """Run three title-based searches and summarize their evidence once."""
     exa_api_key = os.getenv("EXA_API_KEY")
     if not exa_api_key:
         logger.info("[Web Insights] disabled because EXA_API_KEY is not configured")
@@ -182,19 +182,6 @@ def build_product_web_insights(
     collected_sources: list[dict[str, Any]] = []
     search_queries: list[str] = []
 
-    def web_search(query: str, max_results: Optional[int] = None) -> str:
-        """Search public web sources for product information and return source highlights."""
-        sources = _search_exa_sources(
-            exa,
-            query,
-            search_type=search_type,
-            max_results=max_results or effective_max_results,
-            highlights_max_characters=highlights_max_characters,
-            query_log=search_queries,
-        )
-        collected_sources.extend(sources)
-        return json.dumps({"results": sources}, ensure_ascii=False)
-
     model = ChatOpenAI(
         model=llm_config["model"],
         base_url=llm_config["url"],
@@ -205,74 +192,47 @@ def build_product_web_insights(
         max_retries=1,
         extra_body={"chat_template_kwargs": {"enable_thinking": False}},
     )
-    agent = create_deep_agent(
-        model=model,
-        tools=[web_search],
-        system_prompt=_build_system_prompt(locale),
-    )
-
+    started_at = time.monotonic()
     try:
-        user_prompt = _build_user_prompt(
-            title=title,
-            description=description,
-            categories=categories or [],
-            tags=tags or [],
-            locale=locale,
-            max_results=effective_max_results,
-        )
-        result = agent.invoke({"messages": [{"role": "user", "content": user_prompt}]})
-        final_text = _extract_final_message_text(result)
-        parsed = _parse_agent_json(final_text)
-        if not collected_sources:
-            fallback_queries = _fallback_search_queries(
+        # Query selection is deterministic: the model never initiates searches.
+        source_batches = []
+        for query in (title, f"{title} reviews", f"{title} price"):
+            source_batches.append(_search_exa_sources(
+                exa,
+                query,
+                search_type=search_type,
+                max_results=effective_max_results,
+                highlights_max_characters=highlights_max_characters,
+                query_log=search_queries,
+            ))
+        # Interleave results so identity, reviews, and pricing all reach the report.
+        for index in range(max((len(batch) for batch in source_batches), default=0)):
+            collected_sources.extend(batch[index] for batch in source_batches if index < len(batch))
+        collected_sources = _limit_sources(collected_sources, max_sources=max_sources)
+        logger.info("[Web Insights] retrieval complete: searches=%d sources=%d elapsed_seconds=%.2f",
+                    len(search_queries), len(collected_sources), time.monotonic() - started_at)
+        if collected_sources:
+            prompt = _build_source_grounded_prompt(
                 title=title,
+                description=description,
                 categories=categories or [],
                 tags=tags or [],
-                parsed=parsed if isinstance(parsed, dict) else {},
+                locale=locale,
+                sources=collected_sources,
             )
-            for query in fallback_queries:
-                collected_sources.extend(
-                    _search_exa_sources(
-                        exa,
-                        query,
-                        search_type=search_type,
-                        max_results=effective_max_results,
-                        highlights_max_characters=highlights_max_characters,
-                        query_log=search_queries,
-                    )
-                )
-                if len(_dedupe_sources(collected_sources)) >= max_sources:
-                    break
-            collected_sources = _dedupe_sources(collected_sources)[:max_sources]
-            if collected_sources:
-                logger.info("[Web Insights] using fallback source packet with %d sources", len(collected_sources))
-                grounded_prompt = _build_source_grounded_prompt(
-                    title=title,
-                    description=description,
-                    categories=categories or [],
-                    tags=tags or [],
-                    locale=locale,
-                    sources=collected_sources,
-                )
-                grounded_result = agent.invoke({"messages": [{"role": "user", "content": grounded_prompt}]})
-                grounded_text = _extract_final_message_text(grounded_result)
-                grounded_parsed = _parse_agent_json(grounded_text)
-                if isinstance(grounded_parsed, dict):
-                    final_text = grounded_text
-                    parsed = grounded_parsed
-        collected_sources = _ensure_price_sources(
-            exa,
-            title=title,
-            parsed=parsed if isinstance(parsed, dict) else {},
-            collected_sources=collected_sources,
-            search_type=search_type,
-            max_results=effective_max_results,
-            highlights_max_characters=highlights_max_characters,
-            query_log=search_queries,
-            max_sources=max_sources,
-        )
+            result = model.invoke([
+                {"role": "system", "content": _build_system_prompt(locale)},
+                {"role": "user", "content": prompt},
+            ])
+            final_text = _clean_string(result.content)
+            parsed = _parse_agent_json(final_text)
+        else:
+            final_text = ""
+            parsed = {}
+        logger.info("[Web Insights] research complete: searches=%d elapsed_seconds=%.2f",
+                    len(search_queries), time.monotonic() - started_at)
     except Exception as exc:
-        logger.exception("[Web Insights] agent invocation failed: %s", exc)
+        logger.exception("[Web Insights] research failed: %s", exc)
         raise WebInsightsDependencyError(str(exc)) from exc
 
     return normalize_web_insights_output(
@@ -365,7 +325,7 @@ def _build_system_prompt(locale: str) -> str:
     info = LOCALE_CONFIG.get(locale, LOCALE_CONFIG["en-US"])
     return f"""/no_think You are a retail product web research analyst.
 
-Use the web_search tool to research public web sources about the product and brand. Use broad public web coverage, including official product pages, retailer pages, reviews, forums, support pages, and relevant articles when useful.
+Analyze only the supplied sources from three fixed title-based searches. Do not request additional searches or invent missing evidence. If identity remains uncertain, use brand-level, category-level, or insufficient-identity scope as supported by the evidence.
 
 Rules:
 - Use the product title as the primary identity signal.
@@ -412,45 +372,6 @@ The report object must use this shape:
   "primary_use_cases": [{{"title": "short use case", "detail": "source-backed detail"}}],
   "customer_sentiment_summary": "short source-backed sentiment narrative"
 }}."""
-
-
-def _build_user_prompt(
-    *,
-    title: str,
-    description: str,
-    categories: list[str],
-    tags: list[str],
-    locale: str,
-    max_results: int,
-) -> str:
-    return f"""Research public web insights for this product.
-
-TITLE:
-{title}
-
-DESCRIPTION:
-{description}
-
-CATEGORIES:
-{json.dumps(categories, ensure_ascii=False)}
-
-TAGS:
-{json.dumps(tags, ensure_ascii=False)}
-
-LOCALE:
-{locale}
-
-Search requirements:
-- First search the full title exactly enough to identify whether public sources confirm a brand, manufacturer, model, or exact product family.
-- Run targeted searches for exact product identity, reviews, retailer listings, official brand or manufacturer pages, price positioning, complaints or common problems, customer sentiment, and practical use cases.
-- If full-title searches do not confirm a brand or model, broaden to category-level evidence using title attributes, categories, and tags. Label the result as category_level or insufficient_identity and phrase insights as general category patterns.
-- Use at most {max_results} results per search call.
-- Look for pros, cons, product information, customer insights, pricing context, purchase risks, and how people use the product.
-- Prefer source diversity and avoid duplicate pages from the same result set.
-- Prefer official, retailer, review, support, and forum sources when relevant.
-- Include identity_evidence entries that explain why the scope and detected_brand/detected_model were chosen.
-
-Return only the JSON object."""
 
 
 def _normalize_exa_result(result: Any) -> dict[str, Any]:
@@ -507,101 +428,6 @@ def _search_exa_sources(
     return [source for source in sources if source["url"]]
 
 
-def _ensure_price_sources(
-    exa: Exa,
-    *,
-    title: str,
-    parsed: dict[str, Any],
-    collected_sources: list[dict[str, Any]],
-    search_type: str,
-    max_results: int,
-    highlights_max_characters: int,
-    query_log: list[str],
-    max_sources: int,
-) -> list[dict[str, Any]]:
-    sources = _dedupe_sources(collected_sources)
-    if not sources or _extract_dollar_prices(_source_evidence_text(sources)):
-        return collected_sources
-
-    for query in _price_search_queries(title=title, parsed=parsed):
-        collected_sources.extend(
-            _search_exa_sources(
-                exa,
-                query,
-                search_type=search_type,
-                max_results=max_results,
-                highlights_max_characters=highlights_max_characters,
-                query_log=query_log,
-            )
-        )
-        sources = _dedupe_sources(collected_sources)
-        if _extract_dollar_prices(_source_evidence_text(_limit_sources(sources, max_sources=max_sources))):
-            break
-    return _limit_sources(collected_sources, max_sources=max_sources)
-
-
-def _price_search_queries(*, title: str, parsed: dict[str, Any]) -> list[str]:
-    candidates = [
-        f'"{title}" price',
-        f'"{title}" current retail price',
-        f'"{title}" price range',
-    ]
-    detected_model = _clean_optional_identity(parsed.get("detected_model")) if isinstance(parsed, dict) else None
-    detected_brand = _clean_optional_identity(parsed.get("detected_brand")) if isinstance(parsed, dict) else None
-    if detected_model:
-        candidates.append(f'"{detected_model}" price')
-    if detected_brand:
-        candidates.append(f'"{detected_brand}" "{title}" price')
-
-    queries: list[str] = []
-    seen: set[str] = set()
-    for candidate in candidates:
-        query = _clean_string(candidate)
-        key = query.lower()
-        if not query or key in seen:
-            continue
-        seen.add(key)
-        queries.append(query)
-        if len(queries) >= 5:
-            break
-    return queries
-
-
-def _fallback_search_queries(
-    *,
-    title: str,
-    categories: list[str],
-    tags: list[str],
-    parsed: dict[str, Any],
-) -> list[str]:
-    candidates = [
-        title,
-        f'"{title}"',
-        f'"{title}" reviews',
-        f'"{title}" retailer',
-        f'"{title}" official',
-        f'"{title}" complaints',
-    ]
-    candidates.extend(_clean_string_list(parsed.get("search_queries", []), limit=8))
-    if tags:
-        candidates.append(f'{title} {" ".join(tags[:3])} reviews')
-    if categories:
-        candidates.append(f'{title} {" ".join(categories[:2])} buying guide')
-
-    queries: list[str] = []
-    seen: set[str] = set()
-    for candidate in candidates:
-        query = _clean_string(candidate)
-        key = query.lower()
-        if not query or key in seen:
-            continue
-        seen.add(key)
-        queries.append(query)
-        if len(queries) >= 8:
-            break
-    return queries
-
-
 def _build_source_grounded_prompt(
     *,
     title: str,
@@ -611,10 +437,10 @@ def _build_source_grounded_prompt(
     locale: str,
     sources: list[dict[str, Any]],
 ) -> str:
-    source_packet = json.dumps(sources[:8], ensure_ascii=False)
+    source_packet = json.dumps(sources, ensure_ascii=False)
     return f"""Create product web insights from the provided source packet.
 
-The initial research pass did not return tool sources. Use only the source packet below for source-backed claims. Source titles and URLs may support identity classification, but review sentiment, complaints, ratings, price, quality, and use-case claims require source snippets, highlights, or text excerpts that explicitly support them. Ignore unsupported-browser messages, navigation, add-to-cart status text, cookie banners, and other website boilerplate because they are not product insights. Do not invent missing review counts, ratings, model numbers, prices, or sentiment scores.
+Retrieval is complete. Use only the source packet below for source-backed claims. Source titles and URLs may support identity classification, but review sentiment, complaints, ratings, price, quality, and use-case claims require source snippets, highlights, or text excerpts that explicitly support them. Ignore unsupported-browser messages, navigation, add-to-cart status text, cookie banners, and other website boilerplate because they are not product insights. Do not invent missing review counts, ratings, model numbers, prices, or sentiment scores.
 
 TITLE:
 {title}
@@ -1292,24 +1118,6 @@ def _limit_sources(sources: list[dict[str, Any]], *, max_sources: int) -> list[d
             selected[-1] = source
             break
     return selected
-
-
-def _extract_final_message_text(result: Any) -> str:
-    if not isinstance(result, dict):
-        return ""
-    messages = result.get("messages") or []
-    if not messages:
-        return ""
-    final_message = messages[-1]
-    content = getattr(final_message, "content", None)
-    if content is None and isinstance(final_message, dict):
-        content = final_message.get("content")
-    if isinstance(content, list):
-        return "\n".join(
-            item.get("text", "") if isinstance(item, dict) else str(item)
-            for item in content
-        )
-    return _clean_string(content)
 
 
 def _get_value(value: Any, key: str, default: Any = None) -> Any:

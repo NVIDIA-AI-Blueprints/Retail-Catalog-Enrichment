@@ -165,33 +165,55 @@ def evaluate_image_quality(
         if image_input_count != 2:
             raise RuntimeError(f"Reflection VLM payload must include exactly 2 images, got {image_input_count}")
 
-        logger.info("Calling VLM judge: model=%s image_inputs=%d", vlm_config["model"], image_input_count)
-        completion = client.chat.completions.create(
-            model=vlm_config['model'],
-            messages=messages,
-            temperature=0.0,
-            top_p=0.9,
-            max_tokens=8192,
-            stream=False,
-            # Thinking stays enabled for the judge: without it the model echoes the
-            # generation prompt and scores 100 without actually comparing the images.
-            extra_body={"chat_template_kwargs": {"enable_thinking": True}},
-        )
-        
-        response_text = (completion.choices[0].message.content or "").strip()
-        logger.info(f"VLM response: {response_text}")
-        
-        result = _parse_quality_response(response_text)
-        
-        if result:
-            logger.info(f"Evaluation complete: score={result['score']:.1f} issues={len(result['issues'])}")
-            if result['issues']:
-                logger.info(f"Issues: {result['issues']}")
-        else:
-            logger.warning("Failed to parse response")
-        
-        return result
-        
+        for attempt in range(1, 3):
+            logger.info("Calling VLM judge: model=%s image_inputs=%d attempt=%d/2",
+                        vlm_config["model"], image_input_count, attempt)
+            completion = client.chat.completions.create(
+                model=vlm_config['model'],
+                messages=messages,
+                # Reasoning models loop under greedy decoding (temperature=0 repeats
+                # "Wait, ..." until max_tokens with no answer); sample instead.
+                temperature=0.6,
+                top_p=0.95,
+                max_tokens=8192,
+                stream=False,
+                # Thinking stays enabled for the judge: without it the model echoes the
+                # generation prompt and scores 100 without actually comparing the images.
+                extra_body={"chat_template_kwargs": {"enable_thinking": True}},
+            )
+
+            choice = completion.choices[0] if completion.choices else None
+            message = choice.message if choice is not None else None
+            response_text = (message.content or "").strip() if message is not None else ""
+            usage = completion.usage
+            details = getattr(usage, "completion_tokens_details", None)
+            reasoning = getattr(message, "reasoning_content", None) or getattr(message, "reasoning", None)
+            logger.info(
+                "VLM completion: attempt=%d finish_reason=%s prompt_tokens=%s "
+                "completion_tokens=%s total_tokens=%s reasoning_tokens=%s "
+                "reasoning_present=%s answer_chars=%d",
+                attempt,
+                choice.finish_reason if choice is not None else None,
+                getattr(usage, "prompt_tokens", None),
+                getattr(usage, "completion_tokens", None),
+                getattr(usage, "total_tokens", None),
+                getattr(details, "reasoning_tokens", None),
+                bool(reasoning),
+                len(response_text),
+            )
+            logger.info("VLM response: %s", response_text)
+            result = _parse_quality_response(response_text)
+            if result is not None:
+                logger.info("Evaluation complete: score=%.1f issues=%d", result['score'], len(result['issues']))
+                if result['issues']:
+                    logger.info("Issues: %s", result['issues'])
+                return result
+            if attempt == 1:
+                logger.warning("Empty or unusable quality assessment; retrying once")
+            else:
+                logger.warning("Quality assessment unavailable after 2 attempts")
+        return None
+
     except Exception as exc:
         logger.exception(f"Evaluation failed: {exc}")
         return None
@@ -221,7 +243,7 @@ def _parse_quality_response(response_text: str) -> Optional[Dict[str, Any]]:
     if "</think>" in response_text:
         response_text = response_text.split("</think>", 1)[1]
     data = parse_llm_json(response_text)
-    if data is None:
+    if not isinstance(data, dict):
         logger.warning(f"Parse failed - Response: {response_text}")
         return None
 

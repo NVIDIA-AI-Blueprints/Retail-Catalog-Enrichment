@@ -37,7 +37,7 @@ from backend.prompt_security import (
 )
 from backend.product_manual import process_manual_pdf, generate_manual_queries, extract_manual_knowledge
 from backend.vlm import extract_vlm_observation, extract_rich_product_json, build_enriched_vlm_result, _call_nemotron_generate_faqs, _call_nemotron_extract_schema_fields
-from backend.image import generate_image_variation
+from backend.image import FluxContentFilteredError, generate_image_variation
 from backend.trellis import generate_3d_asset
 from backend.web_insights import build_product_web_insights, WebInsightsDependencyError
 from backend.config import get_config
@@ -466,7 +466,7 @@ async def product_insights(
     locale: str = Form("en-US"),
     max_results: int | None = Form(None),
 ) -> JSONResponse:
-    """Generate source-backed product web insights using Deep Agents and Exa."""
+    """Generate source-backed product web insights using Exa search and Nemotron."""
     try:
         if locale not in VALID_LOCALES:
             logger.error("/research/product-insights error: invalid locale=%s", locale)
@@ -606,6 +606,9 @@ async def generate_variation(
         logger.info(f"/generate/variation success: image_b64_len={len(result['generated_image_b64'])} quality_score={result['quality_score']} issues_count={len(result['quality_issues'])}")
         return JSONResponse(payload)
         
+    except FluxContentFilteredError as exc:
+        logger.warning(f"/generate/variation content filtered: {exc}")
+        return JSONResponse({"detail": str(exc)}, status_code=422)
     except (APIConnectionError, httpx.ConnectError) as exc:
         logger.exception(f"/generate/variation connection error: {exc}")
         return JSONResponse({

@@ -21,6 +21,7 @@ Planner → FLUX → Reflection
 
 This module is decoupled from VLM analysis and takes pre-computed fields as input.
 """
+import asyncio
 import os
 import base64
 import random
@@ -40,6 +41,10 @@ from backend.reflection import evaluate_image_quality
 load_dotenv()
 
 logger = logging.getLogger("catalog_enrichment.image")
+
+
+class FluxContentFilteredError(RuntimeError):
+    """FLUX's built-in safety filter rejected every planned prompt."""
 
 # Locale configuration for planner
 LOCALE_CONFIG = {
@@ -253,6 +258,15 @@ async def _call_flux_edit(image_bytes: bytes, content_type: str, prompt: str, st
     return body
 
 
+def _is_flux_content_filtered(response_body: Dict[str, Any]) -> bool:
+    """Return True when FLUX replaced the output with its content-filter placeholder."""
+    artifacts = response_body.get("artifacts")
+    return (
+        isinstance(artifacts, list)
+        and any(isinstance(a, dict) and a.get("finishReason") == "CONTENT_FILTERED" for a in artifacts)
+    )
+
+
 def _extract_base64_image_from_flux_response(response_body: Dict[str, Any]) -> Optional[str]:
     """Extract base64 image from FLUX API response."""
     for key in ("image", "output", "data"):
@@ -305,23 +319,33 @@ async def generate_image_variation(
     logger.info("Starting image generation pipeline: title_len=%d locale=%s", len(title), locale)
     
     try:
-        # Step 1: Planner - Create variation plan
-        logger.info("Step 1: Planning variation")
-        plan = _call_planner_llm(title, description, categories, locale)
-        prompt = _render_flux_prompt(plan, categories=categories)
-        logger.info("Planner complete: prompt_len=%d", len(prompt))
-        
-        # Step 2: FLUX - Generate image (async!)
-        logger.info("Step 2: Generating image with FLUX")
-        flux_response = await _call_flux_edit(
-            image_bytes,
-            content_type,
-            prompt,
-            steps=int(plan.get("steps", 30)),
-            cfg_scale=float(plan.get("cfg_scale", 3.5)),
-            seed=random.randint(1, 10_000_000)
-        )
-        
+        # FLUX's safety filter has false positives on benign scenes and returns a black
+        # placeholder in ~3s; a fresh plan usually picks a background that passes.
+        for attempt in range(1, 3):
+            # Step 1: Planner - Create variation plan
+            logger.info("Step 1: Planning variation (attempt %d/2)", attempt)
+            plan = await asyncio.to_thread(_call_planner_llm, title, description, categories, locale)
+            prompt = _render_flux_prompt(plan, categories=categories)
+            logger.info("Planner complete: prompt_len=%d", len(prompt))
+
+            # Step 2: FLUX - Generate image (async!)
+            logger.info("Step 2: Generating image with FLUX")
+            flux_response = await _call_flux_edit(
+                image_bytes,
+                content_type,
+                prompt,
+                steps=int(plan.get("steps", 30)),
+                cfg_scale=float(plan.get("cfg_scale", 3.5)),
+                seed=random.randint(1, 10_000_000)
+            )
+            if not _is_flux_content_filtered(flux_response):
+                break
+            logger.warning("FLUX content filter rejected prompt (attempt %d/2): %s", attempt, prompt)
+        else:
+            raise FluxContentFilteredError(
+                "Image generation was blocked by the FLUX content filter. Please try again."
+            )
+
         image_b64 = _extract_base64_image_from_flux_response(flux_response)
         if not image_b64:
             raise RuntimeError("FLUX response did not include an image")
@@ -331,7 +355,9 @@ async def generate_image_variation(
         # Step 3: Reflection - Evaluate quality
         logger.info("Step 3: Evaluating image quality with reflection")
         generated_image_bytes = base64.b64decode(image_b64)
-        quality_result = evaluate_image_quality(
+        # Run blocking clients off the event loop so a slow judge cannot stall other requests.
+        quality_result = await asyncio.to_thread(
+            evaluate_image_quality,
             original_image_bytes=image_bytes,
             generated_image_bytes=generated_image_bytes,
             content_type=content_type,
