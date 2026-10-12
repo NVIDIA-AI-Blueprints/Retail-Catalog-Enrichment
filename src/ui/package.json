@@ -33,7 +33,7 @@
     "class-variance-authority": "^0.7.1",
     "date-fns": "^4.1.0",
     "fast-equals": "^5.3.2",
-    "next": "16.3.6",
+    "next": "16.3.8",
     "react": "19.2.8",
     "react-day-picker": "^9.11.0",
     "react-dom": "19.2.8"
@@ -45,7 +45,7 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
-    "eslint-config-next": "16.3.6",
+    "eslint-config-next": "16.3.8",
     "tailwindcss": "^4",
     "typescript": "^5"
   },
@@ -57,6 +57,7 @@
       "js-yaml": "4.3.2",
       "nanoid@>=3.0.0 <3.3.18": "5.1.16",
       "postcss": "8.5.23",
+      "source-map-js@<1.2.2": "1.2.2",
       "sharp@<0.35.4": "0.35.4",
       "tar": "7.5.22",
       "flatted": ">=3.4.2",
