@@ -656,7 +656,6 @@ def test_build_product_web_insights_returns_disabled_when_exa_api_key_missing(mo
     assert output["report"]["retail_insights"] == []
 
 
-@patch("backend.web_insights.create_deep_agent")
 @patch("backend.web_insights.ChatOpenAI")
 @patch("backend.web_insights.Exa")
 @patch("backend.web_insights.get_config")
@@ -664,7 +663,6 @@ def test_build_product_web_insights_returns_schema(
     mock_get_config,
     mock_exa_class,
     mock_chat_openai,
-    mock_create_deep_agent,
     monkeypatch,
 ):
     monkeypatch.setenv("NGC_API_KEY", "test-ngc")
@@ -750,15 +748,7 @@ def test_build_product_web_insights_returns_schema(
         ]
     }
 
-    agent = Mock()
-
-    def _invoke(_payload):
-        web_search_tool = mock_create_deep_agent.call_args.kwargs["tools"][0]
-        web_search_tool("product review")
-        return agent_result
-
-    agent.invoke.side_effect = _invoke
-    mock_create_deep_agent.return_value = agent
+    mock_chat_openai.return_value.invoke.return_value = agent_result["messages"][0]
 
     output = build_product_web_insights(title="Test product", locale="en-US")
 
@@ -771,7 +761,12 @@ def test_build_product_web_insights_returns_schema(
     assert output["report"]["metrics"]["customer_sentiment"]["score"] == 82
     assert output["sources"][0]["url"] == "https://example.com/review"
     mock_exa_class.assert_called_once_with(api_key="test-exa")
-    exa.search.assert_called_once()
+    assert [call.args[0] for call in exa.search.call_args_list] == [
+        "Test product", "Test product reviews", "Test product price",
+    ]
+    mock_chat_openai.return_value.invoke.assert_called_once()
+    assert "Source-backed" not in mock_chat_openai.return_value.invoke.call_args.args[0][1]["content"]
+    assert "Retail price is $89.99" in mock_chat_openai.return_value.invoke.call_args.args[0][1]["content"]
     mock_chat_openai.assert_called_once_with(
         model="test-llm",
         base_url="http://test-llm/v1",
@@ -782,18 +777,15 @@ def test_build_product_web_insights_returns_schema(
         max_retries=1,
         extra_body={"chat_template_kwargs": {"enable_thinking": False}},
     )
-    mock_create_deep_agent.assert_called_once()
 
 
-@patch("backend.web_insights.create_deep_agent")
 @patch("backend.web_insights.ChatOpenAI")
 @patch("backend.web_insights.Exa")
 @patch("backend.web_insights.get_config")
-def test_build_product_web_insights_bootstraps_sources_when_agent_skips_tool(
+def test_build_product_web_insights_no_extra_searches_when_identity_unclear(
     mock_get_config,
     mock_exa_class,
-    _mock_chat_openai,
-    mock_create_deep_agent,
+    mock_chat_openai,
     monkeypatch,
 ):
     monkeypatch.setenv("NGC_API_KEY", "test-ngc")
@@ -823,24 +815,6 @@ def test_build_product_web_insights_bootstraps_sources_when_agent_skips_tool(
     )
     mock_exa_class.return_value = exa
 
-    first_agent_result = {
-        "messages": [
-            SimpleNamespace(
-                content=json.dumps({
-                    "summary": "",
-                    "search_queries": ["Oster Air Fryer with Digital Display and Cooking Functions"],
-                    "warnings": [],
-                    "research_scope": "brand_level",
-                    "identity_confidence": "medium",
-                    "detected_brand": "Oster",
-                    "detected_model": None,
-                    "scope_note": "Brand found, model unclear.",
-                    "identity_evidence": ["Oster appears in matching retailer titles."],
-                    "report": {},
-                })
-            )
-        ]
-    }
     grounded_agent_result = {
         "messages": [
             SimpleNamespace(
@@ -878,9 +852,7 @@ def test_build_product_web_insights_bootstraps_sources_when_agent_skips_tool(
         ]
     }
 
-    agent = Mock()
-    agent.invoke.side_effect = [first_agent_result, grounded_agent_result]
-    mock_create_deep_agent.return_value = agent
+    mock_chat_openai.return_value.invoke.return_value = grounded_agent_result["messages"][0]
 
     output = build_product_web_insights(
         title="Oster Air Fryer with Digital Display and Cooking Functions",
@@ -889,8 +861,9 @@ def test_build_product_web_insights_bootstraps_sources_when_agent_skips_tool(
         locale="en-US",
     )
 
-    assert agent.invoke.call_count == 2
-    assert exa.search.called
+    mock_chat_openai.return_value.invoke.assert_called_once()
+    title = "Oster Air Fryer with Digital Display and Cooking Functions"
+    assert [call.args[0] for call in exa.search.call_args_list] == [title, f"{title} reviews", f"{title} price"]
     assert output["summary"] == "Oster source-backed air fryer summary."
     assert output["sources"][0]["url"] == "https://example.com/oster-air-fryer"
     assert output["research_scope"] == "brand_level"

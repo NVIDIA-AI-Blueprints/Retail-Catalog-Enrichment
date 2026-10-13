@@ -24,6 +24,7 @@ from unittest.mock import Mock, patch, AsyncMock
 from fastapi.testclient import TestClient
 from backend.main import app
 from backend.image import (
+    FluxContentFilteredError,
     _call_planner_llm,
     _call_flux_edit,
     generate_image_variation
@@ -474,6 +475,59 @@ class TestGenerateImageVariation:
         assert result["quality_issues"] == []
 
 
+    @pytest.mark.asyncio
+    @patch('backend.image.evaluate_image_quality')
+    @patch('backend.image._call_flux_edit')
+    @patch('backend.image._call_planner_llm')
+    async def test_generate_variation_replans_after_content_filter(self, mock_planner, mock_flux, mock_reflection, sample_image_bytes, sample_base64_image, sample_flux_plan):
+        """A FLUX content-filter placeholder triggers one fresh plan instead of being judged."""
+        mock_planner.return_value = sample_flux_plan
+        mock_flux.side_effect = [
+            {"artifacts": [{"base64": "black-placeholder", "finishReason": "CONTENT_FILTERED", "seed": 1}]},
+            {"artifacts": [{"base64": sample_base64_image, "finishReason": "SUCCESS", "seed": 2}]},
+        ]
+        mock_reflection.return_value = {"score": 90.0, "rationale": "Faithful.", "issues": []}
+
+        result = await generate_image_variation(
+            image_bytes=sample_image_bytes,
+            content_type="image/png",
+            title="Test Product",
+            description="Test description",
+            categories=["bags"],
+            tags=[],
+            colors=[],
+            locale="en-US"
+        )
+
+        assert result["generated_image_b64"] == sample_base64_image
+        assert mock_planner.call_count == 2
+        assert mock_flux.await_count == 2
+        mock_reflection.assert_called_once()
+
+    @pytest.mark.asyncio
+    @patch('backend.image.evaluate_image_quality')
+    @patch('backend.image._call_flux_edit')
+    @patch('backend.image._call_planner_llm')
+    async def test_generate_variation_raises_when_content_filtered_twice(self, mock_planner, mock_flux, mock_reflection, sample_image_bytes, sample_flux_plan):
+        """Two filtered prompts raise a clear error and never reach the judge."""
+        mock_planner.return_value = sample_flux_plan
+        mock_flux.return_value = {"artifacts": [{"base64": "black-placeholder", "finishReason": "CONTENT_FILTERED"}]}
+
+        with pytest.raises(FluxContentFilteredError):
+            await generate_image_variation(
+                image_bytes=sample_image_bytes,
+                content_type="image/png",
+                title="Test Product",
+                description="Test description",
+                categories=["bags"],
+                tags=[],
+                colors=[],
+                locale="en-US"
+            )
+
+        assert mock_flux.await_count == 2
+        mock_reflection.assert_not_called()
+
 class TestGenerateVariationEndpoint:
     """Tests for the /generate/variation response contract."""
 
@@ -519,3 +573,18 @@ class TestGenerateVariationEndpoint:
 
         mock_generate.assert_awaited_once()
         assert "enhanced_product" not in mock_generate.await_args.kwargs
+
+    @patch('backend.main.generate_image_variation')
+    def test_generate_variation_content_filtered_returns_422(self, mock_generate, sample_image_bytes):
+        """Content-filter failures surface as a readable 422 instead of a black image."""
+        mock_generate.side_effect = FluxContentFilteredError("Image generation was blocked by the FLUX content filter. Please try again.")
+
+        client = TestClient(app)
+        response = client.post(
+            "/generate/variation",
+            files={"image": ("test.png", sample_image_bytes, "image/png")},
+            data={"locale": "en-US", "title": "Test Product", "description": "Test description", "categories": '["bags"]'}
+        )
+
+        assert response.status_code == 422
+        assert "content filter" in response.json()["detail"]

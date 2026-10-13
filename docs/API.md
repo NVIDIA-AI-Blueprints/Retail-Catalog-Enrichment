@@ -557,7 +557,7 @@ done
 
 ## 4️⃣ Product Web Insights: `/research/product-insights`
 
-Research public web information about a product using a Deep Agents research agent with Exa search. Exa retrieves search results, highlights, and text excerpts only; Nemotron/Deep Agent performs the summarization and dashboard synthesis. Designed to be called after `/vlm/analyze` completes, using the enriched title as the primary product and brand disambiguation input.
+Research public web information about a product with three fixed Exa searches (`<title>`, `<title> reviews`, `<title> price`) followed by a single Nemotron synthesis call. Exa retrieves search results, highlights, and text excerpts only; Nemotron performs the summarization and dashboard synthesis. Designed to be called after `/vlm/analyze` completes, using the enriched title as the primary product and brand disambiguation input.
 
 The endpoint is informational. It returns source-backed insights for display in the UI and does not automatically modify the enriched title, description, FAQs, or protocol schemas.
 
@@ -759,7 +759,7 @@ curl -X POST \
 ### Notes
 
 - Uses `EXA_API_KEY` and the existing Nemotron LLM configuration when Web Insights is enabled. If `EXA_API_KEY` is not configured, the endpoint returns a 200 response with `status: "disabled"`, empty insight arrays, and a user-facing configuration message.
-- Uses the Deep Agents SDK as the research harness and Exa as the retrieval tool.
+- Retrieval is deterministic: the model never chooses or triggers searches. Results from the three searches are interleaved, deduplicated, and capped at `web_insights.max_sources` before synthesis.
 - LLM-generated dashboard scores are returned only as source-backed directional signals; thin coverage returns warnings and neutral metric fallbacks.
 - Web claims should be treated as external context. Sources are returned for auditability but are not listed in the default dashboard view.
 - Failure to generate web insights should not block FAQs, protocol schemas, image generation, or 3D generation.
@@ -803,6 +803,10 @@ Generate culturally-appropriate product variations using FLUX models based on VL
   "locale": "string"
 }
 ```
+
+If the FLUX content filter rejects the planned prompt (`finishReason: CONTENT_FILTERED`, returned as a black placeholder), the backend plans a new variation and retries once. If the second prompt is also rejected, the endpoint returns `422` with `detail` explaining that the content filter blocked generation; the placeholder is never returned or judged.
+
+The quality judge runs with reasoning enabled and sampled decoding (`temperature=0.6`, `top_p=0.95`); greedy decoding makes the reasoning model loop until it runs out of tokens. It allows up to 8,192 output tokens per attempt, shared between reasoning and the final assessment. It retries once when its answer is empty or cannot be parsed into a valid score. If both attempts fail, the generated image is still returned with `quality_score` and `quality_rationale` set to `null` and `quality_issues` set to `[]`. The UI displays “Quality assessment unavailable.” Backend logs record each attempt's finish reason, token usage, and whether reasoning content was present; reasoning text is not logged.
 
 ### Usage Example
 
