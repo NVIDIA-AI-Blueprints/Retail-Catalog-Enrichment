@@ -1,0 +1,16 @@
+{#-
+  Per-product user message. Kept deliberately short: this content sits after the
+  shared prefix, so every token here is paid once per product.
+
+  Source text is passed through raw -- messy casing, HTML fragments and vendor SKU
+  noise included. Cleaning it in the data plane would be measuring a different
+  workload than the one customers actually have.
+-#}
+id: {{ product.product_id }}
+title: {{ product.title }}
+{% if product.description -%}
+description: {{ product.description }}
+{% endif -%}
+{% if product.metadata -%}
+metadata: {{ product.metadata }}
+{% endif -%}

@@ -1,0 +1,147 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nvidia.com/blueprints/catalog-enrichment/product_attributes.schema.json",
+  "title": "ProductAttributes",
+  "description": "Reference enrichment schema for the Catalog Enrichment Blueprint. 21 attributes, sized per PRD v1.1 §7 'measurement realism rule': guided-decoding cost scales with grammar complexity, so benchmarks must use a realistic schema, never a toy one.",
+
+  "$comment": "GRAMMAR CONSTRAINTS (PRD R3, xgrammar 0.1.32 as pinned by TRT-LLM 1.3). Deliberately restricted to keywords with well-established xgrammar support: type, enum, const, properties, required, additionalProperties, items, maxItems, minItems. NOT used: minLength/maxLength/pattern on strings (support varies by xgrammar version and a compile failure here would block H1), oneOf/anyOf/allOf, $ref, format. Optionality is expressed as a [\"type\",\"null\"] union with the field still in `required`, so the grammar has a fixed key order and the decoder never has to choose whether to emit a key -- that determinism is what keeps OSL, and therefore products/sec, predictable. Every array is bounded with maxItems for the same reason: an unbounded array is an unbounded token budget.",
+
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "normalized_title",
+    "brand",
+    "category",
+    "subcategory",
+    "primary_color",
+    "secondary_colors",
+    "material",
+    "sizes",
+    "gender",
+    "age_group",
+    "season",
+    "style_tags",
+    "key_features",
+    "care_instructions",
+    "country_of_origin",
+    "is_bundle",
+    "unit_count",
+    "condition",
+    "search_keywords",
+    "short_description",
+    "extraction_confidence"
+  ],
+  "properties": {
+    "normalized_title": {
+      "type": "string",
+      "description": "Clean, title-cased product name. No vendor SKUs, no marketing shouting, no bracketed vendor codes."
+    },
+    "brand": {
+      "type": ["string", "null"],
+      "description": "Manufacturer or brand name. null if not stated or inferable."
+    },
+    "category": {
+      "type": "string",
+      "description": "Top-level catalog category.",
+      "enum": [
+        "apparel",
+        "footwear",
+        "accessories",
+        "home_kitchen",
+        "furniture",
+        "beauty_personal_care",
+        "electronics",
+        "sports_outdoors",
+        "toys_games",
+        "grocery",
+        "pet_supplies",
+        "office_supplies",
+        "automotive",
+        "other"
+      ]
+    },
+    "subcategory": {
+      "type": "string",
+      "description": "Free-text second-level category, e.g. 'running shoes', 'cast iron cookware'."
+    },
+    "primary_color": {
+      "type": ["string", "null"],
+      "description": "Dominant color as a single normalized word. null if not stated."
+    },
+    "secondary_colors": {
+      "type": "array",
+      "maxItems": 3,
+      "items": { "type": "string" },
+      "description": "Additional colors, most prominent first. Empty array if none."
+    },
+    "material": {
+      "type": ["string", "null"],
+      "description": "Primary material, e.g. 'cotton', 'stainless steel'. null if not stated."
+    },
+    "sizes": {
+      "type": "array",
+      "maxItems": 8,
+      "items": { "type": "string" },
+      "description": "Available sizes as written, e.g. ['S','M','L'] or ['12 oz']. Empty array if not applicable."
+    },
+    "gender": {
+      "type": "string",
+      "enum": ["mens", "womens", "unisex", "not_applicable"]
+    },
+    "age_group": {
+      "type": "string",
+      "enum": ["adult", "teen", "kids", "toddler", "infant", "all_ages"]
+    },
+    "season": {
+      "type": "string",
+      "enum": ["spring", "summer", "fall", "winter", "all_season"]
+    },
+    "style_tags": {
+      "type": "array",
+      "maxItems": 5,
+      "items": { "type": "string" },
+      "description": "Style descriptors, e.g. 'minimalist', 'vintage', 'athletic'."
+    },
+    "key_features": {
+      "type": "array",
+      "maxItems": 5,
+      "items": { "type": "string" },
+      "description": "Short factual feature phrases drawn from the source text. Not marketing copy."
+    },
+    "care_instructions": {
+      "type": ["string", "null"],
+      "description": "Care or handling guidance if stated, e.g. 'machine wash cold'. null otherwise."
+    },
+    "country_of_origin": {
+      "type": ["string", "null"],
+      "description": "Country name if stated. null otherwise. Never guessed from brand."
+    },
+    "is_bundle": {
+      "type": "boolean",
+      "description": "True if the listing is a multi-item set, pack, or bundle."
+    },
+    "unit_count": {
+      "type": "integer",
+      "description": "Number of units in the listing. 1 for a single item."
+    },
+    "condition": {
+      "type": "string",
+      "enum": ["new", "refurbished", "used", "open_box", "unknown"]
+    },
+    "search_keywords": {
+      "type": "array",
+      "maxItems": 8,
+      "items": { "type": "string" },
+      "description": "Lowercase search terms a shopper would plausibly type. No duplicates of the title."
+    },
+    "short_description": {
+      "type": "string",
+      "description": "One or two plain sentences describing the product. Roughly 25 words; the token budget is enforced by max_tokens, not by the grammar."
+    },
+    "extraction_confidence": {
+      "type": "string",
+      "enum": ["high", "medium", "low"],
+      "description": "Model's confidence that the source text supported these attributes. 'low' signals a thin or garbled input row."
+    }
+  }
+}
