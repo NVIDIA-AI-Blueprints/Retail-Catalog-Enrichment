@@ -145,6 +145,12 @@ class TestParseLlmJsonStripComments:
         result = parse_llm_json(text, strip_comments=True)
         assert result == {"title": "Test", "score": 42}
 
+    def test_keeps_double_slash_inside_strings(self):
+        """Test that // inside a string value (e.g. a URL) is not treated as a comment."""
+        text = '{"url": "https://example.com/a", // source\n"note": "a /* b */ c"}'
+        result = parse_llm_json(text, strip_comments=True)
+        assert result == {"url": "https://example.com/a", "note": "a /* b */ c"}
+
     def test_disabled_by_default(self):
         """Test that comment stripping is off by default."""
         text = '{"title": "Test" // comment\n}'

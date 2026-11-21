@@ -46,8 +46,13 @@ def parse_llm_json(
             text = text[first_brace : last_brace + 1]
 
     if strip_comments:
-        text = re.sub(r"//.*?(?=\n|$)", "", text)
-        text = re.sub(r"/\*.*?\*/", "", text, flags=re.DOTALL)
+        # Keep string literals intact so URLs like "https://..." survive.
+        text = re.sub(
+            r'("(?:\\.|[^"\\])*")|//[^\n]*|/\*.*?\*/',
+            lambda m: m.group(1) or "",
+            text,
+            flags=re.DOTALL,
+        )
 
     try:
         parsed = json.loads(text)
